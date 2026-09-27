@@ -1,89 +1,83 @@
-# Inicialização do Minecraft
+# Instalação e inicialização do Minecraft
 
 ## Perfil suportado
-
-O launcher prepara a linha de comando exclusivamente para:
 
 - Minecraft `1.20.1`;
 - Forge `47.4.10`;
 - Java `17`;
 - asset index `5`;
-- alvo Forge `forgeclient`.
+- alvo `forgeclient`;
+- memória inicial de 512 MB e máxima de 4 GB.
 
-Esses valores ficam centralizados em `src/config/LauncherConfig.h`.
+Os valores ficam em `src/config/LauncherConfig.h`.
 
-## Identidade do jogador
+## Instalação automática
 
-O nickname deve ter de 3 a 16 caracteres e conter somente letras, números ou
-underline. O launcher gera o UUID determinístico compatível com
-`OfflinePlayer:<nickname>` e inicia o jogo sem autenticação Microsoft.
+No primeiro uso, o launcher baixa o Temurin 17 portátil e valida seu SHA-256.
+Em seguida, lê os manifestos oficiais da Mojang, baixa o cliente, bibliotecas,
+assets e configuração de log com os hashes publicados pela origem.
 
-Essa abordagem é destinada ao grupo privado em um servidor com `online-mode=false`.
-Ela não autentica nem concede propriedade de uma conta oficial.
-
-## Diretórios esperados
+O instalador oficial do Forge é conferido pelo SHA-1 definido na configuração e
+executado com `--installClient` dentro da instância isolada. Depois disso, o
+launcher extrai as DLLs nativas, sincroniza o manifesto privado e grava
+`eternal-classpath.txt`.
 
 ```text
 %APPDATA%\.eternal-launcher\
-├── runtime\bin\javaw.exe
+├── downloads\
+│   └── forge-1.20.1-47.4.10-installer.jar
+├── runtime\bin\java.exe
 └── minecraft\
     ├── assets\
-    │   └── indexes\5.json
     ├── libraries\
     ├── mods\
-    ├── natives\
-    │   └── *.dll
+    ├── natives\*.dll
+    ├── logs\launcher-console.log
+    ├── eternal-classpath.txt
     └── versions\
         ├── 1.20.1\1.20.1.jar
         └── 1.20.1-forge-47.4.10\1.20.1-forge-47.4.10.json
 ```
 
-O runtime portátil na pasta do launcher tem prioridade. Quando ele não existe,
-o launcher consulta a API oficial do Eclipse Adoptium, baixa o ZIP mais recente
-do Temurin 17 para Windows x64 e confere o SHA-256 publicado na mesma resposta.
+Arquivos existentes com tamanho e hash corretos são reutilizados. Um download
+interrompido permanece em `.part` e não corrompe o destino anterior.
 
-A extração acontece primeiro em `runtime-staging`. O diretório `runtime` só é
-substituído depois que `javaw.exe` e o arquivo `release` confirmam Java 17. Como
-alternativas, o inicializador também reconhece Java 17 em `JAVA_HOME` ou no
-`PATH`, embora o fluxo automático sempre prepare a cópia isolada.
+## Identidade do jogador
 
-## Validação anterior à abertura
+O nickname aceita de 3 a 16 caracteres (`A-Z`, `a-z`, `0-9` e `_`). O UUID é
+derivado de `OfflinePlayer:<nickname>`, compatível com servidores offline. Não
+há autenticação Microsoft ou concessão de licença; os usuários devem possuir o
+jogo.
 
-Antes de chamar `CreateProcessW`, o serviço confirma:
+## Validação e execução
 
-1. Java 17 portátil disponível, baixando-o automaticamente quando necessário;
-2. perfil JSON do Forge presente;
-3. JAR cliente do Minecraft presente;
-4. índice de assets presente;
-5. bibliotecas essenciais do bootstrap e do Forge presentes;
-6. pelo menos uma biblioteca nativa extraída em `natives`.
+Antes de iniciar, `MinecraftLauncherService` confirma Java 17, perfil Forge,
+cliente, asset index, classpath, bibliotecas essenciais e DLLs nativos.
+`MinecraftLaunchCommandBuilder` monta o module path e o classpath controlado,
+evitando incluir artefatos temporários do instalador.
 
-Se algum requisito estiver ausente, a interface mostra a causa e não inicia um
-processo parcial.
+O jogo é executado por `java.exe` com `CREATE_NO_WINDOW`. A saída padrão e os
+erros são direcionados para `minecraft\logs\launcher-console.log`, útil quando
+Forge ou um mod falha antes de criar `latest.log`.
 
-## Montagem e execução
+## Diagnóstico local
 
-`MinecraftLaunchCommandBuilder` reúne os JARs da pasta isolada, cria o module
-path do Forge, define a memória e inclui o nickname e UUID offline. O
-`MinecraftLauncherService` usa o diretório da instância como diretório de
-trabalho, abre `javaw.exe` e guarda o identificador e o handle do processo.
+O executável de testes possui modos manuais que não fazem parte do fluxo normal:
 
-Enquanto o processo estiver ativo, o botão fica bloqueado. Quando o jogo fecha,
-a interface permite iniciar outra sessão.
+```powershell
+./out/build/x64-debug/EternalLauncherTests.exe --validate-installed
+./out/build/x64-debug/EternalLauncherTests.exe --launch-installed Steve
+```
 
-## Limites desta etapa
+O segundo comando apenas confirma que o processo permanece ativo; feche o jogo
+depois do diagnóstico.
 
-O Java já é preparado automaticamente. Minecraft, Forge, assets e bibliotecas
-ainda dependem de uma instância previamente preparada.
+## TODOs
 
 ```cpp
-// TODO: obter no manifesto a relação de arquivos necessários para a instância.
+// TODO: carregar memória e servidor a partir de preferências persistidas.
 
-// TODO: baixar e verificar Minecraft, Forge, assets e bibliotecas.
+// TODO: remover com segurança mods que deixarem de existir no manifesto.
 
 // TODO: substituir a identidade offline por autenticação Microsoft, se desejado.
 ```
-
-Até esses TODOs serem implementados, a pasta isolada precisa ser preparada antes
-do primeiro uso. Mods podem ser copiados para `minecraft\mods`, mas a sincronização
-automática com o servidor HTTP continua reservada para uma próxima etapa.

@@ -2,104 +2,87 @@
 
 ## Objetivo
 
-A estrutura separa interface, comunicação HTTP e inicialização do Minecraft. O
-servidor pode usar NGINX, outro servidor web ou um serviço gerenciado sem que os
-componentes visuais conheçam a infraestrutura escolhida.
+A estrutura separa interface, fontes de arquivos, preparação da instância e
+execução. O servidor pode usar NGINX ou qualquer implementação HTTP sem alterar
+os componentes visuais ou as regras do Minecraft.
 
-## Responsabilidades
+## Camadas
 
-### Aplicação
+### Aplicação e página
 
-`LauncherApplication` inicializa o GDI+, cria a janela principal e mantém o loop
-de mensagens do Windows. Esse nível não contém regras específicas do Minecraft.
+`LauncherApplication` inicializa GDI+, janela e loop de mensagens.
+`MainPage` compõe a tela, mantém `LauncherViewState` e coordena operações em
+threads próprias. Downloads nunca bloqueiam a thread da interface.
 
-### Página
+### Componentes visuais
 
-`MainPage` compõe os componentes, mantém o estado visual e encaminha as ações do
-usuário. A consulta HTTP acontece em segundo plano. A página usa os contratos de
-serviço para validar a instalação, abrir o jogo e acompanhar o processo, sem
-conhecer os argumentos internos do Java.
+- `HeaderComponent`: marca, versão e acesso às configurações.
+- `HeroComponent`: identidade do modpack e versões.
+- `PlayerProfileComponent`: nickname local.
+- `StatusPanelComponent`: instalação, arquivos privados e servidor.
+- `PlayPanelComponent`: estado atual e ação principal.
+- `ProgressComponent`: progresso de Java e da instância.
+- `NewsPanelComponent`: conteúdo editorial ainda mockado.
 
-### Componentes
-
-- `HeaderComponent`: marca, versão e acesso futuro às configurações.
-- `HeroComponent`: apresentação do modpack e versões principais.
-- `PlayerProfileComponent`: identificação local do jogador.
-- `StatusPanelComponent`: instalação, mods e servidor HTTP.
-- `PlayPanelComponent`: status atual e ação primária.
-- `ProgressComponent`: atividade e progresso de operações.
-- `NewsPanelComponent`: avisos e notícias do grupo.
-
-Os componentes recebem dados e desenham sua própria área. Eles não acessam rede,
-arquivos ou configurações persistidas.
-
-### Estado e mocks
-
-`LauncherViewState` centraliza os dados da tela. `LauncherOperation` representa
-estados como conexão, atualização, inicialização, jogo em execução e erro.
-
-`MockLauncherData` ainda fornece notícias, status dos mods e valores temporários
-de progresso. Os cartões de servidor e instalação são substituídos por resultados
-reais quando a verificação inicial termina.
+Os componentes apenas desenham dados recebidos. Eles não acessam rede nem disco.
 
 ### Serviços
 
-- `IFileServerService`: contrato para obter o manifesto HTTP.
-- `HttpFileService`: implementação assíncrona baseada em WinHTTP.
-- `HttpDownloadClient`: transferência genérica de metadados e arquivos binários.
-- `IJavaRuntimeService`: contrato para disponibilização do Java portátil.
-- `JavaRuntimeService`: baixa o Temurin 17, verifica SHA-256, extrai em uma pasta
-  temporária e substitui o runtime somente após a validação.
-- `IMinecraftLauncherService`: contrato de validação e inicialização do jogo.
-- `MinecraftLauncherService`: localiza Java 17, valida a instância, cria e
-  acompanha o processo do Minecraft.
-- `MinecraftLaunchCommandBuilder`: monta classpath, módulos, parâmetros de JVM e
-  argumentos do Forge `47.4.10`.
-- `IUpdateService`: fronteira reservada para comparação e atualização de arquivos.
+- `HttpFileService`: obtém o manifesto privado via WinHTTP.
+- `HttpDownloadClient`: transfere textos e binários.
+- `JavaRuntimeService`: coordena o Java portátil.
+- `PortableJavaInstaller`: baixa, verifica e publica o Temurin 17.
+- `MinecraftManifestService`: converte manifestos oficiais em um plano explícito.
+- `VerifiedDownloader`: baixa em paralelo, usa `.part` e verifica hash/tamanho.
+- `GameInstallationService`: orquestra Mojang, Forge e arquivos privados.
+- `MinecraftLaunchCommandBuilder`: monta módulos, classpath e argumentos.
+- `MinecraftLauncherService`: valida e acompanha o processo do jogo.
+- `IUpdateService`: fronteira futura para remoção de obsoletos e política de versão.
 
-O download e a interpretação do manifesto como lista de arquivos ainda não foram
-implementados. Não existe `NginxService`: NGINX é somente uma possibilidade de
-hospedagem e não faz parte do domínio do launcher.
+### Utilitários
+
+- `JsonValue`: parser JSON mínimo usado nos manifestos.
+- `FileHash`: SHA-1 e SHA-256 com Windows CNG.
+- `ArchiveExtractor`: extração de ZIP/JAR usando o suporte do Windows.
+- `DrawingUtils`: primitivas compartilhadas da interface.
 
 ## Fluxo atual
 
 ```text
-Iniciar launcher
-  → consultar manifesto HTTP
-  → localizar Java 17
-  → baixar e validar Temurin 17 quando estiver ausente
-  → validar Minecraft, Forge, assets, bibliotecas e nativas
-  → validar nickname
-  → montar parâmetros JVM/Forge
-  → criar processo javaw.exe
-  → acompanhar o processo até o encerramento
-```
-
-## Fluxo futuro
-
-```text
-Iniciar launcher
-  → carregar configurações
-  → verificar servidor HTTP
-  → obter e interpretar manifesto
-  → verificar arquivos locais
-  → comparar versões e hashes
-  → baixar arquivos necessários
-  → validar a instalação preparada
-  → iniciar Minecraft
+Abrir launcher
+  → obter manifesto privado
+  → garantir Java 17 portátil
+  → obter metadados oficiais do Minecraft 1.20.1
+  → baixar/verificar cliente, bibliotecas, assets e logs
+  → extrair bibliotecas nativas
+  → baixar/verificar e executar o instalador Forge 47.4.10
+  → sincronizar arquivos privados declarados no manifesto
+  → gerar eternal-classpath.txt
+  → validar nickname e instalação
+  → iniciar Java e acompanhar o processo
 ```
 
 ## Decisões importantes
 
-- A instância em `%APPDATA%\.eternal-launcher\minecraft` é isolada da
+- A instância em `%APPDATA%\.eternal-launcher\minecraft` não mistura mods com a
   `.minecraft` convencional.
-- O nickname gera uma identidade offline determinística; autenticação Microsoft
-  não faz parte desta etapa.
-- O serviço aceita apenas Java 17, versão exigida pelo Minecraft 1.20.1.
-- O Java não é instalado globalmente: o runtime fica restrito ao launcher.
-- Downloads incompletos e pacotes com SHA-256 divergente nunca substituem o
-  runtime existente.
-- A memória está centralizada na configuração, atualmente entre 512 MB e 4 GB.
-- Configurações, rede e sistema de arquivos permanecem fora dos componentes.
-- Comentários explicam decisões, mocks e integrações futuras sem narrar código
-  óbvio.
+- Java e jogo são obtidos de fontes oficiais; o servidor privado entrega apenas
+  o conteúdo específico do grupo.
+- Nenhum arquivo baixado é publicado antes da verificação de integridade.
+- O classpath é salvo explicitamente para não incluir JARs auxiliares do
+  instalador Forge.
+- DLLs nativos são normalizados na raiz de `natives`, conforme o
+  `java.library.path` usado no comando.
+- A saída do Java fica em `logs/launcher-console.log` sem abrir console.
+- A identidade offline é determinística e poderá ser substituída por um serviço
+  de autenticação sem alterar o instalador.
+- Memória, versões e endpoints permanecem centralizados em `LauncherConfig`.
+
+## Extensões futuras
+
+```text
+Configurações persistentes
+  → política de atualização e remoção segura
+  → autenticação Microsoft
+  → atualização assinada do launcher
+```

@@ -1,88 +1,91 @@
 # Servidor HTTP de arquivos
 
-## Estado atual
+## Endereço atual
 
-O servidor `10.0.0.51` utiliza Debian 13 e NGINX. O serviço está habilitado no
-boot e publica arquivos através da porta HTTP 80.
-
-- URL principal: `http://10.0.0.51/`
+- Base: `http://10.0.0.51/`
 - Manifesto: `http://10.0.0.51/manifest.json`
-- Mods: `http://10.0.0.51/mods/`
-- Diretório local publicado: `/srv/eternal-launcher/files`
-- Configuração do NGINX: `/etc/nginx/sites-available/eternal-launcher`
+- Diretório publicado: `/srv/eternal-launcher/files`
+- Site NGINX: `/etc/nginx/sites-available/eternal-launcher`
 
-## Estrutura remota
+O launcher depende somente de HTTP, não do NGINX. O endereço compilado fica em
+`src/config/LauncherConfig.h`, na constante `FileServerBaseUrl`.
 
-```text
-/srv/eternal-launcher/files/
-├── config/
-├── launcher/
-├── manifests/
-├── mods/
-├── README.txt
-└── manifest.json
+## Manifesto privado
+
+O campo `files` descreve mods, configurações e outros arquivos próprios do
+grupo. `path` é relativo à pasta da instância, `sha256` é obrigatório e `size`
+é recomendado. Quando `url` não é informado, o endereço é `base + path`.
+
+```json
+{
+  "schemaVersion": 1,
+  "launcherVersion": "0.1.0-visual",
+  "minecraftVersion": "1.20.1",
+  "forgeVersion": "47.4.10",
+  "files": [
+    {
+      "path": "mods/exemplo-1.20.1.jar",
+      "sha256": "HASH_SHA256_COM_64_CARACTERES_HEXADECIMAIS",
+      "size": 1234567
+    },
+    {
+      "path": "config/exemplo.toml",
+      "url": "http://10.0.0.51/config/exemplo.toml",
+      "sha256": "OUTRO_HASH_SHA256_COM_64_CARACTERES_HEXADECIMAIS",
+      "size": 321
+    }
+  ]
+}
 ```
 
-O `manifest.json` inicial ainda não descreve arquivos reais. Ele existe apenas
-como base para a futura implementação do serviço de atualização.
+O launcher rejeita caminhos absolutos, segmentos `..`, hashes inválidos e
+arquivos cujo conteúdo não corresponda ao manifesto. A lista vazia é válida e
+resulta em zero arquivos privados sincronizados.
 
-## Integração atual com o launcher
+### Gerar SHA-256 no servidor
 
-O launcher realiza um `GET /manifest.json` ao abrir a tela principal. A chamada
-usa WinHTTP em uma thread separada e possui timeouts para não bloquear a janela.
+```bash
+cd /srv/eternal-launcher/files
+sha256sum mods/exemplo-1.20.1.jar
+stat -c %s mods/exemplo-1.20.1.jar
+```
 
-Quando a resposta é válida, a interface exibe:
+Depois de editar o JSON, valide sua sintaxe:
 
-- disponibilidade do servidor;
-- código HTTP recebido;
-- duração total da requisição.
+```bash
+jq . /srv/eternal-launcher/files/manifest.json
+```
 
-Quando a requisição falha, o cartão muda para “Indisponível” e o botão principal
-mostra “Servidor offline”. Ainda não há download, comparação de hashes ou leitura
-da lista `files` do manifesto.
+## Publicar com FileZilla
 
-## Publicar mods com FileZilla
-
-O servidor não expõe FTP tradicional na porta 21. Use **SFTP**, que transfere os
-arquivos de forma criptografada pelo SSH:
+Use SFTP, não FTP sem criptografia:
 
 ```text
 Protocolo: SFTP - SSH File Transfer Protocol
 Host:      10.0.0.51
 Porta:     22
-Destino:   /srv/eternal-launcher/files/mods
+Destino:   /srv/eternal-launcher/files
 ```
 
-Utilize uma credencial administrativa já autorizada no servidor. Senhas nunca
-devem ser gravadas neste repositório.
-
-> TODO: criar um usuário exclusivo de publicação, sem acesso administrativo,
-> antes de disponibilizar o servidor fora da rede local.
+Envie o arquivo primeiro e publique `manifest.json` por último. Isso evita que
+clientes recebam uma referência para um upload ainda incompleto. Credenciais e
+senhas nunca devem ser salvas neste repositório.
 
 ## Administração
 
 ```bash
-# Validar a configuração antes de recarregar.
 nginx -t
-
-# Aplicar alterações sem interromper downloads ativos.
 systemctl reload nginx
-
-# Consultar o estado do serviço.
 systemctl status nginx
-
-# Acompanhar requisições e erros.
 tail -f /var/log/nginx/eternal-launcher.access.log
 tail -f /var/log/nginx/eternal-launcher.error.log
 ```
 
-## Segurança futura
+## Segurança e evolução
 
-- Criar uma conta SFTP dedicada somente ao diretório de publicação.
+- Criar uma conta SFTP dedicada à publicação, sem acesso administrativo.
 - Trocar credenciais administrativas que tenham sido compartilhadas.
-- Adicionar HTTPS antes de permitir acesso pela internet.
-- Restringir portas no firewall às redes realmente necessárias.
-- Gerar hashes dos arquivos e assinar/versionar os manifestos.
-
-Esses ajustes não são necessários para o protótipo dentro da rede local, mas
-devem anteceder qualquer exposição pública do serviço.
+- Adicionar HTTPS antes de expor o serviço à internet.
+- Restringir o firewall às redes e portas necessárias.
+- Assinar o manifesto antes de aceitar atualizações públicas.
+- Implementar remoção segura de arquivos que saírem de `files`.

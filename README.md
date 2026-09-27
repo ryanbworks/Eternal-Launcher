@@ -1,64 +1,68 @@
 # Eternal Launcher
 
-Launcher desktop privado para uma instalação padronizada de Minecraft com mods.
-A versão atual mantém a interface nativa e já consulta o servidor HTTP, valida
-uma instância local e inicia o Minecraft `1.20.1` com Forge `47.4.10` usando o
-nickname informado.
+Launcher desktop privado para uma instalação padronizada de Minecraft `1.20.1`
+com Forge `47.4.10`. A aplicação consulta um manifesto HTTP, prepara uma
+instância isolada e inicia o jogo com o nickname informado.
 
 ![Interface principal do Eternal Launcher](docs/images/interface-principal.png)
 
 ## Funcionalidades atuais
 
-- Interface nativa para Windows com tema escuro e identidade visual própria.
+- Interface nativa para Windows com tema escuro e componentes separados.
 - Campo de nickname com validação de 3 a 16 letras, números ou `_`.
-- Perfil fixo do Minecraft `1.20.1` com Forge `47.4.10`.
-- Consulta real e assíncrona ao manifesto do servidor HTTP.
+- Consulta assíncrona ao manifesto do servidor HTTP configurado.
 - Download automático do Java 17 portátil pela API oficial do Eclipse Adoptium.
-- Verificação SHA-256 do runtime antes da extração e substituição segura.
-- Validação do Java 17, perfil Forge, bibliotecas, assets e arquivos nativos.
-- Montagem dos argumentos do Forge e inicialização pelo `javaw.exe`.
-- Acompanhamento do processo para impedir duas sessões pelo mesmo launcher.
-- Pasta de jogo isolada das outras instalações de Minecraft do usuário.
-- Estados visuais claros para instalação incompleta, jogo aberto e falha.
+- Instalação automática do cliente Minecraft, bibliotecas, assets e Forge.
+- Verificação de SHA-1/SHA-256 e publicação atômica dos downloads.
+- Sincronização dos arquivos descritos em `files` no manifesto privado.
+- Extração das bibliotecas nativas e geração de classpath controlado.
+- Inicialização real do Forge e log técnico em `logs/launcher-console.log`.
+- Instância isolada em `%APPDATA%\.eternal-launcher\minecraft`.
 
-> O nickname funciona como identidade local, sem autenticação Microsoft. Por
-> isso, essa sessão só é adequada para servidores configurados em modo offline.
+> A identidade ainda é local/offline, sem autenticação Microsoft. Os jogadores
+> devem possuir o jogo e o servidor privado precisa aceitar sessões offline.
 
-## O que ainda é simulado
+## Primeiro uso
 
-- Verificação de versões e hashes dos mods.
-- Download e remoção de arquivos do modpack.
-- Instalação automática do Minecraft e Forge.
-- Persistência do nickname e das preferências.
-- Atualização automática do próprio launcher.
+Depois que o manifesto HTTP responder, o launcher executa automaticamente:
 
-O launcher não altera arquivos ao validar a instalação. Quando algum requisito
-está ausente, ele informa o problema e preserva a instância local.
+```text
+Preparar Java 17 portátil
+  → consultar manifestos oficiais da Mojang
+  → baixar e verificar Minecraft, bibliotecas e assets
+  → extrair DLLs nativos
+  → baixar e executar o instalador oficial do Forge 47.4.10
+  → sincronizar os arquivos do manifesto privado
+  → validar a instância e liberar o botão Jogar
+```
+
+Downloads já válidos são reaproveitados. Arquivos incompletos usam a extensão
+`.part` e só substituem o destino depois da conferência do hash.
+
+## O que ainda é simulado ou futuro
+
+- Notícias exibidas na tela principal.
+- Persistência do nickname e preferências.
+- Remoção automática de mods que saíram do manifesto.
+- Autenticação Microsoft e modo online.
+- Atualização automática do executável do launcher.
+- Tela funcional de configurações.
 
 ## Tecnologias
 
-- C++20
-- CMake 3.21 ou superior
-- Win32 API
-- GDI+ para renderização dos componentes
-- WinHTTP para comunicação com o servidor de arquivos
-- Eclipse Temurin 17 como runtime Java portátil
-- Windows CNG (`bcrypt`) para o UUID local do jogador
-- Visual Studio com a carga de trabalho de desenvolvimento desktop em C++
+- C++20, CMake e Win32 API;
+- GDI+ para a interface;
+- WinHTTP para downloads;
+- Windows CNG (`bcrypt`) para hashes e UUID local;
+- Eclipse Temurin 17 como runtime portátil.
 
-A aplicação utiliza somente bibliotecas fornecidas pelo Windows. O cliente não
-fica acoplado ao NGINX: qualquer servidor HTTP compatível poderá hospedar os
-arquivos futuramente.
+Não existe acoplamento ao NGINX. Qualquer servidor HTTP capaz de publicar o
+manifesto e os arquivos pode ser utilizado.
 
 ## Como compilar
 
-### Visual Studio
-
-1. Abra a pasta do projeto no Visual Studio.
-2. Selecione um dos presets presentes em `CMakePresets.json`.
-3. Compile e execute o alvo `EternalLauncher`.
-
-### Developer Command Prompt
+No Visual Studio, abra a pasta, selecione um preset de `CMakePresets.json` e
+compile o alvo `EternalLauncher`. Em um Developer PowerShell:
 
 ```powershell
 cmake --preset x64-debug
@@ -67,25 +71,25 @@ ctest --test-dir out/build/x64-debug --output-on-failure
 ./out/build/x64-debug/EternalLauncher.exe
 ```
 
-Também estão disponíveis os presets `x64-release`, `x86-debug` e `x86-release`.
+Também existem os presets `x64-release`, `x86-debug` e `x86-release`.
 
 ## Organização
 
 ```text
 assets/                       Recursos visuais futuros
-docs/                         Documentação e capturas da interface
+docs/                         Documentação e capturas
 src/
-├── app/                      Inicialização e ciclo de vida da aplicação
-├── components/               Componentes visuais reutilizáveis
-├── config/                   Versões e opções centrais do launcher
+├── app/                      Ciclo de vida da aplicação
+├── components/               Componentes visuais
+├── config/                   Versões, URLs e memória
 ├── constants/                IDs e dimensões compartilhadas
-├── mocks/                    Dados exclusivamente simulados
+├── mocks/                    Conteúdo ainda simulado
 ├── pages/                    Composição e interação das telas
-├── services/                 HTTP, validação e inicialização do jogo
-├── styles/                   Paleta e tipografia da interface
-├── types/                    Estados e modelos compartilhados
-└── utils/                    Utilitários de desenho
-tests/                        Testes automatizados dos serviços
+├── services/                 HTTP, instalação e inicialização
+├── styles/                   Paleta e tipografia
+├── types/                    Estados compartilhados
+└── utils/                    JSON, hashes, arquivos e desenho
+tests/                        Testes automatizados e diagnósticos locais
 ```
 
 Documentação complementar:
@@ -96,19 +100,14 @@ Documentação complementar:
 
 ## Configuração central
 
-Versões, memória e endereço HTTP ficam em `src/config/LauncherConfig.h`. A
-instância é esperada em `%APPDATA%\.eternal-launcher\minecraft`. Quando não há
-Java 17 válido, o launcher baixa o Temurin automaticamente para
-`%APPDATA%\.eternal-launcher\runtime\bin\javaw.exe`.
+Versões, memória e servidor ficam em `src/config/LauncherConfig.h`. Para trocar
+o IP atual, altere `FileServerBaseUrl` e recompile. O launcher obtém Minecraft
+dos serviços oficiais e usa esse servidor apenas para o manifesto, mods,
+configurações e outros arquivos privados.
 
-O servidor atual é consultado por meio de `FileServerBaseUrl`. Futuramente essa
-URL será movida para um arquivo de configuração externo.
+## TODOs principais
 
-## Próximas etapas planejadas
-
-- Interpretar o manifesto como uma lista versionada de arquivos.
-- Comparar versões e hashes da instância local.
-- Baixar somente arquivos ausentes ou desatualizados.
-- Preparar automaticamente Minecraft, Forge, assets e bibliotecas.
-- Persistir o nickname e permitir configurar memória.
-- Implementar atualização do próprio launcher.
+- Mover a URL HTTP e a memória para configurações persistidas.
+- Remover arquivos locais obsoletos com uma política segura.
+- Adicionar autenticação Microsoft, se desejado.
+- Implementar atualização assinada do próprio launcher.
