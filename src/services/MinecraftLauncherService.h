@@ -5,8 +5,8 @@
 #include <filesystem>
 #include <windows.h>
 
-// Implementa a criação do processo Java para uma instância Forge já preparada.
-// Instalar Java, Minecraft, Forge e mods permanece responsabilidade de serviços futuros.
+// Valida a instância preparada e cria o processo Java com o perfil Forge.
+// Downloads e instalação permanecem isolados nos serviços próprios.
 class MinecraftLauncherService final : public IMinecraftLauncherService
 {
 public:

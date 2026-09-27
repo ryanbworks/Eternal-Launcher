@@ -227,7 +227,7 @@ HttpDownloadResult HttpDownloadClient::downloadFile(
     std::ofstream output(destination, std::ios::binary | std::ios::trunc);
     if (!output)
     {
-        result.errorMessage = L"Não foi possível criar o arquivo temporário do Java.";
+        result.errorMessage = L"Não foi possível criar o arquivo temporário do download.";
         return result;
     }
 
@@ -238,7 +238,7 @@ HttpDownloadResult HttpDownloadClient::downloadFile(
         DWORD available = 0;
         if (!WinHttpQueryDataAvailable(handles.request.get(), &available))
         {
-            result.errorMessage = describeWindowsError(L"Falha durante o download do Java");
+            result.errorMessage = describeWindowsError(L"Falha durante o download");
             break;
         }
         if (available == 0)
@@ -251,14 +251,14 @@ HttpDownloadResult HttpDownloadClient::downloadFile(
         DWORD bytesRead = 0;
         if (!WinHttpReadData(handles.request.get(), buffer.data(), available, &bytesRead))
         {
-            result.errorMessage = describeWindowsError(L"Falha ao receber o Java");
+            result.errorMessage = describeWindowsError(L"Falha ao receber o arquivo");
             break;
         }
 
         output.write(buffer.data(), bytesRead);
         if (!output)
         {
-            result.errorMessage = L"Falha ao gravar o runtime Java no disco.";
+            result.errorMessage = L"Falha ao gravar o arquivo no disco.";
             break;
         }
         received += bytesRead;
@@ -272,7 +272,7 @@ HttpDownloadResult HttpDownloadClient::downloadFile(
     if (stopToken.stop_requested())
     {
         result.success = false;
-        result.errorMessage = L"Download do Java cancelado.";
+        result.errorMessage = L"Download cancelado.";
     }
     if (!result.success)
     {

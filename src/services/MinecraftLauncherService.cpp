@@ -117,12 +117,13 @@ MinecraftLaunchResult MinecraftLauncherService::validateInstallation() const
     const auto libraries = gamePath / L"libraries";
     const auto natives = gamePath / L"natives";
 
-    // TODO: o serviço de atualização deverá preparar estes arquivos a partir
-    // do manifesto HTTP antes que o usuário tente iniciar o jogo.
-    const std::array<std::filesystem::path, 18> requiredPaths = {
+    // Esta lista detecta instalações interrompidas antes da montagem do comando.
+    // A correção é delegada ao GameInstallationService pela interface.
+    const std::array<std::filesystem::path, 19> requiredPaths = {
         profile,
         clientJar,
         assetIndex,
+        gamePath / L"eternal-classpath.txt",
         libraries / L"cpw/mods/bootstraplauncher/1.1.2/bootstraplauncher-1.1.2.jar",
         libraries / L"cpw/mods/securejarhandler/2.1.10/securejarhandler-2.1.10.jar",
         libraries / L"org/ow2/asm/asm-commons/9.8/asm-commons-9.8.jar",
@@ -215,18 +216,40 @@ MinecraftLaunchResult MinecraftLauncherService::launch(std::wstring_view nicknam
 
     STARTUPINFO startupInfo{};
     startupInfo.cb = sizeof(startupInfo);
+    std::filesystem::create_directories(gamePath / L"logs");
+    const auto consoleLog = gamePath / L"logs" / L"launcher-console.log";
+    const HANDLE logHandle = CreateFile(
+        consoleLog.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL, nullptr);
+    const HANDLE inputHandle = CreateFile(
+        L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (logHandle != INVALID_HANDLE_VALUE && inputHandle != INVALID_HANDLE_VALUE)
+    {
+        // O Java permanece sem janela, mas stdout/stderr ficam disponíveis para
+        // diagnóstico quando Forge ou algum mod encerra durante a inicialização.
+        SetHandleInformation(logHandle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+        SetHandleInformation(inputHandle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+        startupInfo.dwFlags |= STARTF_USESTDHANDLES;
+        startupInfo.hStdInput = inputHandle;
+        startupInfo.hStdOutput = logHandle;
+        startupInfo.hStdError = logHandle;
+    }
     PROCESS_INFORMATION processInformation{};
     const BOOL created = CreateProcess(
         javaPath.c_str(),
         commandLine.data(),
         nullptr,
         nullptr,
-        FALSE,
-        CREATE_UNICODE_ENVIRONMENT | CREATE_NEW_PROCESS_GROUP,
+        logHandle != INVALID_HANDLE_VALUE && inputHandle != INVALID_HANDLE_VALUE,
+        CREATE_UNICODE_ENVIRONMENT | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
         nullptr,
         gamePath.c_str(),
         &startupInfo,
         &processInformation);
+
+    if (logHandle != INVALID_HANDLE_VALUE) CloseHandle(logHandle);
+    if (inputHandle != INVALID_HANDLE_VALUE) CloseHandle(inputHandle);
 
     if (!created)
     {
@@ -270,7 +293,7 @@ std::filesystem::path MinecraftLauncherService::resolveDataDirectory() const
 
 std::filesystem::path MinecraftLauncherService::findJavaExecutable() const
 {
-    const auto bundledJava = resolveDataDirectory() / L"runtime" / L"bin" / L"javaw.exe";
+    const auto bundledJava = resolveDataDirectory() / L"runtime" / L"bin" / L"java.exe";
     if (std::filesystem::is_regular_file(bundledJava) && isJava17Runtime(bundledJava))
     {
         return bundledJava;
@@ -279,7 +302,7 @@ std::filesystem::path MinecraftLauncherService::findJavaExecutable() const
     const auto javaHome = readEnvironmentVariable(L"JAVA_HOME");
     if (!javaHome.empty())
     {
-        const auto configuredJava = std::filesystem::path(javaHome) / L"bin" / L"javaw.exe";
+        const auto configuredJava = std::filesystem::path(javaHome) / L"bin" / L"java.exe";
         if (std::filesystem::is_regular_file(configuredJava) && isJava17Runtime(configuredJava))
         {
             return configuredJava;
@@ -288,7 +311,7 @@ std::filesystem::path MinecraftLauncherService::findJavaExecutable() const
 
     std::array<wchar_t, MAX_PATH> searchResult{};
     const DWORD length = SearchPath(
-        nullptr, L"javaw.exe", nullptr, static_cast<DWORD>(searchResult.size()),
+        nullptr, L"java.exe", nullptr, static_cast<DWORD>(searchResult.size()),
         searchResult.data(), nullptr);
     if (length > 0 && length < searchResult.size() &&
         isJava17Runtime(std::filesystem::path(searchResult.data())))

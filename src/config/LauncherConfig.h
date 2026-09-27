@@ -25,6 +25,11 @@ namespace LauncherConfig
     inline constexpr std::wstring_view JavaRuntimeMetadataUrl =
         L"https://api.adoptium.net/v3/assets/latest/17/hotspot"
         L"?architecture=x64&image_type=jre&os=windows&vendor=eclipse";
+    inline constexpr std::wstring_view ForgeInstallerUrl =
+        L"https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.10/"
+        L"forge-1.20.1-47.4.10-installer.jar";
+    inline constexpr std::string_view ForgeInstallerSha1 =
+        "66bfea9963bfa60d88bab6b2750e74a958392715";
 
     // A instância isolada evita misturar os mods do Eternal Launcher com outras
     // instalações existentes na pasta .minecraft do usuário.

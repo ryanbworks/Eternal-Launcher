@@ -5,8 +5,8 @@
 #include <windows.h>
 #include <bcrypt.h>
 
-#include <algorithm>
 #include <array>
+#include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <vector>
@@ -29,6 +29,20 @@ namespace
         WideCharToMultiByte(
             CP_UTF8, 0, value.data(), static_cast<int>(value.size()),
             converted.data(), required, nullptr, nullptr);
+        return converted;
+    }
+
+    std::wstring utf8ToWide(std::string_view value)
+    {
+        if (value.empty()) return {};
+        const int required = MultiByteToWideChar(
+            CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
+            nullptr, 0);
+        if (required <= 0) return {};
+        std::wstring converted(static_cast<std::size_t>(required), L'\0');
+        MultiByteToWideChar(
+            CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()),
+            converted.data(), required);
         return converted;
     }
 
@@ -181,12 +195,15 @@ std::wstring MinecraftLaunchCommandBuilder::build(
         L"-Djna.tmpdir=" + natives.wstring(),
         L"-Dorg.lwjgl.system.SharedLibraryExtractPath=" + natives.wstring(),
         L"-Dio.netty.native.workdir=" + natives.wstring(),
+        L"-Dlog4j.configurationFile=" +
+            (assets / L"log_configs" / L"client-1.12.xml").wstring(),
         L"-Dminecraft.launcher.brand=EternalLauncher",
         L"-Dminecraft.launcher.version=" + std::wstring(LauncherConfig::LauncherVersion),
         L"-Djava.net.preferIPv6Addresses=system",
         L"-DignoreList=bootstraplauncher,securejarhandler,asm-commons,asm-util,asm-analysis,"
             L"asm-tree,asm,JarJarFileSystems,client-extra,fmlcore,javafmllanguage,"
-            L"lowcodelanguage,mclanguage,forge-," + versionName + L".jar",
+            L"lowcodelanguage,mclanguage,forge-," +
+            std::wstring(LauncherConfig::MinecraftVersion) + L".jar",
         L"-DmergeModules=jna-5.10.0.jar,jna-platform-5.10.0.jar",
         L"-DlibraryDirectory=" + libraries.wstring(),
         L"-p",
@@ -244,31 +261,25 @@ std::wstring MinecraftLaunchCommandBuilder::build(
 std::wstring MinecraftLaunchCommandBuilder::buildClasspath(
     const std::filesystem::path& gamePath) const
 {
-    // A instância é dedicada ao launcher, portanto todos os JARs presentes em
-    // libraries pertencem ao perfil controlado do modpack.
-    std::vector<std::filesystem::path> jars;
-    const auto libraries = gamePath / L"libraries";
-    for (const auto& entry : std::filesystem::recursive_directory_iterator(libraries))
+    const auto controlledClasspath = gamePath / L"eternal-classpath.txt";
+    std::ifstream manifest(controlledClasspath, std::ios::binary);
+    if (manifest)
     {
-        if (entry.is_regular_file() && entry.path().extension() == L".jar")
+        std::wstring classpath;
+        std::string line;
+        while (std::getline(manifest, line))
         {
-            jars.push_back(entry.path());
+            // O arquivo é gravado em modo texto no Windows; em leitura binária,
+            // o retorno de carro do CRLF precisa ser removido do caminho Java.
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (line.empty()) continue;
+            if (!classpath.empty()) classpath += PathSeparator;
+            classpath += utf8ToWide(line);
         }
+        if (!classpath.empty()) return classpath;
     }
 
-    jars.push_back(
-        gamePath / L"versions" / LauncherConfig::MinecraftVersion /
-        (std::wstring(LauncherConfig::MinecraftVersion) + L".jar"));
-    std::sort(jars.begin(), jars.end());
-
-    std::wstring classpath;
-    for (const auto& jar : jars)
-    {
-        if (!classpath.empty())
-        {
-            classpath += PathSeparator;
-        }
-        classpath += jar.wstring();
-    }
-    return classpath;
+    // A validação impede a inicialização sem esse manifesto. Retornar vazio é
+    // mais seguro que incluir JARs auxiliares deixados pelo instalador Forge.
+    return {};
 }
