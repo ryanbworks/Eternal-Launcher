@@ -72,4 +72,5 @@ private:
     std::jthread gameInstallationThread_;
     std::unique_ptr<IMinecraftLauncherService> minecraftLauncherService_;
     std::wstring fileServerManifest_;
+    std::wstring pendingNickname_;
 };

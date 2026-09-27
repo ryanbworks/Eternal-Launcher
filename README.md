@@ -24,7 +24,8 @@ instância isolada e inicia o jogo com o nickname informado.
 
 ## Primeiro uso
 
-Depois que o manifesto HTTP responder, o launcher executa automaticamente:
+Ao abrir, o launcher consulta somente o servidor e mostra se a instalação local
+está pronta. Os downloads começam depois que você clica em **Jogar**:
 
 ```text
 Preparar Java 17 portátil
@@ -33,7 +34,7 @@ Preparar Java 17 portátil
   → extrair DLLs nativos
   → baixar e executar o instalador oficial do Forge 47.4.10
   → sincronizar os arquivos do manifesto privado
-  → validar a instância e liberar o botão Jogar
+  → iniciar o jogo com o nickname escolhido
 ```
 
 Downloads já válidos são reaproveitados. Arquivos incompletos usam a extensão

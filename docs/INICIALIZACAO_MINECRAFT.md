@@ -13,14 +13,15 @@ Os valores ficam em `src/config/LauncherConfig.h`.
 
 ## Instalação automática
 
-No primeiro uso, o launcher baixa o Temurin 17 portátil e valida seu SHA-256.
-Em seguida, lê os manifestos oficiais da Mojang, baixa o cliente, bibliotecas,
-assets e configuração de log com os hashes publicados pela origem.
+Ao abrir, o launcher consulta o servidor privado e inspeciona a instalação local,
+sem iniciar downloads. Depois do clique em **Jogar**, baixa o Temurin 17 portátil
+se necessário e valida seu SHA-256. Em seguida, lê os manifestos oficiais da
+Mojang e prepara cliente, bibliotecas, assets e configuração de log.
 
 O instalador oficial do Forge é conferido pelo SHA-1 definido na configuração e
 executado com `--installClient` dentro da instância isolada. Depois disso, o
-launcher extrai as DLLs nativas, sincroniza o manifesto privado e grava
-`eternal-classpath.txt`.
+launcher extrai as DLLs nativas, sincroniza o manifesto privado, grava
+`eternal-classpath.txt` e inicia o jogo com o nickname informado.
 
 ```text
 %APPDATA%\.eternal-launcher\

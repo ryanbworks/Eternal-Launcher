@@ -50,7 +50,8 @@ Os componentes apenas desenham dados recebidos. Eles não acessam rede nem disco
 
 ```text
 Abrir launcher
-  → obter manifesto privado
+  → consultar manifesto privado e inspecionar a instalação local
+  → aguardar o clique em Jogar
   → garantir Java 17 portátil
   → obter metadados oficiais do Minecraft 1.20.1
   → baixar/verificar cliente, bibliotecas, assets e logs
