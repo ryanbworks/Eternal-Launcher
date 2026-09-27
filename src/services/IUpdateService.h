@@ -9,9 +9,9 @@ class IUpdateService
 public:
     virtual ~IUpdateService() = default;
 
-    // TODO: comparar hashes locais com o manifesto recebido pelo servidor HTTP.
+    // TODO: detectar arquivos gerenciados que foram removidos do manifesto.
     virtual bool needsUpdate(const std::filesystem::path& installationPath) = 0;
 
-    // TODO: baixar apenas os arquivos ausentes, diferentes ou desatualizados.
+    // TODO: aplicar remoções com backup/rollback antes de limpar os obsoletos.
     virtual void updateFiles(const std::filesystem::path& installationPath) = 0;
 };
