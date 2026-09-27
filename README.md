@@ -69,6 +69,9 @@ src/
 Uma explicação mais detalhada das responsabilidades está em
 [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
 
+A configuração e as instruções do servidor de arquivos estão em
+[docs/SERVIDOR_HTTP.md](docs/SERVIDOR_HTTP.md).
+
 ## Funcionalidades simuladas
 
 Os dados em `src/mocks` simulam:
