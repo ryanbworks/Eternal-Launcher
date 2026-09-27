@@ -4,6 +4,7 @@
 #include "constants/LauncherConstants.h"
 #include "mocks/MockLauncherData.h"
 #include "services/HttpFileService.h"
+#include "services/MinecraftLauncherService.h"
 #include "styles/Theme.h"
 #include "utils/DrawingUtils.h"
 
@@ -31,7 +32,8 @@ MainPage::MainPage(HINSTANCE instance)
       inputBrush_(CreateSolidBrush(RGB(25, 29, 39))),
       viewState_(MockLauncherData::createInitialState()),
       fileServerService_(std::make_unique<HttpFileService>(
-          std::wstring(LauncherConfig::FileServerBaseUrl)))
+          std::wstring(LauncherConfig::FileServerBaseUrl))),
+      minecraftLauncherService_(std::make_unique<MinecraftLauncherService>())
 {
 }
 
@@ -146,9 +148,9 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         return 0;
     }
     case WM_TIMER:
-        if (wParam == LauncherConstants::MockProgressTimerId)
+        if (wParam == LauncherConstants::GameProcessTimerId)
         {
-            advanceMockProgress();
+            pollGameProcess();
         }
         return 0;
     case LauncherConstants::FileServerResultMessage:
@@ -170,7 +172,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         return reinterpret_cast<LRESULT>(inputBrush_);
     }
     case WM_DESTROY:
-        KillTimer(window_, LauncherConstants::MockProgressTimerId);
+        KillTimer(window_, LauncherConstants::GameProcessTimerId);
         fileServerThread_.request_stop();
         PostQuitMessage(0);
         return 0;
@@ -273,43 +275,48 @@ void MainPage::handlePrimaryAction()
         return;
     }
 
-    // MOCK: demonstra visualmente o fluxo futuro sem acessar rede, arquivos ou Minecraft.
-    viewState_.operation = LauncherOperation::CheckingInstallation;
-    viewState_.headline = L"Verificando instalação";
-    viewState_.operationMessage = L"Validando a estrutura local simulada...";
-    viewState_.progressPercent = 8;
-    viewState_.progressVisible = true;
+    viewState_.operation = LauncherOperation::LaunchingMinecraft;
+    viewState_.headline = L"Iniciando Minecraft";
+    viewState_.operationMessage = L"Validando Java, Forge e arquivos da instância...";
     viewState_.playEnabled = false;
-    mockProgressStep_ = 0;
-    SetTimer(window_, LauncherConstants::MockProgressTimerId, 720, nullptr);
+    InvalidateRect(window_, nullptr, FALSE);
+    UpdateWindow(window_);
+
+    const auto launchResult = minecraftLauncherService_->launch(nickname.data());
+    if (launchResult.success)
+    {
+        viewState_.operation = LauncherOperation::MinecraftRunning;
+        viewState_.headline = L"Minecraft em execução";
+        viewState_.operationMessage =
+            L"Forge 47.4.10 iniciado para " + std::wstring(nickname.data()) + L".";
+        viewState_.playEnabled = false;
+        SetTimer(window_, LauncherConstants::GameProcessTimerId, 1000, nullptr);
+    }
+    else
+    {
+        viewState_.operation = LauncherOperation::LaunchError;
+        viewState_.headline = L"Não foi possível iniciar";
+        viewState_.operationMessage = L"A instalação local precisa ser preparada ou corrigida.";
+        viewState_.playEnabled = true;
+
+        MessageBox(window_, launchResult.message.c_str(), L"Eternal Launcher",
+                   MB_OK | MB_ICONWARNING);
+    }
     InvalidateRect(window_, nullptr, FALSE);
 }
 
-void MainPage::advanceMockProgress()
+void MainPage::pollGameProcess()
 {
-    // MOCK: sequência temporal usada somente para validar estados, textos e barra de progresso.
-    static const auto steps = MockLauncherData::createProgressSequence();
-
-    if (mockProgressStep_ >= static_cast<int>(steps.size()))
+    if (minecraftLauncherService_->isGameRunning())
     {
-        KillTimer(window_, LauncherConstants::MockProgressTimerId);
         return;
     }
 
-    const auto& step = steps[static_cast<std::size_t>(mockProgressStep_)];
-    viewState_.operation = step.operation;
-    viewState_.progressPercent = step.progress;
-    viewState_.headline = step.headline;
-    viewState_.operationMessage = step.message;
-    ++mockProgressStep_;
-
-    if (mockProgressStep_ >= static_cast<int>(steps.size()))
-    {
-        KillTimer(window_, LauncherConstants::MockProgressTimerId);
-        viewState_.playEnabled = true;
-        viewState_.progressVisible = false;
-    }
-
+    KillTimer(window_, LauncherConstants::GameProcessTimerId);
+    viewState_.operation = LauncherOperation::ReadyToPlay;
+    viewState_.headline = L"Minecraft encerrado";
+    viewState_.operationMessage = L"Você pode iniciar uma nova sessão quando quiser.";
+    viewState_.playEnabled = true;
     InvalidateRect(window_, nullptr, FALSE);
 }
 

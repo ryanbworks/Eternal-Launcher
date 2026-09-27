@@ -27,7 +27,10 @@ enum class LauncherOperation
     CorruptedFile,
     ServerUnavailable,
     UpdateAvailable,
-    UpdateCompleted
+    UpdateCompleted,
+    LaunchingMinecraft,
+    MinecraftRunning,
+    LaunchError
 };
 
 struct StatusCardData

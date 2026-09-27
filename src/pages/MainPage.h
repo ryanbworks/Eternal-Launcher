@@ -8,6 +8,7 @@
 #include "components/ProgressComponent.h"
 #include "components/StatusPanelComponent.h"
 #include "services/IFileServerService.h"
+#include "services/IMinecraftLauncherService.h"
 #include "types/LauncherState.h"
 
 #include <windows.h>
@@ -31,7 +32,7 @@ private:
     void createNicknameInput();
     void layoutNicknameInput() const;
     void handlePrimaryAction();
-    void advanceMockProgress();
+    void pollGameProcess();
     void showSettingsPlaceholder() const;
     void checkFileServerAsync();
     void applyFileServerResult(const FileServerManifestResponse& response);
@@ -43,7 +44,6 @@ private:
     HBRUSH backgroundBrush_ = nullptr;
     HBRUSH inputBrush_ = nullptr;
     LauncherViewState viewState_;
-    int mockProgressStep_ = 0;
 
     HeaderComponent header_;
     HeroComponent hero_;
@@ -57,4 +57,5 @@ private:
     // independente do WinHTTP e do servidor web usado na infraestrutura.
     std::unique_ptr<IFileServerService> fileServerService_;
     std::jthread fileServerThread_;
+    std::unique_ptr<IMinecraftLauncherService> minecraftLauncherService_;
 };
