@@ -4,12 +4,10 @@
 import argparse
 import hashlib
 import json
-import re
 import time
 from pathlib import Path
 
 
-MOD_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*\.jar", re.IGNORECASE)
 QUIET_SECONDS = 5
 
 
@@ -72,8 +70,13 @@ def refresh(files_root: Path, cache_path: Path) -> int:
     for path in sorted(mods_root.iterdir(), key=lambda item: item.name.lower()):
         if path.is_symlink() or not path.is_file() or path.suffix.lower() != ".jar":
             continue
-        if not MOD_NAME.fullmatch(path.name):
-            raise ValueError(f"Nome de mod não suportado: {path.name}")
+        # Linux aceita caracteres que não podem ser salvos no Windows. Ignorar
+        # somente esses nomes evita bloquear todos os outros mods do grupo.
+        if (any(ord(character) < 32 or character in '<>:"/\\|?*'
+                for character in path.name)
+                or path.name.rstrip(" .") != path.name):
+            print(f"Mod ignorado por nome incompatível com Windows: {path.name}")
+            continue
 
         relative = f"mods/{path.name}"
         stat = path.stat()

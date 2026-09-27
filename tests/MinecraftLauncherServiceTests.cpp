@@ -3,6 +3,7 @@
 #include "services/JavaRuntimeService.h"
 #include "services/JavaRuntimePackage.h"
 #include "utils/JsonValue.h"
+#include "utils/UrlEncoding.h"
 
 #include <chrono>
 #include <iostream>
@@ -111,6 +112,14 @@ int main(int argumentCount, char* arguments[])
     }
 
     // Exercita objetos, arrays e escapes usados pelos manifestos Mojang e privado.
+    if (encodeRelativeUrlPath("mods/[1.20.1] SecurityCraft v1.10.1.jar") !=
+            "mods/%5B1.20.1%5D%20SecurityCraft%20v1.10.1.jar" ||
+        encodeRelativeUrlPath("mods/A+B.jar") != "mods/A%2BB.jar")
+    {
+        std::wcerr << L"Nome de mod não foi codificado para URL corretamente.\n";
+        return 16;
+    }
+
     const auto json = JsonValue::parse(R"json({"files":[{"path":"mods/teste.jar"}],"ok":true})json");
     const auto* files = json ? json->find("files") : nullptr;
     if (!json || files == nullptr || files->arrayValue() == nullptr ||
