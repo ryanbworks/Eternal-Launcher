@@ -37,6 +37,8 @@ add_executable(EternalLauncher WIN32
     src/config/LauncherConfig.h
     src/config/GameServerSettings.cpp
     src/config/GameServerSettings.h
+    src/config/NicknameStore.cpp
+    src/config/NicknameStore.h
     src/constants/LauncherConstants.h
     src/styles/Theme.h
     src/types/LauncherState.h
@@ -128,6 +130,8 @@ if(BUILD_TESTING)
         src/config/LauncherConfig.h
         src/config/GameServerSettings.cpp
         src/config/GameServerSettings.h
+        src/config/NicknameStore.cpp
+        src/config/NicknameStore.h
     )
     target_compile_features(EternalLauncherTests PRIVATE cxx_std_20)
     target_compile_definitions(EternalLauncherTests PRIVATE

@@ -1,5 +1,6 @@
 #include "services/MinecraftLauncherService.h"
 #include "config/GameServerSettings.h"
+#include "config/NicknameStore.h"
 #include "services/JavaRuntimeService.h"
 #include "services/JavaRuntimePackage.h"
 #include "utils/JsonValue.h"
@@ -107,6 +108,16 @@ int main(int argumentCount, char* arguments[])
         std::wcerr << L"Alterações do servidor não foram relidas.\n";
         return 14;
     }
+    // Nicknames inválidos não devem substituir a preferência válida anterior.
+    if (!NicknameStore::save(settingsDirectory, L"Amigo_123") ||
+        NicknameStore::load(settingsDirectory) != L"Amigo_123" ||
+        NicknameStore::save(settingsDirectory, L"nome inválido") ||
+        NicknameStore::load(settingsDirectory) != L"Amigo_123")
+    {
+        std::wcerr << L"Persistência do nickname falhou.\n";
+        return 15;
+    }
+    std::filesystem::remove(NicknameStore::filePath(settingsDirectory));
     std::filesystem::remove(GameServerSettingsStore::filePath(settingsDirectory));
     std::filesystem::remove(settingsDirectory);
 
