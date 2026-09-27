@@ -54,6 +54,7 @@ struct LauncherViewState
     LauncherOperation operation = LauncherOperation::Idle;
     std::wstring headline;
     std::wstring operationMessage;
+    std::wstring primaryActionLabel;
     int progressPercent = 0;
     bool progressVisible = false;
     bool playEnabled = true;

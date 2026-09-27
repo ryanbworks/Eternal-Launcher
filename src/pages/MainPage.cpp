@@ -207,8 +207,12 @@ void MainPage::paint()
     progress_.draw(graphics, ProgressBounds, viewState_.progressPercent,
                    viewState_.progressVisible
                        ? viewState_.operationMessage
-                       : L"Mods e arquivos locais estão sincronizados.",
-                   viewState_.progressVisible);
+                       : viewState_.operation == LauncherOperation::LaunchError
+                           ? L"Java ou arquivos do jogo ainda precisam ser preparados."
+                           : L"Nenhuma operação de arquivo está em andamento.",
+                   viewState_.progressVisible,
+                   viewState_.operation != LauncherOperation::LaunchError &&
+                       viewState_.operation != LauncherOperation::ServerUnavailable);
 
     Gdiplus::Graphics screen(deviceContext);
     screen.DrawImage(&frame, 0, 0);
@@ -270,6 +274,7 @@ void MainPage::handlePrimaryAction()
     {
         viewState_.headline = L"Informe seu nickname";
         viewState_.operationMessage = L"Precisamos saber como identificar você no jogo.";
+        viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
         InvalidateRect(window_, nullptr, FALSE);
         SetFocus(nicknameInput_);
         return;
@@ -278,6 +283,7 @@ void MainPage::handlePrimaryAction()
     viewState_.operation = LauncherOperation::LaunchingMinecraft;
     viewState_.headline = L"Iniciando Minecraft";
     viewState_.operationMessage = L"Validando Java, Forge e arquivos da instância...";
+    viewState_.primaryActionLabel = L"INICIANDO...";
     viewState_.playEnabled = false;
     InvalidateRect(window_, nullptr, FALSE);
     UpdateWindow(window_);
@@ -289,6 +295,7 @@ void MainPage::handlePrimaryAction()
         viewState_.headline = L"Minecraft em execução";
         viewState_.operationMessage =
             L"Forge 47.4.10 iniciado para " + std::wstring(nickname.data()) + L".";
+        viewState_.primaryActionLabel = L"JOGO EM EXECUÇÃO";
         viewState_.playEnabled = false;
         SetTimer(window_, LauncherConstants::GameProcessTimerId, 1000, nullptr);
     }
@@ -297,6 +304,7 @@ void MainPage::handlePrimaryAction()
         viewState_.operation = LauncherOperation::LaunchError;
         viewState_.headline = L"Não foi possível iniciar";
         viewState_.operationMessage = L"A instalação local precisa ser preparada ou corrigida.";
+        viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
         viewState_.playEnabled = true;
 
         MessageBox(window_, launchResult.message.c_str(), L"Eternal Launcher",
@@ -316,6 +324,7 @@ void MainPage::pollGameProcess()
     viewState_.operation = LauncherOperation::ReadyToPlay;
     viewState_.headline = L"Minecraft encerrado";
     viewState_.operationMessage = L"Você pode iniciar uma nova sessão quando quiser.";
+    viewState_.primaryActionLabel = L"JOGAR NOVAMENTE";
     viewState_.playEnabled = true;
     InvalidateRect(window_, nullptr, FALSE);
 }
@@ -361,6 +370,25 @@ void MainPage::applyFileServerResult(const FileServerManifestResponse& response)
         return;
     }
 
+    auto& installationCard = viewState_.statusCards[0];
+    const auto installation = minecraftLauncherService_->validateInstallation();
+    if (installation.success)
+    {
+        installationCard.value = L"Pronta";
+        installationCard.detail = L"Minecraft 1.20.1 + Forge 47.4.10";
+        installationCard.tone = StatusTone::Success;
+    }
+    else
+    {
+        installationCard.value = L"Incompleta";
+        installationCard.detail = installation.message.find(L"Java 17") != std::wstring::npos
+            ? L"Java 17 não encontrado"
+            : installation.message.find(L"nativas") != std::wstring::npos
+                ? L"Bibliotecas nativas ausentes"
+                : L"Arquivos do Minecraft/Forge ausentes";
+        installationCard.tone = StatusTone::Error;
+    }
+
     auto& serverCard = viewState_.statusCards[2];
     if (response.success)
     {
@@ -369,9 +397,18 @@ void MainPage::applyFileServerResult(const FileServerManifestResponse& response)
                             L" • " + std::to_wstring(response.elapsedMilliseconds) + L" ms";
         serverCard.tone = StatusTone::Success;
 
-        viewState_.operation = LauncherOperation::ReadyToPlay;
-        viewState_.headline = L"Pronto para jogar";
-        viewState_.operationMessage = L"Manifesto recebido; instalação e mods ainda são simulados.";
+        viewState_.operation = installation.success
+            ? LauncherOperation::ReadyToPlay
+            : LauncherOperation::LaunchError;
+        viewState_.headline = installation.success
+            ? L"Pronto para jogar"
+            : L"Instalação necessária";
+        viewState_.operationMessage = installation.success
+            ? L"Manifesto e instalação local foram validados."
+            : L"Clique abaixo para consultar o requisito ausente.";
+        viewState_.primaryActionLabel = installation.success
+            ? L"JOGAR AGORA"
+            : L"VERIFICAR INSTALAÇÃO";
         viewState_.playEnabled = true;
     }
     else
@@ -385,6 +422,7 @@ void MainPage::applyFileServerResult(const FileServerManifestResponse& response)
         viewState_.operation = LauncherOperation::ServerUnavailable;
         viewState_.headline = L"Servidor indisponível";
         viewState_.operationMessage = L"O manifesto HTTP não pôde ser carregado.";
+        viewState_.primaryActionLabel = L"SERVIDOR OFFLINE";
         viewState_.playEnabled = false;
     }
 
