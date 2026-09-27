@@ -2,6 +2,7 @@
 
 #include "config/GameServerSettings.h"
 #include "config/LauncherConfig.h"
+#include "config/NicknameStore.h"
 #include "constants/LauncherConstants.h"
 #include "mocks/MockLauncherData.h"
 #include "services/HttpFileService.h"
@@ -29,17 +30,6 @@ namespace
     const Gdiplus::RectF ProfileBounds(772.0F, 104.0F, 376.0F, 174.0F);
     const Gdiplus::RectF PlayBounds(772.0F, 294.0F, 376.0F, 214.0F);
     const Gdiplus::RectF ProgressBounds(772.0F, 524.0F, 376.0F, 166.0F);
-
-    bool isValidNickname(std::wstring_view nickname)
-    {
-        return nickname.size() >= 3 && nickname.size() <= 16 &&
-            std::all_of(nickname.begin(), nickname.end(), [](wchar_t character)
-            {
-                return (character >= L'a' && character <= L'z') ||
-                       (character >= L'A' && character <= L'Z') ||
-                       (character >= L'0' && character <= L'9') || character == L'_';
-            });
-    }
 }
 
 MainPage::MainPage(HINSTANCE instance)
@@ -243,6 +233,19 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         SetBkColor(editContext, RGB(25, 29, 39));
         return reinterpret_cast<LRESULT>(inputBrush_);
     }
+    case WM_CLOSE:
+    {
+        // Salva também quando o usuário fecha sem clicar em Jogar.
+        std::array<wchar_t, 32> nickname{};
+        GetWindowText(nicknameInput_, nickname.data(), static_cast<int>(nickname.size()));
+        if (NicknameStore::isValid(nickname.data()))
+        {
+            (void)NicknameStore::save(
+                minecraftLauncherService_->gameDirectory().parent_path(), nickname.data());
+        }
+        DestroyWindow(window_);
+        return 0;
+    }
     case WM_DESTROY:
         KillTimer(window_, LauncherConstants::GameProcessTimerId);
         fileServerThread_.request_stop();
@@ -303,10 +306,12 @@ void MainPage::enableDarkTitleBar() const
 
 void MainPage::createNicknameInput()
 {
+    const auto savedNickname = NicknameStore::load(
+        minecraftLauncherService_->gameDirectory().parent_path());
     nicknameInput_ = CreateWindowEx(
         0,
         L"EDIT",
-        LauncherConfig::DefaultNickname.data(),
+        savedNickname.c_str(),
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
         0, 0, 0, 0,
         window_,
@@ -345,7 +350,7 @@ void MainPage::handlePrimaryAction()
     std::array<wchar_t, 32> nickname{};
     GetWindowText(nicknameInput_, nickname.data(), static_cast<int>(nickname.size()));
     pendingNickname_ = nickname.data();
-    if (!isValidNickname(pendingNickname_))
+    if (!NicknameStore::isValid(pendingNickname_))
     {
         viewState_.headline = L"Confira seu nickname";
         viewState_.operationMessage =
@@ -354,6 +359,14 @@ void MainPage::handlePrimaryAction()
         InvalidateRect(window_, nullptr, FALSE);
         SetFocus(nicknameInput_);
         return;
+    }
+
+    if (!NicknameStore::save(
+            minecraftLauncherService_->gameDirectory().parent_path(), pendingNickname_))
+    {
+        MessageBox(window_, L"Não foi possível salvar o nickname. O jogo ainda pode iniciar, "
+                   L"mas talvez você precise digitá-lo novamente na próxima abertura.",
+                   L"Nickname", MB_OK | MB_ICONWARNING);
     }
 
     if (fileServerManifest_.empty())

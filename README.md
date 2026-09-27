@@ -43,7 +43,7 @@ Downloads já válidos são reaproveitados. Arquivos incompletos usam a extensã
 ## O que ainda é simulado ou futuro
 
 - Notícias exibidas na tela principal.
-- Persistência do nickname e preferências.
+- Persistência das demais preferências.
 - Remoção automática de mods que saíram do manifesto.
 - Autenticação Microsoft e modo online.
 - Atualização automática do executável do launcher.
@@ -115,6 +115,10 @@ O launcher cria ou atualiza a entrada em
 `%APPDATA%\.eternal-launcher\minecraft\servers.dat`, mantendo as outras.
 Ela aparece no Multiplayer **dessa instalação isolada**, não no Minecraft
 aberto por outro launcher.
+
+O nickname válido é salvo automaticamente ao clicar em **Jogar** ou fechar o
+launcher. Na próxima abertura ele reaparece no campo. O valor fica em
+`%APPDATA%\.eternal-launcher\nickname.txt`; isso não é uma conta ou autenticação.
 
 ## TODOs principais
 

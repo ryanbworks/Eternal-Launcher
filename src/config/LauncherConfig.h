@@ -11,9 +11,6 @@ namespace LauncherConfig
     inline constexpr std::wstring_view VersionProfile = L"1.20.1-forge-47.4.10";
     inline constexpr std::wstring_view AssetIndex = L"5";
     inline constexpr std::wstring_view LauncherVersion = L"0.1.0-Muriçoca";
-    // MOCK: nome inicial apenas para tornar o campo visível durante a validação do design.
-    inline constexpr std::wstring_view DefaultNickname = L"";
-
     // Endereço atual do serviço de arquivos. Ele permanece genérico para que a
     // aplicação não dependa de detalhes do NGINX utilizado no servidor.
     // TODO: carregar a URL base de uma configuração externa por ambiente.
