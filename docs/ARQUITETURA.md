@@ -1,10 +1,10 @@
-# Arquitetura inicial
+# Arquitetura
 
 ## Objetivo
 
-A estrutura separa a interface das integrações que serão implementadas no futuro.
-O servidor poderá usar NGINX, outro servidor web ou um serviço gerenciado sem que
-os componentes visuais precisem conhecer essa decisão de infraestrutura.
+A estrutura separa interface, comunicação HTTP e inicialização do Minecraft. O
+servidor pode usar NGINX, outro servidor web ou um serviço gerenciado sem que os
+componentes visuais conheçam a infraestrutura escolhida.
 
 ## Responsabilidades
 
@@ -16,18 +16,18 @@ de mensagens do Windows. Esse nível não contém regras específicas do Minecra
 ### Página
 
 `MainPage` compõe os componentes, mantém o estado visual e encaminha as ações do
-usuário. Ela inicia a consulta HTTP em segundo plano e recebe o resultado por uma
-mensagem interna do Windows. O fluxo acionado pelo botão principal permanece
-temporário e está marcado como `MOCK` no código.
+usuário. A consulta HTTP acontece em segundo plano. A página usa os contratos de
+serviço para validar a instalação, abrir o jogo e acompanhar o processo, sem
+conhecer os argumentos internos do Java.
 
 ### Componentes
 
 - `HeaderComponent`: marca, versão e acesso futuro às configurações.
 - `HeroComponent`: apresentação do modpack e versões principais.
-- `PlayerProfileComponent`: área de identificação do jogador.
-- `StatusPanelComponent`: resumo de instalação, mods e servidor HTTP.
+- `PlayerProfileComponent`: identificação local do jogador.
+- `StatusPanelComponent`: instalação, mods e servidor HTTP.
 - `PlayPanelComponent`: status atual e ação primária.
-- `ProgressComponent`: atividade e progresso de operações futuras.
+- `ProgressComponent`: atividade e progresso de operações.
 - `NewsPanelComponent`: avisos e notícias do grupo.
 
 Os componentes recebem dados e desenham sua própria área. Eles não acessam rede,
@@ -35,52 +35,63 @@ arquivos ou configurações persistidas.
 
 ### Estado e mocks
 
-`LauncherViewState` centraliza os dados necessários para desenhar a tela. O enum
-`LauncherOperation` já representa estados futuros como erro de conexão, arquivo
-corrompido, atualização disponível e preparação do Minecraft.
+`LauncherViewState` centraliza os dados da tela. `LauncherOperation` representa
+estados como conexão, atualização, inicialização, jogo em execução e erro.
 
-`MockLauncherData` fornece os dados temporários de instalação, mods, notícias e
-progresso. O cartão do servidor começa como “Conectando” e é substituído pelo
-resultado real do `HttpFileService`.
+`MockLauncherData` ainda fornece notícias, status dos mods e valores temporários
+de progresso. Os cartões de servidor e instalação são substituídos por resultados
+reais quando a verificação inicial termina.
 
 ### Serviços
 
-Os contratos de `src/services` separam a interface das integrações:
+- `IFileServerService`: contrato para obter o manifesto HTTP.
+- `HttpFileService`: implementação assíncrona baseada em WinHTTP.
+- `IMinecraftLauncherService`: contrato de validação e inicialização do jogo.
+- `MinecraftLauncherService`: localiza Java 17, valida a instância, cria e
+  acompanha o processo do Minecraft.
+- `MinecraftLaunchCommandBuilder`: monta classpath, módulos, parâmetros de JVM e
+  argumentos do Forge `47.4.10`.
+- `IUpdateService`: fronteira reservada para comparação e atualização de arquivos.
 
-- `IFileServerService`: contrato para obter o manifesto e representar a resposta;
-- `HttpFileService`: implementação real com WinHTTP, timeout e suporte a HTTP/HTTPS;
-- `IUpdateService`: comparação e atualização dos arquivos locais;
-- `IMinecraftLauncherService`: preparação e inicialização do jogo.
+O download e a interpretação do manifesto como lista de arquivos ainda não foram
+implementados. Não existe `NginxService`: NGINX é somente uma possibilidade de
+hospedagem e não faz parte do domínio do launcher.
 
-Os dois últimos continuam sem implementação concreta. O manifesto recebido ainda
-não é interpretado como uma lista de arquivos e não dispara downloads.
+## Fluxo atual
 
-Não existe uma classe chamada `NginxService`: NGINX é apenas uma opção de
-hospedagem e não deve se tornar uma dependência conceitual do launcher.
+```text
+Iniciar launcher
+  → consultar manifesto HTTP
+  → localizar Java 17
+  → validar Minecraft, Forge, assets, bibliotecas e nativas
+  → validar nickname
+  → montar parâmetros JVM/Forge
+  → criar processo javaw.exe
+  → acompanhar o processo até o encerramento
+```
 
-## Fluxo futuro de referência
+## Fluxo futuro
 
 ```text
 Iniciar launcher
   → carregar configurações
   → verificar servidor HTTP
-  → obter manifesto
+  → obter e interpretar manifesto
   → verificar arquivos locais
   → comparar versões e hashes
   → baixar arquivos necessários
-  → verificar Minecraft e Forge
-  → preparar argumentos
+  → validar a instalação preparada
   → iniciar Minecraft
 ```
 
-Esse fluxo não está implementado na versão atual. Ele orienta somente os nomes,
-estados e contratos já preparados no projeto.
+## Decisões importantes
 
-## Decisões desta etapa
-
-- A interface é nativa e não exige runtime web ou framework externo.
-- As formas da identidade visual são vetoriais e escaláveis.
-- O layout é fixo nesta primeira versão para preservar alinhamento e hierarquia.
+- A instância em `%APPDATA%\.eternal-launcher\minecraft` é isolada da
+  `.minecraft` convencional.
+- O nickname gera uma identidade offline determinística; autenticação Microsoft
+  não faz parte desta etapa.
+- O serviço aceita apenas Java 17, versão exigida pelo Minecraft 1.20.1.
+- A memória está centralizada na configuração, atualmente entre 512 MB e 4 GB.
 - Configurações, rede e sistema de arquivos permanecem fora dos componentes.
-- Comentários explicam decisões, mocks e pontos de integração, evitando narrar
-  instruções óbvias do código.
+- Comentários explicam decisões, mocks e integrações futuras sem narrar código
+  óbvio.
