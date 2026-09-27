@@ -35,8 +35,17 @@ add_executable(EternalLauncher WIN32
     src/services/IFileServerService.h
     src/services/HttpFileService.cpp
     src/services/HttpFileService.h
+    src/services/HttpDownloadClient.cpp
+    src/services/HttpDownloadClient.h
     src/services/IUpdateService.h
     src/services/IMinecraftLauncherService.h
+    src/services/IJavaRuntimeService.h
+    src/services/JavaRuntimeService.cpp
+    src/services/JavaRuntimeService.h
+    src/services/JavaRuntimePackage.cpp
+    src/services/JavaRuntimePackage.h
+    src/services/PortableJavaInstaller.cpp
+    src/services/PortableJavaInstaller.h
     src/services/MinecraftLauncherService.cpp
     src/services/MinecraftLauncherService.h
     src/services/MinecraftLaunchCommandBuilder.cpp
@@ -73,13 +82,22 @@ if(BUILD_TESTING)
         src/services/MinecraftLaunchCommandBuilder.cpp
         src/services/MinecraftLaunchCommandBuilder.h
         src/services/IMinecraftLauncherService.h
+        src/services/HttpDownloadClient.cpp
+        src/services/HttpDownloadClient.h
+        src/services/IJavaRuntimeService.h
+        src/services/JavaRuntimeService.cpp
+        src/services/JavaRuntimeService.h
+        src/services/JavaRuntimePackage.cpp
+        src/services/JavaRuntimePackage.h
+        src/services/PortableJavaInstaller.cpp
+        src/services/PortableJavaInstaller.h
         src/config/LauncherConfig.h
     )
     target_compile_features(EternalLauncherTests PRIVATE cxx_std_20)
     target_compile_definitions(EternalLauncherTests PRIVATE
         UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_include_directories(EternalLauncherTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
-    target_link_libraries(EternalLauncherTests PRIVATE bcrypt)
+    target_link_libraries(EternalLauncherTests PRIVATE bcrypt winhttp)
     if(MSVC)
         target_compile_options(EternalLauncherTests PRIVATE /W4 /permissive- /utf-8)
     endif()

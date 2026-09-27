@@ -1,4 +1,6 @@
 #include "services/MinecraftLauncherService.h"
+#include "services/JavaRuntimeService.h"
+#include "services/JavaRuntimePackage.h"
 
 #include <iostream>
 
@@ -35,6 +37,28 @@ int main()
     {
         std::wcerr << L"Diretório isolado inesperado: " << gameDirectoryText << L'\n';
         return 2;
+    }
+
+    JavaRuntimeService runtimeService;
+    const auto runtimeSuffix = std::filesystem::path(L".eternal-launcher") / L"runtime";
+    if (!runtimeService.runtimeDirectory().wstring().ends_with(runtimeSuffix.wstring()))
+    {
+        std::wcerr << L"Diretório isolado do Java inesperado.\n";
+        return 3;
+    }
+
+    // Garante que o parser escolha o ZIP portátil, não o instalador MSI que
+    // aparece antes dele na resposta real do Adoptium.
+    constexpr std::string_view metadata = R"json(
+        {"binary":{"installer":{"link":"https://example.test/java.msi"},
+        "package":{"checksum":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "link":"https://example.test/java.zip","size":12345}}}
+    )json";
+    const auto package = JavaRuntimePackage::parse(metadata);
+    if (!package || package->url != L"https://example.test/java.zip" || package->size != 12345)
+    {
+        std::wcerr << L"Metadados do runtime Java não foram interpretados corretamente.\n";
+        return 4;
     }
 
     return 0;

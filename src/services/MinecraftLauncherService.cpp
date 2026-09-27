@@ -103,7 +103,8 @@ MinecraftLaunchResult MinecraftLauncherService::validateInstallation() const
     {
         return {false,
                 L"Java 17 não encontrado em %APPDATA%\\.eternal-launcher\\runtime.",
-                0};
+                0,
+                MinecraftLaunchIssue::JavaMissing};
     }
 
     const auto gamePath = gameDirectory();
@@ -146,7 +147,8 @@ MinecraftLaunchResult MinecraftLauncherService::validateInstallation() const
             return {false,
                     L"A instalação Minecraft/Forge está incompleta. Arquivo ausente:\n" +
                         requiredPath.wstring(),
-                    0};
+                    0,
+                    MinecraftLaunchIssue::InstallationIncomplete};
         }
     }
 
@@ -167,7 +169,8 @@ MinecraftLaunchResult MinecraftLauncherService::validateInstallation() const
         return {false,
                 L"As bibliotecas nativas do Minecraft não foram preparadas em:\n" +
                     natives.wstring(),
-                0};
+                0,
+                MinecraftLaunchIssue::NativeLibrariesMissing};
     }
 
     return {true, L"Minecraft 1.20.1 e Forge 47.4.10 estão preparados.", 0};
@@ -177,7 +180,8 @@ MinecraftLaunchResult MinecraftLauncherService::launch(std::wstring_view nicknam
 {
     if (isGameRunning())
     {
-        return {false, L"O Minecraft já está em execução.", processId_};
+        return {false, L"O Minecraft já está em execução.", processId_,
+                MinecraftLaunchIssue::GameAlreadyRunning};
     }
 
     if (processHandle_ != nullptr)
@@ -191,7 +195,8 @@ MinecraftLaunchResult MinecraftLauncherService::launch(std::wstring_view nicknam
     {
         return {false,
                 L"O nickname deve ter de 3 a 16 caracteres e usar apenas letras, números ou underline.",
-                0};
+                0,
+                MinecraftLaunchIssue::InvalidNickname};
     }
 
     const auto validation = validateInstallation();
@@ -227,7 +232,8 @@ MinecraftLaunchResult MinecraftLauncherService::launch(std::wstring_view nicknam
     {
         return {false,
                 L"Não foi possível iniciar o Java. " + windowsErrorMessage(GetLastError()),
-                0};
+                0,
+                MinecraftLaunchIssue::ProcessCreationFailed};
     }
 
     CloseHandle(processInformation.hThread);

@@ -20,6 +20,12 @@ namespace LauncherConfig
     inline constexpr std::wstring_view FileServerBaseUrl = L"http://10.0.0.51";
     inline constexpr std::wstring_view FileServerLabel = L"Servidor HTTP";
 
+    // A API oficial do Adoptium informa o ZIP portátil mais recente do Temurin
+    // 17 e seu SHA-256. O runtime é baixado diretamente da origem informada.
+    inline constexpr std::wstring_view JavaRuntimeMetadataUrl =
+        L"https://api.adoptium.net/v3/assets/latest/17/hotspot"
+        L"?architecture=x64&image_type=jre&os=windows&vendor=eclipse";
+
     // A instância isolada evita misturar os mods do Eternal Launcher com outras
     // instalações existentes na pasta .minecraft do usuário.
     inline constexpr std::wstring_view DataDirectoryName = L".eternal-launcher";
