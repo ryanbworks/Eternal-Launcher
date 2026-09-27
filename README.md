@@ -1,8 +1,9 @@
 # Eternal Launcher
 
 Launcher desktop privado para uma instalação padronizada de Minecraft com mods.
-Esta versão (`0.1.0-visual`) representa somente a primeira etapa de interface e
-arquitetura: nenhuma operação de rede, download ou inicialização do jogo é real.
+Esta versão (`0.1.0-visual`) representa a primeira etapa de interface e
+arquitetura. A consulta ao manifesto HTTP já é real; download, verificação de
+arquivos e inicialização do jogo continuam fora do escopo.
 
 ![Interface principal do Eternal Launcher](docs/images/interface-principal.png)
 
@@ -11,10 +12,11 @@ arquitetura: nenhuma operação de rede, download ou inicialização do jogo é 
 - Interface nativa para Windows com tema escuro e identidade visual própria.
 - Campo editável de nickname, preenchido inicialmente com um valor de demonstração.
 - Informações do Minecraft `1.20.1` e Forge `47.4.10`.
-- Cartões simulados de instalação, mods e servidor HTTP.
+- Cartões simulados de instalação e mods.
+- Consulta real e assíncrona ao manifesto do servidor HTTP.
 - Botão principal de jogo com uma sequência visual simulada de preparação.
 - Áreas de notícias, atividade, progresso e versão do launcher.
-- Contratos vazios para os futuros serviços de arquivos, atualização e inicialização.
+- Cliente HTTP baseado no WinHTTP e contratos para atualização e inicialização.
 
 > **Importante:** pressionar **Jogar agora** apenas executa uma animação de estados.
 > Nenhum arquivo local é verificado ou alterado e o Minecraft não é iniciado.
@@ -25,6 +27,7 @@ arquitetura: nenhuma operação de rede, download ou inicialização do jogo é 
 - CMake 3.21 ou superior
 - Win32 API
 - GDI+ para renderização dos componentes
+- WinHTTP para comunicação com o servidor de arquivos
 - Visual Studio com a carga de trabalho de desenvolvimento desktop em C++
 
 A interface usa somente bibliotecas fornecidas pelo Windows. Não há dependências
@@ -72,14 +75,20 @@ Uma explicação mais detalhada das responsabilidades está em
 A configuração e as instruções do servidor de arquivos estão em
 [docs/SERVIDOR_HTTP.md](docs/SERVIDOR_HTTP.md).
 
+## Funcionalidade HTTP real
+
+Ao abrir a tela, o launcher solicita `http://10.0.0.51/manifest.json` em uma
+thread separada. A interface exibe o código HTTP e o tempo total da requisição.
+Uma indisponibilidade altera o cartão do servidor e desabilita a ação principal.
+
+O conteúdo recebido ainda não é usado para baixar ou comparar arquivos.
+
 ## Funcionalidades simuladas
 
 Os dados em `src/mocks` simulam:
 
 - instalação pronta;
 - 37 mods atualizados;
-- servidor HTTP disponível;
-- latência de 28 ms;
 - notícia do servidor;
 - etapas de verificação, atualização, download e preparação do Minecraft.
 

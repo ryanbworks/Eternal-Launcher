@@ -26,6 +26,21 @@ boot e publica arquivos através da porta HTTP 80.
 O `manifest.json` inicial ainda não descreve arquivos reais. Ele existe apenas
 como base para a futura implementação do serviço de atualização.
 
+## Integração atual com o launcher
+
+O launcher realiza um `GET /manifest.json` ao abrir a tela principal. A chamada
+usa WinHTTP em uma thread separada e possui timeouts para não bloquear a janela.
+
+Quando a resposta é válida, a interface exibe:
+
+- disponibilidade do servidor;
+- código HTTP recebido;
+- duração total da requisição.
+
+Quando a requisição falha, o cartão muda para “Indisponível” e o botão principal
+mostra “Servidor offline”. Ainda não há download, comparação de hashes ou leitura
+da lista `files` do manifesto.
+
 ## Publicar mods com FileZilla
 
 O servidor não expõe FTP tradicional na porta 21. Use **SFTP**, que transfere os
