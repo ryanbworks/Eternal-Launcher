@@ -46,6 +46,10 @@ reais quando a verificação inicial termina.
 
 - `IFileServerService`: contrato para obter o manifesto HTTP.
 - `HttpFileService`: implementação assíncrona baseada em WinHTTP.
+- `HttpDownloadClient`: transferência genérica de metadados e arquivos binários.
+- `IJavaRuntimeService`: contrato para disponibilização do Java portátil.
+- `JavaRuntimeService`: baixa o Temurin 17, verifica SHA-256, extrai em uma pasta
+  temporária e substitui o runtime somente após a validação.
 - `IMinecraftLauncherService`: contrato de validação e inicialização do jogo.
 - `MinecraftLauncherService`: localiza Java 17, valida a instância, cria e
   acompanha o processo do Minecraft.
@@ -63,6 +67,7 @@ hospedagem e não faz parte do domínio do launcher.
 Iniciar launcher
   → consultar manifesto HTTP
   → localizar Java 17
+  → baixar e validar Temurin 17 quando estiver ausente
   → validar Minecraft, Forge, assets, bibliotecas e nativas
   → validar nickname
   → montar parâmetros JVM/Forge
@@ -91,6 +96,9 @@ Iniciar launcher
 - O nickname gera uma identidade offline determinística; autenticação Microsoft
   não faz parte desta etapa.
 - O serviço aceita apenas Java 17, versão exigida pelo Minecraft 1.20.1.
+- O Java não é instalado globalmente: o runtime fica restrito ao launcher.
+- Downloads incompletos e pacotes com SHA-256 divergente nunca substituem o
+  runtime existente.
 - A memória está centralizada na configuração, atualmente entre 512 MB e 4 GB.
 - Configurações, rede e sistema de arquivos permanecem fora dos componentes.
 - Comentários explicam decisões, mocks e integrações futuras sem narrar código

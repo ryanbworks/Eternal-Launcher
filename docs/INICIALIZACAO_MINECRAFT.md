@@ -38,14 +38,20 @@ Ela não autentica nem concede propriedade de uma conta oficial.
         └── 1.20.1-forge-47.4.10\1.20.1-forge-47.4.10.json
 ```
 
-O `runtime` empacotado tem prioridade. Como alternativas, o serviço procura um
-Java 17 em `JAVA_HOME` e depois no `PATH`.
+O runtime portátil na pasta do launcher tem prioridade. Quando ele não existe,
+o launcher consulta a API oficial do Eclipse Adoptium, baixa o ZIP mais recente
+do Temurin 17 para Windows x64 e confere o SHA-256 publicado na mesma resposta.
+
+A extração acontece primeiro em `runtime-staging`. O diretório `runtime` só é
+substituído depois que `javaw.exe` e o arquivo `release` confirmam Java 17. Como
+alternativas, o inicializador também reconhece Java 17 em `JAVA_HOME` ou no
+`PATH`, embora o fluxo automático sempre prepare a cópia isolada.
 
 ## Validação anterior à abertura
 
 Antes de chamar `CreateProcessW`, o serviço confirma:
 
-1. Java 17 disponível;
+1. Java 17 portátil disponível, baixando-o automaticamente quando necessário;
 2. perfil JSON do Forge presente;
 3. JAR cliente do Minecraft presente;
 4. índice de assets presente;
@@ -67,12 +73,13 @@ a interface permite iniciar outra sessão.
 
 ## Limites desta etapa
 
-O launcher ainda não prepara a instalação automaticamente.
+O Java já é preparado automaticamente. Minecraft, Forge, assets e bibliotecas
+ainda dependem de uma instância previamente preparada.
 
 ```cpp
 // TODO: obter no manifesto a relação de arquivos necessários para a instância.
 
-// TODO: baixar e verificar Java, Minecraft, Forge, assets e bibliotecas.
+// TODO: baixar e verificar Minecraft, Forge, assets e bibliotecas.
 
 // TODO: substituir a identidade offline por autenticação Microsoft, se desejado.
 ```

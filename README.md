@@ -13,6 +13,8 @@ nickname informado.
 - Campo de nickname com validação de 3 a 16 letras, números ou `_`.
 - Perfil fixo do Minecraft `1.20.1` com Forge `47.4.10`.
 - Consulta real e assíncrona ao manifesto do servidor HTTP.
+- Download automático do Java 17 portátil pela API oficial do Eclipse Adoptium.
+- Verificação SHA-256 do runtime antes da extração e substituição segura.
 - Validação do Java 17, perfil Forge, bibliotecas, assets e arquivos nativos.
 - Montagem dos argumentos do Forge e inicialização pelo `javaw.exe`.
 - Acompanhamento do processo para impedir duas sessões pelo mesmo launcher.
@@ -26,7 +28,7 @@ nickname informado.
 
 - Verificação de versões e hashes dos mods.
 - Download e remoção de arquivos do modpack.
-- Instalação automática do Java, Minecraft e Forge.
+- Instalação automática do Minecraft e Forge.
 - Persistência do nickname e das preferências.
 - Atualização automática do próprio launcher.
 
@@ -40,6 +42,7 @@ está ausente, ele informa o problema e preserva a instância local.
 - Win32 API
 - GDI+ para renderização dos componentes
 - WinHTTP para comunicação com o servidor de arquivos
+- Eclipse Temurin 17 como runtime Java portátil
 - Windows CNG (`bcrypt`) para o UUID local do jogador
 - Visual Studio com a carga de trabalho de desenvolvimento desktop em C++
 
@@ -94,8 +97,8 @@ Documentação complementar:
 ## Configuração central
 
 Versões, memória e endereço HTTP ficam em `src/config/LauncherConfig.h`. A
-instância é esperada em `%APPDATA%\.eternal-launcher\minecraft`, enquanto o
-Java distribuído com o projeto pode ficar em
+instância é esperada em `%APPDATA%\.eternal-launcher\minecraft`. Quando não há
+Java 17 válido, o launcher baixa o Temurin automaticamente para
 `%APPDATA%\.eternal-launcher\runtime\bin\javaw.exe`.
 
 O servidor atual é consultado por meio de `FileServerBaseUrl`. Futuramente essa
@@ -106,6 +109,6 @@ URL será movida para um arquivo de configuração externo.
 - Interpretar o manifesto como uma lista versionada de arquivos.
 - Comparar versões e hashes da instância local.
 - Baixar somente arquivos ausentes ou desatualizados.
-- Preparar automaticamente Java, Minecraft, Forge, assets e bibliotecas.
+- Preparar automaticamente Minecraft, Forge, assets e bibliotecas.
 - Persistir o nickname e permitir configurar memória.
 - Implementar atualização do próprio launcher.
