@@ -9,6 +9,7 @@
 #include "components/StatusPanelComponent.h"
 #include "services/IFileServerService.h"
 #include "services/IJavaRuntimeService.h"
+#include "services/IGameInstallationService.h"
 #include "services/IMinecraftLauncherService.h"
 #include "types/LauncherState.h"
 
@@ -40,6 +41,9 @@ private:
     void startJavaRuntimeInstall();
     void applyJavaRuntimeProgress(const JavaRuntimeProgress& progress);
     void applyJavaRuntimeResult(const JavaRuntimeResult& result);
+    void startGameInstallation();
+    void applyGameInstallationProgress(const GameInstallationProgress& progress);
+    void applyGameInstallationResult(const GameInstallationResult& result);
     void updateInstallationState(const MinecraftLaunchResult& installation);
 
     HINSTANCE instance_;
@@ -64,5 +68,8 @@ private:
     std::jthread fileServerThread_;
     std::unique_ptr<IJavaRuntimeService> javaRuntimeService_;
     std::jthread javaRuntimeThread_;
+    std::unique_ptr<IGameInstallationService> gameInstallationService_;
+    std::jthread gameInstallationThread_;
     std::unique_ptr<IMinecraftLauncherService> minecraftLauncherService_;
+    std::wstring fileServerManifest_;
 };
