@@ -4,6 +4,7 @@
 #include "constants/LauncherConstants.h"
 #include "mocks/MockLauncherData.h"
 #include "services/HttpFileService.h"
+#include "services/GameInstallationService.h"
 #include "services/JavaRuntimeService.h"
 #include "services/MinecraftLauncherService.h"
 #include "styles/Theme.h"
@@ -35,6 +36,7 @@ MainPage::MainPage(HINSTANCE instance)
       fileServerService_(std::make_unique<HttpFileService>(
           std::wstring(LauncherConfig::FileServerBaseUrl))),
       javaRuntimeService_(std::make_unique<JavaRuntimeService>()),
+      gameInstallationService_(std::make_unique<GameInstallationService>()),
       minecraftLauncherService_(std::make_unique<MinecraftLauncherService>())
 {
 }
@@ -186,6 +188,26 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         }
         return 0;
     }
+    case LauncherConstants::GameInstallationProgressMessage:
+    {
+        std::unique_ptr<GameInstallationProgress> progress(
+            reinterpret_cast<GameInstallationProgress*>(lParam));
+        if (progress != nullptr)
+        {
+            applyGameInstallationProgress(*progress);
+        }
+        return 0;
+    }
+    case LauncherConstants::GameInstallationResultMessage:
+    {
+        std::unique_ptr<GameInstallationResult> result(
+            reinterpret_cast<GameInstallationResult*>(lParam));
+        if (result != nullptr)
+        {
+            applyGameInstallationResult(*result);
+        }
+        return 0;
+    }
     case WM_CTLCOLOREDIT:
     {
         const HDC editContext = reinterpret_cast<HDC>(wParam);
@@ -197,6 +219,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         KillTimer(window_, LauncherConstants::GameProcessTimerId);
         fileServerThread_.request_stop();
         javaRuntimeThread_.request_stop();
+        gameInstallationThread_.request_stop();
         PostQuitMessage(0);
         return 0;
     default:
@@ -329,6 +352,12 @@ void MainPage::handlePrimaryAction()
             startJavaRuntimeInstall();
             return;
         }
+        if (launchResult.issue == MinecraftLaunchIssue::InstallationIncomplete ||
+            launchResult.issue == MinecraftLaunchIssue::NativeLibrariesMissing)
+        {
+            startGameInstallation();
+            return;
+        }
 
         viewState_.operation = LauncherOperation::LaunchError;
         viewState_.headline = L"Não foi possível iniciar";
@@ -405,28 +434,21 @@ void MainPage::applyFileServerResult(const FileServerManifestResponse& response)
     auto& serverCard = viewState_.statusCards[2];
     if (response.success)
     {
+        fileServerManifest_ = response.content;
         serverCard.value = L"Disponível";
         serverCard.detail = L"HTTP " + std::to_wstring(response.httpStatus) +
                             L" • " + std::to_wstring(response.elapsedMilliseconds) + L" ms";
         serverCard.tone = StatusTone::Success;
 
-        viewState_.operation = installation.success
-            ? LauncherOperation::ReadyToPlay
-            : LauncherOperation::LaunchError;
-        viewState_.headline = installation.success
-            ? L"Pronto para jogar"
-            : L"Instalação necessária";
-        viewState_.operationMessage = installation.success
-            ? L"Manifesto e instalação local foram validados."
-            : L"Clique abaixo para consultar o requisito ausente.";
-        viewState_.primaryActionLabel = installation.success
-            ? L"JOGAR AGORA"
-            : L"VERIFICAR INSTALAÇÃO";
-        viewState_.playEnabled = true;
-
         if (installation.issue == MinecraftLaunchIssue::JavaMissing)
         {
             startJavaRuntimeInstall();
+        }
+        else
+        {
+            // A verificação também roda em instalações prontas para aplicar
+            // mudanças de mods/configurações publicadas no manifesto privado.
+            startGameInstallation();
         }
     }
     else
@@ -531,20 +553,116 @@ void MainPage::applyJavaRuntimeResult(const JavaRuntimeResult& result)
         return;
     }
 
+    updateInstallationState(minecraftLauncherService_->validateInstallation());
+    startGameInstallation();
+}
+
+void MainPage::startGameInstallation()
+{
+    if (fileServerManifest_.empty())
+    {
+        viewState_.operation = LauncherOperation::LaunchError;
+        viewState_.headline = L"Manifesto indisponível";
+        viewState_.operationMessage =
+            L"Conecte ao servidor HTTP antes de preparar o jogo.";
+        viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
+        viewState_.playEnabled = true;
+        InvalidateRect(window_, nullptr, FALSE);
+        return;
+    }
+    if (gameInstallationThread_.joinable())
+    {
+        gameInstallationThread_.join();
+    }
+
+    viewState_.operation = LauncherOperation::DownloadingFiles;
+    viewState_.headline = L"Verificando instalação";
+    viewState_.operationMessage = L"Conferindo Minecraft, Forge e arquivos privados...";
+    viewState_.primaryActionLabel = L"VERIFICANDO...";
+    viewState_.progressPercent = 1;
+    viewState_.progressVisible = true;
+    viewState_.playEnabled = false;
+    auto& installationCard = viewState_.statusCards[0];
+    installationCard.value = L"Verificando...";
+    installationCard.detail = L"Minecraft, Forge, assets e mods";
+    installationCard.tone = StatusTone::Information;
+    InvalidateRect(window_, nullptr, FALSE);
+
+    const auto manifest = fileServerManifest_;
+    gameInstallationThread_ = std::jthread([this, manifest](std::stop_token stopToken)
+    {
+        const auto result = gameInstallationService_->ensureInstalled(
+            manifest, stopToken,
+            [this, stopToken](int percent, std::wstring_view message)
+            {
+                if (stopToken.stop_requested()) return;
+                auto* progress = new GameInstallationProgress{percent, std::wstring(message)};
+                if (!PostMessage(
+                        window_, LauncherConstants::GameInstallationProgressMessage, 0,
+                        reinterpret_cast<LPARAM>(progress)))
+                {
+                    delete progress;
+                }
+            });
+        if (stopToken.stop_requested()) return;
+        auto* transferredResult = new GameInstallationResult(result);
+        if (!PostMessage(
+                window_, LauncherConstants::GameInstallationResultMessage, 0,
+                reinterpret_cast<LPARAM>(transferredResult)))
+        {
+            delete transferredResult;
+        }
+    });
+}
+
+void MainPage::applyGameInstallationProgress(const GameInstallationProgress& progress)
+{
+    viewState_.progressPercent = progress.percent;
+    viewState_.operationMessage = progress.message;
+    InvalidateRect(window_, nullptr, FALSE);
+}
+
+void MainPage::applyGameInstallationResult(const GameInstallationResult& result)
+{
+    if (gameInstallationThread_.joinable())
+    {
+        gameInstallationThread_.join();
+    }
+    viewState_.progressVisible = false;
+    viewState_.progressPercent = result.success ? 100 : 0;
+    if (!result.success)
+    {
+        viewState_.operation = LauncherOperation::LaunchError;
+        viewState_.headline = L"Falha na instalação";
+        viewState_.operationMessage = result.message;
+        viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
+        viewState_.playEnabled = true;
+        updateInstallationState(minecraftLauncherService_->validateInstallation());
+        MessageBox(window_, result.message.c_str(), L"Eternal Launcher",
+                   MB_OK | MB_ICONWARNING);
+        InvalidateRect(window_, nullptr, FALSE);
+        return;
+    }
+
     const auto installation = minecraftLauncherService_->validateInstallation();
     updateInstallationState(installation);
+    auto& modsCard = viewState_.statusCards[1];
+    modsCard.value = L"Sincronizados";
+    modsCard.detail = std::to_wstring(result.synchronizedFiles) +
+                      L" arquivos do manifesto privado";
+    modsCard.tone = StatusTone::Success;
     viewState_.operation = installation.success
         ? LauncherOperation::ReadyToPlay
         : LauncherOperation::LaunchError;
     viewState_.headline = installation.success
         ? L"Pronto para jogar"
-        : L"Java 17 preparado";
+        : L"Instalação incompleta";
     viewState_.operationMessage = installation.success
-        ? L"Java, Minecraft e Forge estão prontos."
-        : L"O Java foi instalado; ainda faltam arquivos do Minecraft/Forge.";
+        ? L"Minecraft, Forge e arquivos privados estão preparados."
+        : installation.message;
     viewState_.primaryActionLabel = installation.success
         ? L"JOGAR AGORA"
-        : L"VERIFICAR INSTALAÇÃO";
+        : L"TENTAR NOVAMENTE";
     viewState_.playEnabled = true;
     InvalidateRect(window_, nullptr, FALSE);
 }

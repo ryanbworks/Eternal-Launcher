@@ -9,11 +9,11 @@ LauncherViewState MockLauncherData::createInitialState()
     state.primaryActionLabel = L"AGUARDE...";
     state.playEnabled = false;
 
-    // MOCK: apenas o estado dos mods permanece simulado. Instalação e servidor
-    // são substituídos por verificações reais assim que a tela é aberta.
+    // Estes valores são placeholders somente até as verificações assíncronas
+    // substituírem os três cartões por resultados reais.
     state.statusCards = {
         {L"INSTALAÇÃO", L"Verificando...", L"Java, Minecraft e Forge", StatusTone::Information},
-        {L"MODS", L"Não verificados", L"Verificação ainda não implementada", StatusTone::Warning},
+        {L"ARQUIVOS", L"Aguardando", L"Manifesto privado ainda não lido", StatusTone::Warning},
         {L"SERVIDOR HTTP", L"Conectando...", L"Buscando manifesto real", StatusTone::Information},
     };
 

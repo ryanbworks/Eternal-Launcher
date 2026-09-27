@@ -16,4 +16,6 @@ namespace LauncherConstants
     inline constexpr UINT FileServerResultMessage = WM_APP + 1;
     inline constexpr UINT JavaRuntimeProgressMessage = WM_APP + 2;
     inline constexpr UINT JavaRuntimeResultMessage = WM_APP + 3;
+    inline constexpr UINT GameInstallationProgressMessage = WM_APP + 4;
+    inline constexpr UINT GameInstallationResultMessage = WM_APP + 5;
 }
