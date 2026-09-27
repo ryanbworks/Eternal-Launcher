@@ -11,6 +11,7 @@ instância isolada e inicia o jogo com o nickname informado.
 - Interface nativa para Windows com tema escuro e componentes separados.
 - Campo de nickname com validação de 3 a 16 letras, números ou `_`.
 - Consulta assíncrona ao manifesto do servidor HTTP configurado.
+- Descoberta automática dos mods enviados à pasta `mods/` do servidor.
 - Download automático do Java 17 portátil pela API oficial do Eclipse Adoptium.
 - Instalação automática do cliente Minecraft, bibliotecas, assets e Forge.
 - Verificação de SHA-1/SHA-256 e publicação atômica dos downloads.
@@ -109,6 +110,10 @@ configurações e outros arquivos privados.
 O launcher não configura o servidor Minecraft automaticamente. Adicione o IP
 manualmente na tela Multiplayer do jogo. Essa lista pertence à instalação
 isolada em `%APPDATA%\.eternal-launcher\minecraft`.
+
+Para distribuir mods, basta enviar os `.jar` via SFTP para
+`/srv/eternal-launcher/files/mods/`. O serviço no servidor atualiza o manifesto
+automaticamente; ao clicar em **Jogar**, o launcher busca a lista mais recente.
 
 O nickname válido é salvo automaticamente ao clicar em **Jogar** ou fechar o
 launcher. Na próxima abertura ele reaparece no campo. O valor fica em
