@@ -2,6 +2,7 @@
 
 #include "config/LauncherConfig.h"
 #include "services/MinecraftManifestService.h"
+#include "services/MinecraftServerListService.h"
 #include "services/VerifiedDownloader.h"
 #include "utils/ArchiveExtractor.h"
 #include "utils/JsonValue.h"
@@ -365,6 +366,16 @@ GameInstallationResult GameInstallationService::ensureInstalled(
             classpath << wideToUtf8(entry.wstring()) << '\n';
         }
         if (!classpath) return {false, L"Não foi possível salvar o classpath do jogo.", 0};
+
+        report(99, L"Adicionando o Eternal SMP à lista Multiplayer...");
+        MinecraftServerListService serverList;
+        std::wstring serverError;
+        if (!serverList.ensureServerPresent(
+                gamePath, LauncherConfig::GameServerName,
+                LauncherConfig::GameServerAddress, stopToken, serverError))
+        {
+            return {false, serverError, 0};
+        }
 
         report(100, L"Minecraft 1.20.1 com Forge 47.4.10 está pronto.");
         return {true, L"Instalação concluída e verificada.", files.size()};

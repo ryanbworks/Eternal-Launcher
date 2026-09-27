@@ -23,6 +23,13 @@ executado com `--installClient` dentro da instância isolada. Depois disso, o
 launcher extrai as DLLs nativas, sincroniza o manifesto privado, grava
 `eternal-classpath.txt` e inicia o jogo com o nickname informado.
 
+Antes de iniciar, também inclui o servidor Multiplayer configurado em
+`LauncherConfig.h` na lista `servers.dat`. O exemplo é `Eternal SMP` em
+`mc.seugrupo.com:25565`. Trocar o nome ou endereço na configuração atualiza a
+entrada gerenciada; servidores que você adicionou manualmente são preservados.
+O arquivo `src/scripts/GzipFile.ps1` acompanha a aplicação para manter o formato
+compactado do Minecraft.
+
 ```text
 %APPDATA%\.eternal-launcher\
 ├── downloads\
