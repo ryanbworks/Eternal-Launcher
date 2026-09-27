@@ -3,6 +3,7 @@
 #include "config/LauncherConfig.h"
 #include "constants/LauncherConstants.h"
 #include "mocks/MockLauncherData.h"
+#include "services/HttpFileService.h"
 #include "styles/Theme.h"
 #include "utils/DrawingUtils.h"
 
@@ -28,7 +29,9 @@ MainPage::MainPage(HINSTANCE instance)
     : instance_(instance),
       backgroundBrush_(CreateSolidBrush(RGB(11, 13, 18))),
       inputBrush_(CreateSolidBrush(RGB(25, 29, 39))),
-      viewState_(MockLauncherData::createInitialState())
+      viewState_(MockLauncherData::createInitialState()),
+      fileServerService_(std::make_unique<HttpFileService>(
+          std::wstring(LauncherConfig::FileServerBaseUrl)))
 {
 }
 
@@ -93,6 +96,7 @@ bool MainPage::create(int showCommand)
     createNicknameInput();
     ShowWindow(window_, showCommand);
     UpdateWindow(window_);
+    checkFileServerAsync();
     return true;
 }
 
@@ -147,6 +151,17 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             advanceMockProgress();
         }
         return 0;
+    case LauncherConstants::FileServerResultMessage:
+    {
+        // A posse do resultado passa para a thread da interface neste ponto.
+        std::unique_ptr<FileServerManifestResponse> response(
+            reinterpret_cast<FileServerManifestResponse*>(lParam));
+        if (response != nullptr)
+        {
+            applyFileServerResult(*response);
+        }
+        return 0;
+    }
     case WM_CTLCOLOREDIT:
     {
         const HDC editContext = reinterpret_cast<HDC>(wParam);
@@ -156,6 +171,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
     }
     case WM_DESTROY:
         KillTimer(window_, LauncherConstants::MockProgressTimerId);
+        fileServerThread_.request_stop();
         PostQuitMessage(0);
         return 0;
     default:
@@ -305,4 +321,65 @@ void MainPage::showSettingsPlaceholder() const
         L"Nenhuma preferência foi alterada.",
         L"Configurações — em breve",
         MB_OK | MB_ICONINFORMATION);
+}
+
+void MainPage::checkFileServerAsync()
+{
+    // A chamada HTTP nunca é executada na thread da janela, preservando a
+    // resposta do campo de nickname, do desenho e dos demais controles.
+    fileServerThread_ = std::jthread([this](std::stop_token stopToken)
+    {
+        auto response = fileServerService_->fetchManifest();
+        if (stopToken.stop_requested())
+        {
+            return;
+        }
+
+        auto* transferredResponse = new FileServerManifestResponse(std::move(response));
+        if (!PostMessage(
+                window_, LauncherConstants::FileServerResultMessage, 0,
+                reinterpret_cast<LPARAM>(transferredResponse)))
+        {
+            // Se a janela tiver sido encerrada durante a requisição, ninguém
+            // receberá a mensagem; por isso o resultado deve ser liberado aqui.
+            delete transferredResponse;
+        }
+    });
+}
+
+void MainPage::applyFileServerResult(const FileServerManifestResponse& response)
+{
+    if (viewState_.statusCards.size() < 3)
+    {
+        return;
+    }
+
+    auto& serverCard = viewState_.statusCards[2];
+    if (response.success)
+    {
+        serverCard.value = L"Disponível";
+        serverCard.detail = L"HTTP " + std::to_wstring(response.httpStatus) +
+                            L" • " + std::to_wstring(response.elapsedMilliseconds) + L" ms";
+        serverCard.tone = StatusTone::Success;
+
+        viewState_.operation = LauncherOperation::ReadyToPlay;
+        viewState_.headline = L"Pronto para jogar";
+        viewState_.operationMessage = L"Manifesto recebido; instalação e mods ainda são simulados.";
+        viewState_.playEnabled = true;
+    }
+    else
+    {
+        serverCard.value = L"Indisponível";
+        serverCard.detail = response.errorMessage.empty()
+            ? L"Não foi possível obter o manifesto"
+            : response.errorMessage;
+        serverCard.tone = StatusTone::Error;
+
+        viewState_.operation = LauncherOperation::ServerUnavailable;
+        viewState_.headline = L"Servidor indisponível";
+        viewState_.operationMessage = L"O manifesto HTTP não pôde ser carregado.";
+        viewState_.playEnabled = false;
+    }
+
+    InvalidateRect(window_, nullptr, FALSE);
 }

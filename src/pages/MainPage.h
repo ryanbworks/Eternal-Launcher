@@ -7,9 +7,13 @@
 #include "components/PlayerProfileComponent.h"
 #include "components/ProgressComponent.h"
 #include "components/StatusPanelComponent.h"
+#include "services/IFileServerService.h"
 #include "types/LauncherState.h"
 
 #include <windows.h>
+
+#include <memory>
+#include <thread>
 
 class MainPage
 {
@@ -29,6 +33,8 @@ private:
     void handlePrimaryAction();
     void advanceMockProgress();
     void showSettingsPlaceholder() const;
+    void checkFileServerAsync();
+    void applyFileServerResult(const FileServerManifestResponse& response);
 
     HINSTANCE instance_;
     HWND window_ = nullptr;
@@ -46,4 +52,9 @@ private:
     PlayerProfileComponent playerProfile_;
     PlayPanelComponent playPanel_;
     ProgressComponent progress_;
+
+    // O serviço é acessado pela interface genérica para manter a página
+    // independente do WinHTTP e do servidor web usado na infraestrutura.
+    std::unique_ptr<IFileServerService> fileServerService_;
+    std::jthread fileServerThread_;
 };

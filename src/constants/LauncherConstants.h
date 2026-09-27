@@ -13,4 +13,5 @@ namespace LauncherConstants
 
     inline constexpr int NicknameInputId = 1001;
     inline constexpr UINT_PTR MockProgressTimerId = 2001;
+    inline constexpr UINT FileServerResultMessage = WM_APP + 1;
 }
