@@ -106,6 +106,11 @@ o IP atual, altere `FileServerBaseUrl` e recompile. O launcher obtém Minecraft
 dos serviços oficiais e usa esse servidor apenas para o manifesto, mods,
 configurações e outros arquivos privados.
 
+O servidor de jogo fica nas opções `GameServerName` e `GameServerAddress` do
+mesmo arquivo. O exemplo inicial é `Eternal SMP` em
+`mc.seugrupo.com:25565`; substitua pelo endereço real e recompile. O launcher
+cria ou atualiza essa entrada em `servers.dat`, mantendo as outras entradas.
+
 ## TODOs principais
 
 - Mover a URL HTTP e a memória para configurações persistidas.

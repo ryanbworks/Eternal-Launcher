@@ -49,6 +49,9 @@ add_executable(EternalLauncher WIN32
     src/services/IGameInstallationService.h
     src/services/GameInstallationService.cpp
     src/services/GameInstallationService.h
+    src/services/MinecraftServerListService.cpp
+    src/services/MinecraftServerListService.h
+    src/scripts/GzipFile.ps1
     src/services/MinecraftManifestService.cpp
     src/services/MinecraftManifestService.h
     src/services/VerifiedDownloader.cpp
@@ -63,6 +66,16 @@ add_executable(EternalLauncher WIN32
     src/services/MinecraftLauncherService.h
     src/services/MinecraftLaunchCommandBuilder.cpp
     src/services/MinecraftLaunchCommandBuilder.h
+)
+
+set_source_files_properties(src/scripts/GzipFile.ps1 PROPERTIES HEADER_FILE_ONLY TRUE)
+
+add_custom_command(TARGET EternalLauncher POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:EternalLauncher>/scripts"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/scripts/GzipFile.ps1"
+        "$<TARGET_FILE_DIR:EternalLauncher>/scripts/GzipFile.ps1"
+    COMMENT "Copiando utilitário de compactação da lista Multiplayer"
 )
 
 target_compile_features(EternalLauncher PRIVATE cxx_std_20)
