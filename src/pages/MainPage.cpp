@@ -1,5 +1,6 @@
 #include "pages/MainPage.h"
 
+#include "config/LauncherConfig.h"
 #include "constants/LauncherConstants.h"
 #include "mocks/MockLauncherData.h"
 #include "styles/Theme.h"
@@ -209,7 +210,7 @@ void MainPage::createNicknameInput()
     nicknameInput_ = CreateWindowEx(
         0,
         L"EDIT",
-        L"",
+        LauncherConfig::DefaultNickname.data(),
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
         0, 0, 0, 0,
         window_,
@@ -270,22 +271,14 @@ void MainPage::handlePrimaryAction()
 
 void MainPage::advanceMockProgress()
 {
-    struct MockStep
-    {
-        LauncherOperation operation;
-        int progress;
-        const wchar_t* headline;
-        const wchar_t* message;
-    };
-
     // MOCK: sequência temporal usada somente para validar estados, textos e barra de progresso.
-    static constexpr std::array<MockStep, 5> steps = {{
-        {LauncherOperation::CheckingMods, 28, L"Verificando mods", L"Comparando a lista de mods simulada..."},
-        {LauncherOperation::CheckingUpdates, 51, L"Consultando atualizações", L"Conectando ao servidor HTTP simulado..."},
-        {LauncherOperation::DownloadingFiles, 73, L"Baixando arquivos", L"Simulando o recebimento de arquivos atualizados..."},
-        {LauncherOperation::PreparingMinecraft, 91, L"Preparando Minecraft", L"Organizando os argumentos de inicialização simulados..."},
-        {LauncherOperation::UpdateCompleted, 100, L"Pronto para jogar", L"Simulação concluída. Nenhum arquivo real foi alterado."}
-    }};
+    static const auto steps = MockLauncherData::createProgressSequence();
+
+    if (mockProgressStep_ >= static_cast<int>(steps.size()))
+    {
+        KillTimer(window_, LauncherConstants::MockProgressTimerId);
+        return;
+    }
 
     const auto& step = steps[static_cast<std::size_t>(mockProgressStep_)];
     viewState_.operation = step.operation;
