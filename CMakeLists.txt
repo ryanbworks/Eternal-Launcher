@@ -35,8 +35,6 @@ add_executable(EternalLauncher WIN32
     src/mocks/MockLauncherData.cpp
     src/mocks/MockLauncherData.h
     src/config/LauncherConfig.h
-    src/config/GameServerSettings.cpp
-    src/config/GameServerSettings.h
     src/config/NicknameStore.cpp
     src/config/NicknameStore.h
     src/constants/LauncherConstants.h
@@ -53,9 +51,6 @@ add_executable(EternalLauncher WIN32
     src/services/IGameInstallationService.h
     src/services/GameInstallationService.cpp
     src/services/GameInstallationService.h
-    src/services/MinecraftServerListService.cpp
-    src/services/MinecraftServerListService.h
-    src/scripts/GzipFile.ps1
     src/services/MinecraftManifestService.cpp
     src/services/MinecraftManifestService.h
     src/services/VerifiedDownloader.cpp
@@ -72,16 +67,6 @@ add_executable(EternalLauncher WIN32
     src/services/MinecraftLaunchCommandBuilder.h
 )
 
-set_source_files_properties(src/scripts/GzipFile.ps1 PROPERTIES HEADER_FILE_ONLY TRUE)
-
-add_custom_command(TARGET EternalLauncher POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:EternalLauncher>/scripts"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/scripts/GzipFile.ps1"
-        "$<TARGET_FILE_DIR:EternalLauncher>/scripts/GzipFile.ps1"
-    COMMENT "Copiando utilitário de compactação da lista Multiplayer"
-)
-
 target_compile_features(EternalLauncher PRIVATE cxx_std_20)
 target_compile_definitions(EternalLauncher PRIVATE
     UNICODE
@@ -94,7 +79,7 @@ target_include_directories(EternalLauncher PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/
 
 # GDI+ desenha a interface, enquanto DWM e UxTheme integram a janela ao tema
 # escuro do Windows. Nenhuma dessas bibliotecas adiciona dependência externa.
-target_link_libraries(EternalLauncher PRIVATE gdiplus dwmapi uxtheme comctl32 winhttp bcrypt shell32)
+target_link_libraries(EternalLauncher PRIVATE gdiplus dwmapi uxtheme comctl32 winhttp bcrypt)
 
 if(MSVC)
     # O gerador do Visual Studio injeta /W3 por padrão. Removê-lo antes de /W4
@@ -128,8 +113,6 @@ if(BUILD_TESTING)
         src/utils/JsonValue.cpp
         src/utils/JsonValue.h
         src/config/LauncherConfig.h
-        src/config/GameServerSettings.cpp
-        src/config/GameServerSettings.h
         src/config/NicknameStore.cpp
         src/config/NicknameStore.h
     )

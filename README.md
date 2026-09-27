@@ -106,15 +106,9 @@ o IP atual, altere `FileServerBaseUrl` e recompile. O launcher obtém Minecraft
 dos serviços oficiais e usa esse servidor apenas para o manifesto, mods,
 configurações e outros arquivos privados.
 
-O servidor de jogo é diferente do servidor HTTP. Clique na engrenagem para
-abrir `%APPDATA%\.eternal-launcher\servidor-jogo.ini` e edite `nome` e
-`endereco`. Exemplo: `endereco=192.168.1.50:25565`. O endereço inicial
-`mc.seugrupo.com:25565` é apenas ilustrativo e **não conecta** ao seu servidor.
-Salve o arquivo antes de clicar em **Jogar**; não é necessário recompilar.
-O launcher cria ou atualiza a entrada em
-`%APPDATA%\.eternal-launcher\minecraft\servers.dat`, mantendo as outras.
-Ela aparece no Multiplayer **dessa instalação isolada**, não no Minecraft
-aberto por outro launcher.
+O launcher não configura o servidor Minecraft automaticamente. Adicione o IP
+manualmente na tela Multiplayer do jogo. Essa lista pertence à instalação
+isolada em `%APPDATA%\.eternal-launcher\minecraft`.
 
 O nickname válido é salvo automaticamente ao clicar em **Jogar** ou fechar o
 launcher. Na próxima abertura ele reaparece no campo. O valor fica em

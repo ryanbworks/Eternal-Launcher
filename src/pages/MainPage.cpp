@@ -1,6 +1,5 @@
 #include "pages/MainPage.h"
 
-#include "config/GameServerSettings.h"
 #include "config/LauncherConfig.h"
 #include "config/NicknameStore.h"
 #include "constants/LauncherConstants.h"
@@ -14,7 +13,6 @@
 
 #include <dwmapi.h>
 #include <gdiplus.h>
-#include <shellapi.h>
 #include <uxtheme.h>
 #include <windowsx.h>
 
@@ -165,7 +163,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         else if (DrawingUtils::contains(header_.settingsBounds(
                      static_cast<float>(LauncherConstants::WindowWidth)), x, y))
         {
-            openGameServerSettings();
+            showSettingsPlaceholder();
         }
         return 0;
     }
@@ -404,25 +402,12 @@ void MainPage::pollGameProcess()
     InvalidateRect(window_, nullptr, FALSE);
 }
 
-void MainPage::openGameServerSettings() const
+void MainPage::showSettingsPlaceholder() const
 {
-    // A engrenagem abre o arquivo local: mudanças serão lidas no próximo Jogar.
-    const auto directory = minecraftLauncherService_->gameDirectory().parent_path();
-    const auto path = GameServerSettingsStore::filePath(directory).wstring();
-    GameServerSettings settings;
-    std::wstring error;
-    if (!GameServerSettingsStore::loadOrCreate(directory, settings, error) &&
-        !std::filesystem::exists(path))
-    {
-        MessageBox(window_, error.c_str(), L"Configuração do servidor", MB_OK | MB_ICONWARNING);
-        return;
-    }
-    if (reinterpret_cast<INT_PTR>(ShellExecuteW(
-            window_, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL)) <= 32)
-    {
-        MessageBox(window_, L"Não foi possível abrir servidor-jogo.ini.",
-                   L"Configuração do servidor", MB_OK | MB_ICONWARNING);
-    }
+    MessageBox(window_,
+               L"As configurações serão adicionadas em uma etapa futura.\n\n"
+               L"O IP do servidor Minecraft pode ser adicionado manualmente no Multiplayer.",
+               L"Configurações — em breve", MB_OK | MB_ICONINFORMATION);
 }
 
 void MainPage::checkFileServerAsync()

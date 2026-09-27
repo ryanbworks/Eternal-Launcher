@@ -1,9 +1,7 @@
 #include "services/GameInstallationService.h"
-#include "config/GameServerSettings.h"
 
 #include "config/LauncherConfig.h"
 #include "services/MinecraftManifestService.h"
-#include "services/MinecraftServerListService.h"
 #include "services/VerifiedDownloader.h"
 #include "utils/ArchiveExtractor.h"
 #include "utils/JsonValue.h"
@@ -273,14 +271,6 @@ GameInstallationResult GameInstallationService::ensureInstalled(
         const auto dataPath = dataDirectory();
         std::filesystem::create_directories(gamePath);
 
-        // A lista Multiplayer usa uma configuração local editável, não a URL HTTP.
-        GameServerSettings gameServer;
-        std::wstring serverError;
-        if (!GameServerSettingsStore::loadOrCreate(dataPath, gameServer, serverError))
-        {
-            return {false, serverError, 0};
-        }
-
         report(2, L"Consultando os manifestos oficiais do Minecraft...");
         MinecraftManifestService manifests;
         auto planResult = manifests.createPlan(gamePath);
@@ -375,15 +365,6 @@ GameInstallationResult GameInstallationService::ensureInstalled(
             classpath << wideToUtf8(entry.wstring()) << '\n';
         }
         if (!classpath) return {false, L"Não foi possível salvar o classpath do jogo.", 0};
-
-        report(99, L"Atualizando a lista Multiplayer...");
-        MinecraftServerListService serverList;
-        if (!serverList.ensureServerPresent(
-                gamePath, gameServer.name,
-                gameServer.address, stopToken, serverError))
-        {
-            return {false, serverError, 0};
-        }
 
         report(100, L"Minecraft 1.20.1 com Forge 47.4.10 está pronto.");
         return {true, L"Instalação concluída e verificada.", files.size()};

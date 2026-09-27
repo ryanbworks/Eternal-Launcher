@@ -35,7 +35,7 @@ private:
     void layoutNicknameInput() const;
     void handlePrimaryAction();
     void pollGameProcess();
-    void openGameServerSettings() const;
+    void showSettingsPlaceholder() const;
     void checkFileServerAsync();
     void applyFileServerResult(const FileServerManifestResponse& response);
     void startJavaRuntimeInstall();
