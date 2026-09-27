@@ -2,8 +2,8 @@
 
 #include <filesystem>
 
-// Define as responsabilidades futuras de comparação e atualização de arquivos.
-// Nenhuma implementação concreta é criada durante a etapa exclusivamente visual.
+// Fronteira reservada para uma política futura de atualização incremental.
+// A instalação atual já valida downloads, mas não remove arquivos obsoletos.
 class IUpdateService
 {
 public:

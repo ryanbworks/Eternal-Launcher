@@ -1,8 +1,11 @@
 #include "services/MinecraftLauncherService.h"
 #include "services/JavaRuntimeService.h"
 #include "services/JavaRuntimePackage.h"
+#include "utils/JsonValue.h"
 
+#include <chrono>
 #include <iostream>
+#include <thread>
 
 namespace
 {
@@ -19,8 +22,32 @@ namespace
     }
 }
 
-int main()
+int main(int argumentCount, char* arguments[])
 {
+    // Este modo opcional permite validar manualmente a instância instalada sem
+    // tornar o ambiente do usuário uma dependência dos testes automatizados.
+    if (argumentCount >= 2 && std::string_view(arguments[1]) == "--validate-installed")
+    {
+        MinecraftLauncherService service;
+        const auto result = service.validateInstallation();
+        std::wcout << result.message << L'\n';
+        return result.success ? 0 : 10;
+    }
+
+    // Diagnóstico manual usado para confirmar que o processo Forge permanece
+    // ativo. O nickname é deliberadamente ASCII, como exige o Minecraft.
+    if (argumentCount >= 3 && std::string_view(arguments[1]) == "--launch-installed")
+    {
+        const std::string nicknameText(arguments[2]);
+        const std::wstring nickname(nicknameText.begin(), nicknameText.end());
+        MinecraftLauncherService service;
+        const auto result = service.launch(nickname);
+        std::wcout << result.message << L" PID=" << result.processId << L'\n';
+        if (!result.success) return 11;
+        std::this_thread::sleep_for(std::chrono::seconds(15));
+        return service.isGameRunning() ? 0 : 12;
+    }
+
     // Estes casos exercitam a validação antes de qualquer acesso ao Java ou ao jogo.
     if (!expectInvalidNickname(L"ab") ||
         !expectInvalidNickname(L"nickname_com_mais_de_16") ||
@@ -59,6 +86,16 @@ int main()
     {
         std::wcerr << L"Metadados do runtime Java não foram interpretados corretamente.\n";
         return 4;
+    }
+
+    // Exercita objetos, arrays e escapes usados pelos manifestos Mojang e privado.
+    const auto json = JsonValue::parse(R"json({"files":[{"path":"mods/teste.jar"}],"ok":true})json");
+    const auto* files = json ? json->find("files") : nullptr;
+    if (!json || files == nullptr || files->arrayValue() == nullptr ||
+        files->arrayValue()->size() != 1)
+    {
+        std::wcerr << L"JSON de manifesto válido não foi interpretado corretamente.\n";
+        return 5;
     }
 
     return 0;

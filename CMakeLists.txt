@@ -26,6 +26,12 @@ add_executable(EternalLauncher WIN32
     src/components/ProgressComponent.h
     src/utils/DrawingUtils.cpp
     src/utils/DrawingUtils.h
+    src/utils/ArchiveExtractor.cpp
+    src/utils/ArchiveExtractor.h
+    src/utils/FileHash.cpp
+    src/utils/FileHash.h
+    src/utils/JsonValue.cpp
+    src/utils/JsonValue.h
     src/mocks/MockLauncherData.cpp
     src/mocks/MockLauncherData.h
     src/config/LauncherConfig.h
@@ -40,6 +46,13 @@ add_executable(EternalLauncher WIN32
     src/services/IUpdateService.h
     src/services/IMinecraftLauncherService.h
     src/services/IJavaRuntimeService.h
+    src/services/IGameInstallationService.h
+    src/services/GameInstallationService.cpp
+    src/services/GameInstallationService.h
+    src/services/MinecraftManifestService.cpp
+    src/services/MinecraftManifestService.h
+    src/services/VerifiedDownloader.cpp
+    src/services/VerifiedDownloader.h
     src/services/JavaRuntimeService.cpp
     src/services/JavaRuntimeService.h
     src/services/JavaRuntimePackage.cpp
@@ -91,6 +104,12 @@ if(BUILD_TESTING)
         src/services/JavaRuntimePackage.h
         src/services/PortableJavaInstaller.cpp
         src/services/PortableJavaInstaller.h
+        src/utils/ArchiveExtractor.cpp
+        src/utils/ArchiveExtractor.h
+        src/utils/FileHash.cpp
+        src/utils/FileHash.h
+        src/utils/JsonValue.cpp
+        src/utils/JsonValue.h
         src/config/LauncherConfig.h
     )
     target_compile_features(EternalLauncherTests PRIVATE cxx_std_20)
