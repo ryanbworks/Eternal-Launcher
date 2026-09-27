@@ -5,6 +5,7 @@
 #include "services/VerifiedDownloader.h"
 #include "utils/ArchiveExtractor.h"
 #include "utils/JsonValue.h"
+#include "utils/UrlEncoding.h"
 
 #include <windows.h>
 
@@ -171,7 +172,7 @@ namespace
             {
                 std::wstring base(LauncherConfig::FileServerBaseUrl);
                 if (!base.ends_with(L'/')) base += L'/';
-                base += utf8ToWide(relativeText);
+                base += utf8ToWide(encodeRelativeUrlPath(relativeText));
                 files.push_back({base, gameDirectory / relative, hash,
                                  static_cast<std::uint64_t>(child(&entry, "size")
                                      ? child(&entry, "size")->numberValue() : 0),

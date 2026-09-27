@@ -32,6 +32,7 @@ add_executable(EternalLauncher WIN32
     src/utils/FileHash.h
     src/utils/JsonValue.cpp
     src/utils/JsonValue.h
+    src/utils/UrlEncoding.h
     src/mocks/MockLauncherData.cpp
     src/mocks/MockLauncherData.h
     src/config/LauncherConfig.h
@@ -112,6 +113,7 @@ if(BUILD_TESTING)
         src/utils/FileHash.h
         src/utils/JsonValue.cpp
         src/utils/JsonValue.h
+        src/utils/UrlEncoding.h
         src/config/LauncherConfig.h
         src/config/NicknameStore.cpp
         src/config/NicknameStore.h

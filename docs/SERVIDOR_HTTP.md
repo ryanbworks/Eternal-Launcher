@@ -19,8 +19,8 @@ hashes manualmente. O launcher consulta a lista novamente quando você clica em
 **Jogar**, baixa mods novos e substitui arquivos cujo hash mudou.
 
 Aguarde alguns segundos depois do fim do upload para o manifesto ser publicado.
-Use nomes simples para os `.jar` (letras, números, `-`, `_`, `.` ou `+`, sem
-espaços). Arquivos ainda sendo enviados não entram na lista. Mods removidos do
+Nomes com espaços ou colchetes também são aceitos. Arquivos ainda sendo enviados
+não entram na lista. Mods removidos do
 servidor deixam de aparecer no manifesto, mas a remoção automática de cópias
 locais ainda não foi implementada.
 

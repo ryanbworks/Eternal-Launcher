@@ -49,6 +49,14 @@ class RefreshManifestTests(unittest.TestCase):
             entries = json.loads(manifest.read_text(encoding="utf-8"))["files"]
             self.assertEqual(len(entries), 1)
 
+            # Nomes reais de mods podem conter espaços e colchetes.
+            named_mod = mods / "[1.20.1] SecurityCraft v1.10.1.jar"
+            named_mod.write_bytes(b"mod")
+            os.utime(named_mod, (old, old))
+            self.assertEqual(refresh(root, cache), 1)
+            entries = json.loads(manifest.read_text(encoding="utf-8"))["files"]
+            self.assertEqual(entries[1]["path"], f"mods/{named_mod.name}")
+
 
 if __name__ == "__main__":
     unittest.main()
