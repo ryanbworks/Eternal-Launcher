@@ -3,16 +3,17 @@
 LauncherViewState MockLauncherData::createInitialState()
 {
     LauncherViewState state;
-    state.operation = LauncherOperation::ReadyToPlay;
-    state.headline = L"Pronto para jogar";
-    state.operationMessage = L"Sua instalação está preparada para entrar no servidor.";
+    state.operation = LauncherOperation::CheckingUpdates;
+    state.headline = L"Conectando ao servidor";
+    state.operationMessage = L"Buscando o manifesto no servidor HTTP de arquivos...";
+    state.playEnabled = false;
 
-    // MOCK: estes estados serão substituídos pelas verificações reais da instalação,
-    // dos mods e do servidor HTTP de arquivos.
+    // MOCK: instalação e mods continuam simulados. O terceiro cartão é substituído
+    // pelo resultado real do HttpFileService assim que a tela é aberta.
     state.statusCards = {
         {L"INSTALAÇÃO", L"Pronta", L"Minecraft 1.20.1", StatusTone::Success},
         {L"MODS", L"Atualizados", L"37 arquivos verificados", StatusTone::Success},
-        {L"SERVIDOR HTTP", L"Disponível", L"Resposta em 28 ms", StatusTone::Success},
+        {L"SERVIDOR HTTP", L"Conectando...", L"Buscando manifesto real", StatusTone::Information},
     };
 
     // MOCK: conteúdo editorial temporário para validar o cartão de notícias.

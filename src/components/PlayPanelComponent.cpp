@@ -34,21 +34,28 @@ void PlayPanelComponent::draw(Gdiplus::Graphics& graphics, const Gdiplus::RectF&
         button, startColor, endColor, Gdiplus::LinearGradientModeHorizontal);
     graphics.FillPath(&buttonBrush, buttonPath.get());
 
-    const std::wstring_view buttonLabel = state.playEnabled ? L"JOGAR AGORA" : L"PREPARANDO...";
+    const std::wstring_view buttonLabel = state.playEnabled
+        ? L"JOGAR AGORA"
+        : state.operation == LauncherOperation::ServerUnavailable
+            ? L"SERVIDOR OFFLINE"
+            : L"AGUARDE...";
     DrawingUtils::drawText(graphics, buttonLabel, button, 15.0F, Gdiplus::FontStyleBold,
                            Theme::TextPrimary, Gdiplus::StringAlignmentCenter,
                            Gdiplus::StringAlignmentCenter);
 
-    // Triângulo simples reforça a ação primária sem depender de uma biblioteca de ícones.
-    const float iconX = button.X + 90.0F;
-    const float iconY = button.Y + button.Height / 2.0F;
-    const Gdiplus::PointF playIcon[] = {
-        {iconX - 5.0F, iconY - 7.0F},
-        {iconX + 7.0F, iconY},
-        {iconX - 5.0F, iconY + 7.0F}
-    };
-    Gdiplus::SolidBrush iconBrush(Theme::TextPrimary);
-    graphics.FillPolygon(&iconBrush, playIcon, 3);
+    if (state.playEnabled)
+    {
+        // Triângulo simples reforça a ação primária sem depender de uma biblioteca de ícones.
+        const float iconX = button.X + 90.0F;
+        const float iconY = button.Y + button.Height / 2.0F;
+        const Gdiplus::PointF playIcon[] = {
+            {iconX - 5.0F, iconY - 7.0F},
+            {iconX + 7.0F, iconY},
+            {iconX - 5.0F, iconY + 7.0F}
+        };
+        Gdiplus::SolidBrush iconBrush(Theme::TextPrimary);
+        graphics.FillPolygon(&iconBrush, playIcon, 3);
+    }
 }
 
 Gdiplus::RectF PlayPanelComponent::buttonBounds(const Gdiplus::RectF& bounds) const
