@@ -37,6 +37,8 @@ add_executable(EternalLauncher WIN32
     src/services/HttpFileService.h
     src/services/IUpdateService.h
     src/services/IMinecraftLauncherService.h
+    src/services/MinecraftLauncherService.cpp
+    src/services/MinecraftLauncherService.h
 )
 
 target_compile_features(EternalLauncher PRIVATE cxx_std_20)
@@ -51,7 +53,7 @@ target_include_directories(EternalLauncher PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/
 
 # GDI+ desenha a interface, enquanto DWM e UxTheme integram a janela ao tema
 # escuro do Windows. Nenhuma dessas bibliotecas adiciona dependência externa.
-target_link_libraries(EternalLauncher PRIVATE gdiplus dwmapi uxtheme comctl32 winhttp)
+target_link_libraries(EternalLauncher PRIVATE gdiplus dwmapi uxtheme comctl32 winhttp bcrypt)
 
 if(MSVC)
     # O gerador do Visual Studio injeta /W3 por padrão. Removê-lo antes de /W4
@@ -60,4 +62,22 @@ if(MSVC)
     target_compile_options(EternalLauncher PRIVATE /W4 /permissive- /utf-8)
 endif()
 
-# TODO: adicionar testes automatizados quando a camada de regras de negócio existir.
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(EternalLauncherTests
+        tests/MinecraftLauncherServiceTests.cpp
+        src/services/MinecraftLauncherService.cpp
+        src/services/MinecraftLauncherService.h
+        src/services/IMinecraftLauncherService.h
+        src/config/LauncherConfig.h
+    )
+    target_compile_features(EternalLauncherTests PRIVATE cxx_std_20)
+    target_compile_definitions(EternalLauncherTests PRIVATE
+        UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_include_directories(EternalLauncherTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_link_libraries(EternalLauncherTests PRIVATE bcrypt)
+    if(MSVC)
+        target_compile_options(EternalLauncherTests PRIVATE /W4 /permissive- /utf-8)
+    endif()
+    add_test(NAME MinecraftLauncherServiceTests COMMAND EternalLauncherTests)
+endif()
