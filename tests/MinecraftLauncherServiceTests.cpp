@@ -44,8 +44,13 @@ int main(int argumentCount, char* arguments[])
         const auto result = service.launch(nickname);
         std::wcout << result.message << L" PID=" << result.processId << L'\n';
         if (!result.success) return 11;
-        std::this_thread::sleep_for(std::chrono::seconds(15));
-        return service.isGameRunning() ? 0 : 12;
+        std::this_thread::sleep_for(std::chrono::seconds(30));
+        if (!service.isGameRunning())
+        {
+            std::wcout << L"Processo encerrado com código " << service.processExitCode() << L".\n";
+            return 12;
+        }
+        return 0;
     }
 
     // Estes casos exercitam a validação antes de qualquer acesso ao Java ou ao jogo.
