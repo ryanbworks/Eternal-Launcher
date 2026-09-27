@@ -4,11 +4,23 @@
 #include <string>
 #include <string_view>
 
+enum class MinecraftLaunchIssue
+{
+    None,
+    GameAlreadyRunning,
+    InvalidNickname,
+    JavaMissing,
+    InstallationIncomplete,
+    NativeLibrariesMissing,
+    ProcessCreationFailed
+};
+
 struct MinecraftLaunchResult
 {
     bool success = false;
     std::wstring message;
     unsigned long processId = 0;
+    MinecraftLaunchIssue issue = MinecraftLaunchIssue::None;
 };
 
 // Fronteira para inicialização do jogo. A interface trabalha apenas com este
