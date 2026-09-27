@@ -1,0 +1,24 @@
+# Artefatos gerados pelo CMake e pelo Visual Studio.
+/out/
+/.vs/
+/build/
+
+# Binários, bibliotecas e símbolos de depuração.
+*.exe
+*.dll
+*.lib
+*.obj
+*.pdb
+*.ilk
+
+# Arquivos locais de IDE e sistema operacional.
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+.DS_Store
+Thumbs.db
+
+# Configurações locais que poderão conter caminhos específicos do usuário.
+config.local.json
+launcher-settings.json
