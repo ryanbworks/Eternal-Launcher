@@ -1,9 +1,11 @@
 #include "services/MinecraftLauncherService.h"
+#include "config/GameServerSettings.h"
 #include "services/JavaRuntimeService.h"
 #include "services/JavaRuntimePackage.h"
 #include "utils/JsonValue.h"
 
 #include <chrono>
+#include <fstream>
 #include <iostream>
 #include <thread>
 
@@ -78,6 +80,35 @@ int main(int argumentCount, char* arguments[])
         std::wcerr << L"Diretório isolado do Java inesperado.\n";
         return 3;
     }
+
+    // A configuração externa deve ser relida após edição, sem recompilar.
+    const auto settingsDirectory = std::filesystem::temp_directory_path() /
+        (L"eternal-server-test-" + std::to_wstring(
+            std::chrono::steady_clock::now().time_since_epoch().count()));
+    GameServerSettings serverSettings;
+    std::wstring settingsError;
+    if (!GameServerSettingsStore::loadOrCreate(
+            settingsDirectory, serverSettings, settingsError) ||
+        serverSettings.address != L"mc.seugrupo.com:25565")
+    {
+        std::wcerr << L"Configuração inicial do servidor não foi criada.\n";
+        return 13;
+    }
+    {
+        std::ofstream edited(GameServerSettingsStore::filePath(settingsDirectory),
+                             std::ios::binary | std::ios::trunc);
+        edited << "nome=Servidor dos amigos\nendereco=192.0.2.10:25565\n";
+    }
+    if (!GameServerSettingsStore::loadOrCreate(
+            settingsDirectory, serverSettings, settingsError) ||
+        serverSettings.name != L"Servidor dos amigos" ||
+        serverSettings.address != L"192.0.2.10:25565")
+    {
+        std::wcerr << L"Alterações do servidor não foram relidas.\n";
+        return 14;
+    }
+    std::filesystem::remove(GameServerSettingsStore::filePath(settingsDirectory));
+    std::filesystem::remove(settingsDirectory);
 
     // Garante que o parser escolha o ZIP portátil, não o instalador MSI que
     // aparece antes dele na resposta real do Adoptium.
