@@ -276,6 +276,14 @@ bool MinecraftLauncherService::isGameRunning() const
     return GetExitCodeProcess(processHandle_, &exitCode) && exitCode == STILL_ACTIVE;
 }
 
+unsigned long MinecraftLauncherService::processExitCode() const
+{
+    DWORD exitCode = ERROR_INVALID_HANDLE;
+    return processHandle_ != nullptr && GetExitCodeProcess(processHandle_, &exitCode)
+        ? exitCode
+        : ERROR_INVALID_HANDLE;
+}
+
 std::filesystem::path MinecraftLauncherService::gameDirectory() const
 {
     return resolveDataDirectory() / LauncherConfig::GameDirectoryName;

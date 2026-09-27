@@ -69,8 +69,8 @@ O executável de testes possui modos manuais que não fazem parte do fluxo norma
 ./out/build/x64-debug/EternalLauncherTests.exe --launch-installed Steve
 ```
 
-O segundo comando apenas confirma que o processo permanece ativo; feche o jogo
-depois do diagnóstico.
+O segundo comando aguarda 30 segundos para confirmar que o processo permanece
+ativo; feche o jogo depois do diagnóstico.
 
 ## TODOs
 
