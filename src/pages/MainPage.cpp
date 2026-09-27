@@ -15,6 +15,7 @@
 #include <uxtheme.h>
 #include <windowsx.h>
 
+#include <algorithm>
 #include <array>
 #include <string>
 
@@ -26,6 +27,17 @@ namespace
     const Gdiplus::RectF ProfileBounds(772.0F, 104.0F, 376.0F, 174.0F);
     const Gdiplus::RectF PlayBounds(772.0F, 294.0F, 376.0F, 214.0F);
     const Gdiplus::RectF ProgressBounds(772.0F, 524.0F, 376.0F, 166.0F);
+
+    bool isValidNickname(std::wstring_view nickname)
+    {
+        return nickname.size() >= 3 && nickname.size() <= 16 &&
+            std::all_of(nickname.begin(), nickname.end(), [](wchar_t character)
+            {
+                return (character >= L'a' && character <= L'z') ||
+                       (character >= L'A' && character <= L'Z') ||
+                       (character >= L'0' && character <= L'9') || character == L'_';
+            });
+    }
 }
 
 MainPage::MainPage(HINSTANCE instance)
@@ -316,59 +328,35 @@ void MainPage::handlePrimaryAction()
 
     std::array<wchar_t, 32> nickname{};
     GetWindowText(nicknameInput_, nickname.data(), static_cast<int>(nickname.size()));
-    if (std::wstring_view(nickname.data()).empty())
+    pendingNickname_ = nickname.data();
+    if (!isValidNickname(pendingNickname_))
     {
-        viewState_.headline = L"Informe seu nickname";
-        viewState_.operationMessage = L"Precisamos saber como identificar você no jogo.";
+        viewState_.headline = L"Confira seu nickname";
+        viewState_.operationMessage =
+            L"Use de 3 a 16 letras, números ou underline antes de instalar.";
         viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
         InvalidateRect(window_, nullptr, FALSE);
         SetFocus(nicknameInput_);
         return;
     }
 
-    viewState_.operation = LauncherOperation::LaunchingMinecraft;
-    viewState_.headline = L"Iniciando Minecraft";
-    viewState_.operationMessage = L"Validando Java, Forge e arquivos da instância...";
-    viewState_.primaryActionLabel = L"INICIANDO...";
-    viewState_.playEnabled = false;
-    InvalidateRect(window_, nullptr, FALSE);
-    UpdateWindow(window_);
-
-    const auto launchResult = minecraftLauncherService_->launch(nickname.data());
-    if (launchResult.success)
+    if (fileServerManifest_.empty())
     {
-        viewState_.operation = LauncherOperation::MinecraftRunning;
-        viewState_.headline = L"Minecraft em execução";
-        viewState_.operationMessage =
-            L"Forge 47.4.10 iniciado para " + std::wstring(nickname.data()) + L".";
-        viewState_.primaryActionLabel = L"JOGO EM EXECUÇÃO";
-        viewState_.playEnabled = false;
-        SetTimer(window_, LauncherConstants::GameProcessTimerId, 1000, nullptr);
+        viewState_.headline = L"Aguardando servidor";
+        viewState_.operationMessage = L"Conecte ao servidor HTTP antes de preparar o jogo.";
+        InvalidateRect(window_, nullptr, FALSE);
+        return;
     }
-    else
+
+    // A preparação só começa com a ação explícita de Jogar. O nickname permanece
+    // guardado para iniciar a sessão assim que a instalação terminar.
+    if (minecraftLauncherService_->validateInstallation().issue ==
+        MinecraftLaunchIssue::JavaMissing)
     {
-        if (launchResult.issue == MinecraftLaunchIssue::JavaMissing)
-        {
-            startJavaRuntimeInstall();
-            return;
-        }
-        if (launchResult.issue == MinecraftLaunchIssue::InstallationIncomplete ||
-            launchResult.issue == MinecraftLaunchIssue::NativeLibrariesMissing)
-        {
-            startGameInstallation();
-            return;
-        }
-
-        viewState_.operation = LauncherOperation::LaunchError;
-        viewState_.headline = L"Não foi possível iniciar";
-        viewState_.operationMessage = L"A instalação local precisa ser preparada ou corrigida.";
-        viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
-        viewState_.playEnabled = true;
-
-        MessageBox(window_, launchResult.message.c_str(), L"Eternal Launcher",
-                   MB_OK | MB_ICONWARNING);
+        startJavaRuntimeInstall();
+        return;
     }
-    InvalidateRect(window_, nullptr, FALSE);
+    startGameInstallation();
 }
 
 void MainPage::pollGameProcess()
@@ -440,16 +428,21 @@ void MainPage::applyFileServerResult(const FileServerManifestResponse& response)
                             L" • " + std::to_wstring(response.elapsedMilliseconds) + L" ms";
         serverCard.tone = StatusTone::Success;
 
-        if (installation.issue == MinecraftLaunchIssue::JavaMissing)
-        {
-            startJavaRuntimeInstall();
-        }
-        else
-        {
-            // A verificação também roda em instalações prontas para aplicar
-            // mudanças de mods/configurações publicadas no manifesto privado.
-            startGameInstallation();
-        }
+        // Abrir a tela apenas consulta o estado local e o servidor. Downloads e
+        // sincronização ficam reservados ao clique explícito em Jogar.
+        viewState_.operation = installation.success
+            ? LauncherOperation::ReadyToPlay
+            : LauncherOperation::LaunchError;
+        viewState_.headline = installation.success
+            ? L"Pronto para jogar"
+            : L"Pronto para instalar";
+        viewState_.operationMessage = installation.success
+            ? L"Clique em Jogar para conferir os arquivos do grupo e iniciar."
+            : L"Clique em Jogar para preparar Java, Minecraft e Forge.";
+        viewState_.primaryActionLabel = installation.success
+            ? L"JOGAR AGORA"
+            : L"INSTALAR E JOGAR";
+        viewState_.playEnabled = true;
     }
     else
     {
@@ -578,7 +571,7 @@ void MainPage::startGameInstallation()
     viewState_.operation = LauncherOperation::DownloadingFiles;
     viewState_.headline = L"Verificando instalação";
     viewState_.operationMessage = L"Conferindo Minecraft, Forge e arquivos privados...";
-    viewState_.primaryActionLabel = L"VERIFICANDO...";
+    viewState_.primaryActionLabel = L"PREPARANDO...";
     viewState_.progressPercent = 1;
     viewState_.progressVisible = true;
     viewState_.playEnabled = false;
@@ -651,19 +644,40 @@ void MainPage::applyGameInstallationResult(const GameInstallationResult& result)
     modsCard.detail = std::to_wstring(result.synchronizedFiles) +
                       L" arquivos do manifesto privado";
     modsCard.tone = StatusTone::Success;
-    viewState_.operation = installation.success
-        ? LauncherOperation::ReadyToPlay
-        : LauncherOperation::LaunchError;
-    viewState_.headline = installation.success
-        ? L"Pronto para jogar"
-        : L"Instalação incompleta";
-    viewState_.operationMessage = installation.success
-        ? L"Minecraft, Forge e arquivos privados estão preparados."
-        : installation.message;
-    viewState_.primaryActionLabel = installation.success
-        ? L"JOGAR AGORA"
-        : L"TENTAR NOVAMENTE";
-    viewState_.playEnabled = true;
+
+    // O clique em Jogar representa o fluxo inteiro: preparar arquivos e, ao
+    // concluir, iniciar o jogo usando o nickname capturado antes dos downloads.
+    viewState_.operation = LauncherOperation::LaunchingMinecraft;
+    viewState_.headline = L"Iniciando Minecraft";
+    viewState_.operationMessage = L"Preparação concluída; iniciando Forge 47.4.10...";
+    viewState_.primaryActionLabel = L"INICIANDO...";
+    viewState_.playEnabled = false;
+    InvalidateRect(window_, nullptr, FALSE);
+    UpdateWindow(window_);
+
+    const auto launchResult = installation.success
+        ? minecraftLauncherService_->launch(pendingNickname_)
+        : MinecraftLaunchResult{false, installation.message, 0,
+                                MinecraftLaunchIssue::InstallationIncomplete};
+    if (!launchResult.success)
+    {
+        viewState_.operation = LauncherOperation::LaunchError;
+        viewState_.headline = L"Não foi possível iniciar";
+        viewState_.operationMessage = launchResult.message;
+        viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
+        viewState_.playEnabled = true;
+        MessageBox(window_, launchResult.message.c_str(), L"Eternal Launcher",
+                   MB_OK | MB_ICONWARNING);
+        InvalidateRect(window_, nullptr, FALSE);
+        return;
+    }
+
+    viewState_.operation = LauncherOperation::MinecraftRunning;
+    viewState_.headline = L"Minecraft em execução";
+    viewState_.operationMessage = L"Forge 47.4.10 iniciado para " + pendingNickname_ + L".";
+    viewState_.primaryActionLabel = L"JOGO EM EXECUÇÃO";
+    viewState_.playEnabled = false;
+    SetTimer(window_, LauncherConstants::GameProcessTimerId, 1000, nullptr);
     InvalidateRect(window_, nullptr, FALSE);
 }
 
