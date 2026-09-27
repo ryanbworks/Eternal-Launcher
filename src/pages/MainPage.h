@@ -73,4 +73,5 @@ private:
     std::unique_ptr<IMinecraftLauncherService> minecraftLauncherService_;
     std::wstring fileServerManifest_;
     std::wstring pendingNickname_;
+    bool refreshBeforePlay_ = false;
 };

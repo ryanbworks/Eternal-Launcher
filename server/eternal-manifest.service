@@ -1,0 +1,6 @@
+[Unit]
+Description=Atualiza o manifesto de mods do Eternal Launcher
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/eternal-launcher/refresh_manifest.py

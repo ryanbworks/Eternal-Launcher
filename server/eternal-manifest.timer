@@ -1,0 +1,11 @@
+[Unit]
+Description=Verifica novos mods para o Eternal Launcher
+
+[Timer]
+OnBootSec=10s
+OnUnitActiveSec=10s
+AccuracySec=1s
+Unit=eternal-manifest.service
+
+[Install]
+WantedBy=timers.target

@@ -10,51 +10,30 @@
 O launcher depende somente de HTTP, não do NGINX. O endereço compilado fica em
 `src/config/LauncherConfig.h`, na constante `FileServerBaseUrl`.
 
-## Manifesto privado
+## Mods: apenas envie o arquivo
 
-O campo `files` descreve mods, configurações e outros arquivos próprios do
-grupo. `path` é relativo à pasta da instância, `sha256` é obrigatório e `size`
-é recomendado. Quando `url` não é informado, o endereço é `base + path`.
+Envie cada `.jar` para `/srv/eternal-launcher/files/mods/` por SFTP. O serviço
+`eternal-manifest.timer` verifica essa pasta a cada 10 segundos e gera sozinho
+o `manifest.json`, incluindo tamanho e SHA-256. Não edite o JSON nem calcule
+hashes manualmente. O launcher consulta a lista novamente quando você clica em
+**Jogar**, baixa mods novos e substitui arquivos cujo hash mudou.
 
-```json
-{
-  "schemaVersion": 1,
-  "launcherVersion": "0.1.0-visual",
-  "minecraftVersion": "1.20.1",
-  "forgeVersion": "47.4.10",
-  "files": [
-    {
-      "path": "mods/exemplo-1.20.1.jar",
-      "sha256": "HASH_SHA256_COM_64_CARACTERES_HEXADECIMAIS",
-      "size": 1234567
-    },
-    {
-      "path": "config/exemplo.toml",
-      "url": "http://10.0.0.51/config/exemplo.toml",
-      "sha256": "OUTRO_HASH_SHA256_COM_64_CARACTERES_HEXADECIMAIS",
-      "size": 321
-    }
-  ]
-}
-```
+Aguarde alguns segundos depois do fim do upload para o manifesto ser publicado.
+Use nomes simples para os `.jar` (letras, números, `-`, `_`, `.` ou `+`, sem
+espaços). Arquivos ainda sendo enviados não entram na lista. Mods removidos do
+servidor deixam de aparecer no manifesto, mas a remoção automática de cópias
+locais ainda não foi implementada.
 
-O launcher rejeita caminhos absolutos, segmentos `..`, hashes inválidos e
-arquivos cujo conteúdo não corresponda ao manifesto. A lista vazia é válida e
-resulta em zero arquivos privados sincronizados.
-
-### Gerar SHA-256 no servidor
+Para verificar a automação no servidor:
 
 ```bash
-cd /srv/eternal-launcher/files
-sha256sum mods/exemplo-1.20.1.jar
-stat -c %s mods/exemplo-1.20.1.jar
+systemctl status eternal-manifest.timer
+systemctl status eternal-manifest.service
+cat /srv/eternal-launcher/files/manifest.json
 ```
 
-Depois de editar o JSON, valide sua sintaxe:
-
-```bash
-jq . /srv/eternal-launcher/files/manifest.json
-```
+Outros arquivos privados, como configurações, ainda podem ser adicionados
+manualmente a `files`; a automação preserva entradas fora de `mods/`.
 
 ## Publicar com FileZilla
 
@@ -67,9 +46,8 @@ Porta:     22
 Destino:   /srv/eternal-launcher/files
 ```
 
-Envie o arquivo primeiro e publique `manifest.json` por último. Isso evita que
-clientes recebam uma referência para um upload ainda incompleto. Credenciais e
-senhas nunca devem ser salvas neste repositório.
+Não é necessário enviar `manifest.json`: ele é gerado no servidor. Credenciais
+e senhas nunca devem ser salvas neste repositório.
 
 ## Administração
 

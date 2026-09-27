@@ -367,23 +367,15 @@ void MainPage::handlePrimaryAction()
                    L"Nickname", MB_OK | MB_ICONWARNING);
     }
 
-    if (fileServerManifest_.empty())
-    {
-        viewState_.headline = L"Aguardando servidor";
-        viewState_.operationMessage = L"Conecte ao servidor HTTP antes de preparar o jogo.";
-        InvalidateRect(window_, nullptr, FALSE);
-        return;
-    }
-
-    // A preparação só começa com a ação explícita de Jogar. O nickname permanece
-    // guardado para iniciar a sessão assim que a instalação terminar.
-    if (minecraftLauncherService_->validateInstallation().issue ==
-        MinecraftLaunchIssue::JavaMissing)
-    {
-        startJavaRuntimeInstall();
-        return;
-    }
-    startGameInstallation();
+    // Atualiza a lista quando o jogador clica: mods enviados depois da abertura
+    // do launcher entram na próxima instalação, sem reiniciar a interface.
+    refreshBeforePlay_ = true;
+    viewState_.headline = L"Conferindo mods do grupo";
+    viewState_.operationMessage = L"Buscando a lista mais recente no servidor HTTP...";
+    viewState_.primaryActionLabel = L"CONECTANDO...";
+    viewState_.playEnabled = false;
+    InvalidateRect(window_, nullptr, FALSE);
+    checkFileServerAsync();
 }
 
 void MainPage::pollGameProcess()
@@ -414,6 +406,7 @@ void MainPage::checkFileServerAsync()
 {
     // A chamada HTTP nunca é executada na thread da janela, preservando a
     // resposta do campo de nickname, do desenho e dos demais controles.
+    if (fileServerThread_.joinable()) fileServerThread_.join();
     fileServerThread_ = std::jthread([this](std::stop_token stopToken)
     {
         auto response = fileServerService_->fetchManifest();
@@ -453,6 +446,21 @@ void MainPage::applyFileServerResult(const FileServerManifestResponse& response)
                             L" • " + std::to_wstring(response.elapsedMilliseconds) + L" ms";
         serverCard.tone = StatusTone::Success;
 
+        if (refreshBeforePlay_)
+        {
+            refreshBeforePlay_ = false;
+            // Só o clique em Jogar inicia downloads e a preparação do Minecraft.
+            if (installation.issue == MinecraftLaunchIssue::JavaMissing)
+            {
+                startJavaRuntimeInstall();
+            }
+            else
+            {
+                startGameInstallation();
+            }
+            return;
+        }
+
         // Abrir a tela apenas consulta o estado local e o servidor. Downloads e
         // sincronização ficam reservados ao clique explícito em Jogar.
         viewState_.operation = installation.success
@@ -477,11 +485,12 @@ void MainPage::applyFileServerResult(const FileServerManifestResponse& response)
             : response.errorMessage;
         serverCard.tone = StatusTone::Error;
 
+        refreshBeforePlay_ = false;
         viewState_.operation = LauncherOperation::ServerUnavailable;
         viewState_.headline = L"Servidor indisponível";
-        viewState_.operationMessage = L"O manifesto HTTP não pôde ser carregado.";
-        viewState_.primaryActionLabel = L"SERVIDOR OFFLINE";
-        viewState_.playEnabled = false;
+        viewState_.operationMessage = L"Não foi possível atualizar a lista de mods.";
+        viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
+        viewState_.playEnabled = true;
     }
 
     InvalidateRect(window_, nullptr, FALSE);
