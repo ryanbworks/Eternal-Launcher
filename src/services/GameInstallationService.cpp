@@ -1,4 +1,5 @@
 #include "services/GameInstallationService.h"
+#include "config/GameServerSettings.h"
 
 #include "config/LauncherConfig.h"
 #include "services/MinecraftManifestService.h"
@@ -272,6 +273,14 @@ GameInstallationResult GameInstallationService::ensureInstalled(
         const auto dataPath = dataDirectory();
         std::filesystem::create_directories(gamePath);
 
+        // A lista Multiplayer usa uma configuração local editável, não a URL HTTP.
+        GameServerSettings gameServer;
+        std::wstring serverError;
+        if (!GameServerSettingsStore::loadOrCreate(dataPath, gameServer, serverError))
+        {
+            return {false, serverError, 0};
+        }
+
         report(2, L"Consultando os manifestos oficiais do Minecraft...");
         MinecraftManifestService manifests;
         auto planResult = manifests.createPlan(gamePath);
@@ -367,12 +376,11 @@ GameInstallationResult GameInstallationService::ensureInstalled(
         }
         if (!classpath) return {false, L"Não foi possível salvar o classpath do jogo.", 0};
 
-        report(99, L"Adicionando o Eternal SMP à lista Multiplayer...");
+        report(99, L"Atualizando a lista Multiplayer...");
         MinecraftServerListService serverList;
-        std::wstring serverError;
         if (!serverList.ensureServerPresent(
-                gamePath, LauncherConfig::GameServerName,
-                LauncherConfig::GameServerAddress, stopToken, serverError))
+                gamePath, gameServer.name,
+                gameServer.address, stopToken, serverError))
         {
             return {false, serverError, 0};
         }

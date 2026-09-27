@@ -20,11 +20,6 @@ namespace LauncherConfig
     inline constexpr std::wstring_view FileServerBaseUrl = L"http://10.0.0.51";
     inline constexpr std::wstring_view FileServerLabel = L"Servidor HTTP";
 
-    // O launcher adiciona/atualiza esta entrada em servers.dat antes de jogar.
-    // Troque o endereço de exemplo pelo host:porta real do servidor do grupo.
-    inline constexpr std::wstring_view GameServerName = L"Eternal SMP";
-    inline constexpr std::wstring_view GameServerAddress = L"mc.seugrupo.com:25565";
-
     // A API oficial do Adoptium informa o ZIP portátil mais recente do Temurin
     // 17 e seu SHA-256. O runtime é baixado diretamente da origem informada.
     inline constexpr std::wstring_view JavaRuntimeMetadataUrl =

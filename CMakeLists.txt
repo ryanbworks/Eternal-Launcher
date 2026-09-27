@@ -35,6 +35,8 @@ add_executable(EternalLauncher WIN32
     src/mocks/MockLauncherData.cpp
     src/mocks/MockLauncherData.h
     src/config/LauncherConfig.h
+    src/config/GameServerSettings.cpp
+    src/config/GameServerSettings.h
     src/constants/LauncherConstants.h
     src/styles/Theme.h
     src/types/LauncherState.h
@@ -90,7 +92,7 @@ target_include_directories(EternalLauncher PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/
 
 # GDI+ desenha a interface, enquanto DWM e UxTheme integram a janela ao tema
 # escuro do Windows. Nenhuma dessas bibliotecas adiciona dependência externa.
-target_link_libraries(EternalLauncher PRIVATE gdiplus dwmapi uxtheme comctl32 winhttp bcrypt)
+target_link_libraries(EternalLauncher PRIVATE gdiplus dwmapi uxtheme comctl32 winhttp bcrypt shell32)
 
 if(MSVC)
     # O gerador do Visual Studio injeta /W3 por padrão. Removê-lo antes de /W4
@@ -124,6 +126,8 @@ if(BUILD_TESTING)
         src/utils/JsonValue.cpp
         src/utils/JsonValue.h
         src/config/LauncherConfig.h
+        src/config/GameServerSettings.cpp
+        src/config/GameServerSettings.h
     )
     target_compile_features(EternalLauncherTests PRIVATE cxx_std_20)
     target_compile_definitions(EternalLauncherTests PRIVATE

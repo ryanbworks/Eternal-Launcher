@@ -1,5 +1,6 @@
 #include "pages/MainPage.h"
 
+#include "config/GameServerSettings.h"
 #include "config/LauncherConfig.h"
 #include "constants/LauncherConstants.h"
 #include "mocks/MockLauncherData.h"
@@ -12,6 +13,7 @@
 
 #include <dwmapi.h>
 #include <gdiplus.h>
+#include <shellapi.h>
 #include <uxtheme.h>
 #include <windowsx.h>
 
@@ -91,15 +93,29 @@ bool MainPage::create(int showCommand)
     RECT desiredRect{0, 0, LauncherConstants::WindowWidth, LauncherConstants::WindowHeight};
     AdjustWindowRect(&desiredRect, windowStyle, FALSE);
 
+    // Centraliza na área útil do monitor onde está o cursor, sem cobrir a barra de tarefas.
+    POINT cursor{};
+    GetCursorPos(&cursor);
+    MONITORINFO monitorInfo{sizeof(MONITORINFO)};
+    const auto monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
+    if (!GetMonitorInfo(monitor, &monitorInfo)) return false;
+    const int width = desiredRect.right - desiredRect.left;
+    const int height = desiredRect.bottom - desiredRect.top;
+    const RECT& workArea = monitorInfo.rcWork;
+    const int x = std::max(workArea.left,
+        workArea.left + ((workArea.right - workArea.left) - width) / 2);
+    const int y = std::max(workArea.top,
+        workArea.top + ((workArea.bottom - workArea.top) - height) / 2);
+
     window_ = CreateWindowEx(
         0,
         LauncherConstants::WindowClassName,
         LauncherConstants::WindowTitle,
         windowStyle,
-        CW_USEDEFAULT,
-        CW_USEDEFAULT,
-        desiredRect.right - desiredRect.left,
-        desiredRect.bottom - desiredRect.top,
+        x,
+        y,
+        width,
+        height,
         nullptr,
         nullptr,
         instance_,
@@ -159,7 +175,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         else if (DrawingUtils::contains(header_.settingsBounds(
                      static_cast<float>(LauncherConstants::WindowWidth)), x, y))
         {
-            showSettingsPlaceholder();
+            openGameServerSettings();
         }
         return 0;
     }
@@ -375,14 +391,25 @@ void MainPage::pollGameProcess()
     InvalidateRect(window_, nullptr, FALSE);
 }
 
-void MainPage::showSettingsPlaceholder() const
+void MainPage::openGameServerSettings() const
 {
-    MessageBox(
-        window_,
-        L"As configurações serão adicionadas em uma etapa futura.\n\n"
-        L"Nenhuma preferência foi alterada.",
-        L"Configurações — em breve",
-        MB_OK | MB_ICONINFORMATION);
+    // A engrenagem abre o arquivo local: mudanças serão lidas no próximo Jogar.
+    const auto directory = minecraftLauncherService_->gameDirectory().parent_path();
+    const auto path = GameServerSettingsStore::filePath(directory).wstring();
+    GameServerSettings settings;
+    std::wstring error;
+    if (!GameServerSettingsStore::loadOrCreate(directory, settings, error) &&
+        !std::filesystem::exists(path))
+    {
+        MessageBox(window_, error.c_str(), L"Configuração do servidor", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    if (reinterpret_cast<INT_PTR>(ShellExecuteW(
+            window_, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL)) <= 32)
+    {
+        MessageBox(window_, L"Não foi possível abrir servidor-jogo.ini.",
+                   L"Configuração do servidor", MB_OK | MB_ICONWARNING);
+    }
 }
 
 void MainPage::checkFileServerAsync()
