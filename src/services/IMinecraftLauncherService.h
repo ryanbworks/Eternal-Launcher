@@ -18,6 +18,7 @@ class IMinecraftLauncherService
 public:
     virtual ~IMinecraftLauncherService() = default;
 
+    [[nodiscard]] virtual MinecraftLaunchResult validateInstallation() const = 0;
     virtual MinecraftLaunchResult launch(std::wstring_view nickname) = 0;
     [[nodiscard]] virtual bool isGameRunning() const = 0;
     [[nodiscard]] virtual std::filesystem::path gameDirectory() const = 0;
