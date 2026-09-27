@@ -14,4 +14,6 @@ namespace LauncherConstants
     inline constexpr int NicknameInputId = 1001;
     inline constexpr UINT_PTR GameProcessTimerId = 2001;
     inline constexpr UINT FileServerResultMessage = WM_APP + 1;
+    inline constexpr UINT JavaRuntimeProgressMessage = WM_APP + 2;
+    inline constexpr UINT JavaRuntimeResultMessage = WM_APP + 3;
 }
