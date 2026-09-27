@@ -25,3 +25,15 @@ LauncherViewState MockLauncherData::createInitialState()
 
     return state;
 }
+
+std::array<MockLauncherData::ProgressStep, 5> MockLauncherData::createProgressSequence()
+{
+    // MOCK: os percentuais e textos existem apenas para validar a transição dos estados.
+    return {{
+        {LauncherOperation::CheckingMods, 28, L"Verificando mods", L"Comparando a lista de mods simulada..."},
+        {LauncherOperation::CheckingUpdates, 51, L"Consultando atualizações", L"Conectando ao servidor HTTP simulado..."},
+        {LauncherOperation::DownloadingFiles, 73, L"Baixando arquivos", L"Simulando o recebimento de arquivos atualizados..."},
+        {LauncherOperation::PreparingMinecraft, 91, L"Preparando Minecraft", L"Organizando os argumentos de inicialização simulados..."},
+        {LauncherOperation::UpdateCompleted, 100, L"Pronto para jogar", L"Simulação concluída. Nenhum arquivo real foi alterado."}
+    }};
+}
