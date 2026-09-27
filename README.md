@@ -1,25 +1,37 @@
 # Eternal Launcher
 
 Launcher desktop privado para uma instalação padronizada de Minecraft com mods.
-Esta versão (`0.1.0-visual`) representa a primeira etapa de interface e
-arquitetura. A consulta ao manifesto HTTP já é real; download, verificação de
-arquivos e inicialização do jogo continuam fora do escopo.
+A versão atual mantém a interface nativa e já consulta o servidor HTTP, valida
+uma instância local e inicia o Minecraft `1.20.1` com Forge `47.4.10` usando o
+nickname informado.
 
 ![Interface principal do Eternal Launcher](docs/images/interface-principal.png)
 
-## Escopo desta versão
+## Funcionalidades atuais
 
 - Interface nativa para Windows com tema escuro e identidade visual própria.
-- Campo editável de nickname, preenchido inicialmente com um valor de demonstração.
-- Informações do Minecraft `1.20.1` e Forge `47.4.10`.
-- Cartões simulados de instalação e mods.
+- Campo de nickname com validação de 3 a 16 letras, números ou `_`.
+- Perfil fixo do Minecraft `1.20.1` com Forge `47.4.10`.
 - Consulta real e assíncrona ao manifesto do servidor HTTP.
-- Botão principal de jogo com uma sequência visual simulada de preparação.
-- Áreas de notícias, atividade, progresso e versão do launcher.
-- Cliente HTTP baseado no WinHTTP e contratos para atualização e inicialização.
+- Validação do Java 17, perfil Forge, bibliotecas, assets e arquivos nativos.
+- Montagem dos argumentos do Forge e inicialização pelo `javaw.exe`.
+- Acompanhamento do processo para impedir duas sessões pelo mesmo launcher.
+- Pasta de jogo isolada das outras instalações de Minecraft do usuário.
+- Estados visuais claros para instalação incompleta, jogo aberto e falha.
 
-> **Importante:** pressionar **Jogar agora** apenas executa uma animação de estados.
-> Nenhum arquivo local é verificado ou alterado e o Minecraft não é iniciado.
+> O nickname funciona como identidade local, sem autenticação Microsoft. Por
+> isso, essa sessão só é adequada para servidores configurados em modo offline.
+
+## O que ainda é simulado
+
+- Verificação de versões e hashes dos mods.
+- Download e remoção de arquivos do modpack.
+- Instalação automática do Java, Minecraft e Forge.
+- Persistência do nickname e das preferências.
+- Atualização automática do próprio launcher.
+
+O launcher não altera arquivos ao validar a instalação. Quando algum requisito
+está ausente, ele informa o problema e preserva a instância local.
 
 ## Tecnologias
 
@@ -28,10 +40,12 @@ arquivos e inicialização do jogo continuam fora do escopo.
 - Win32 API
 - GDI+ para renderização dos componentes
 - WinHTTP para comunicação com o servidor de arquivos
+- Windows CNG (`bcrypt`) para o UUID local do jogador
 - Visual Studio com a carga de trabalho de desenvolvimento desktop em C++
 
-A interface usa somente bibliotecas fornecidas pelo Windows. Não há dependências
-externas, gerenciador de pacotes ou código acoplado ao NGINX.
+A aplicação utiliza somente bibliotecas fornecidas pelo Windows. O cliente não
+fica acoplado ao NGINX: qualquer servidor HTTP compatível poderá hospedar os
+arquivos futuramente.
 
 ## Como compilar
 
@@ -46,6 +60,7 @@ externas, gerenciador de pacotes ou código acoplado ao NGINX.
 ```powershell
 cmake --preset x64-debug
 cmake --build out/build/x64-debug
+ctest --test-dir out/build/x64-debug --output-on-failure
 ./out/build/x64-debug/EternalLauncher.exe
 ```
 
@@ -61,45 +76,36 @@ src/
 ├── components/               Componentes visuais reutilizáveis
 ├── config/                   Versões e opções centrais do launcher
 ├── constants/                IDs e dimensões compartilhadas
-├── mocks/                    Dados e sequências exclusivamente simulados
+├── mocks/                    Dados exclusivamente simulados
 ├── pages/                    Composição e interação das telas
-├── services/                 Contratos para integrações futuras
+├── services/                 HTTP, validação e inicialização do jogo
 ├── styles/                   Paleta e tipografia da interface
 ├── types/                    Estados e modelos compartilhados
 └── utils/                    Utilitários de desenho
+tests/                        Testes automatizados dos serviços
 ```
 
-Uma explicação mais detalhada das responsabilidades está em
-[docs/ARQUITETURA.md](docs/ARQUITETURA.md).
+Documentação complementar:
 
-A configuração e as instruções do servidor de arquivos estão em
-[docs/SERVIDOR_HTTP.md](docs/SERVIDOR_HTTP.md).
+- [Arquitetura do projeto](docs/ARQUITETURA.md)
+- [Inicialização do Minecraft](docs/INICIALIZACAO_MINECRAFT.md)
+- [Servidor HTTP de arquivos](docs/SERVIDOR_HTTP.md)
 
-## Funcionalidade HTTP real
+## Configuração central
 
-Ao abrir a tela, o launcher solicita `http://10.0.0.51/manifest.json` em uma
-thread separada. A interface exibe o código HTTP e o tempo total da requisição.
-Uma indisponibilidade altera o cartão do servidor e desabilita a ação principal.
+Versões, memória e endereço HTTP ficam em `src/config/LauncherConfig.h`. A
+instância é esperada em `%APPDATA%\.eternal-launcher\minecraft`, enquanto o
+Java distribuído com o projeto pode ficar em
+`%APPDATA%\.eternal-launcher\runtime\bin\javaw.exe`.
 
-O conteúdo recebido ainda não é usado para baixar ou comparar arquivos.
-
-## Funcionalidades simuladas
-
-Os dados em `src/mocks` simulam:
-
-- instalação pronta;
-- 37 mods atualizados;
-- notícia do servidor;
-- etapas de verificação, atualização, download e preparação do Minecraft.
+O servidor atual é consultado por meio de `FileServerBaseUrl`. Futuramente essa
+URL será movida para um arquivo de configuração externo.
 
 ## Próximas etapas planejadas
 
-- Persistir nickname e preferências do usuário.
-- Obter um manifesto genérico do servidor HTTP de arquivos.
-- Comparar versões e hashes dos arquivos locais.
+- Interpretar o manifesto como uma lista versionada de arquivos.
+- Comparar versões e hashes da instância local.
 - Baixar somente arquivos ausentes ou desatualizados.
-- Validar a instalação do Minecraft e do Forge.
-- Preparar argumentos e iniciar o Minecraft.
+- Preparar automaticamente Java, Minecraft, Forge, assets e bibliotecas.
+- Persistir o nickname e permitir configurar memória.
 - Implementar atualização do próprio launcher.
-
-Essas etapas estão deliberadamente fora do escopo da versão visual atual.
