@@ -12,6 +12,9 @@ namespace LauncherConfig
     // MOCK: nome inicial apenas para tornar o campo visível durante a validação do design.
     inline constexpr std::wstring_view DefaultNickname = L"Steve";
 
+    // Endereço atual do serviço de arquivos. Ele permanece genérico para que a
+    // aplicação não dependa de detalhes do NGINX utilizado no servidor.
     // TODO: carregar a URL base de uma configuração externa por ambiente.
+    inline constexpr std::wstring_view FileServerBaseUrl = L"http://10.0.0.51";
     inline constexpr std::wstring_view FileServerLabel = L"Servidor HTTP";
 }

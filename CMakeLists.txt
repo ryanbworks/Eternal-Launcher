@@ -33,6 +33,8 @@ add_executable(EternalLauncher WIN32
     src/styles/Theme.h
     src/types/LauncherState.h
     src/services/IFileServerService.h
+    src/services/HttpFileService.cpp
+    src/services/HttpFileService.h
     src/services/IUpdateService.h
     src/services/IMinecraftLauncherService.h
 )
@@ -49,7 +51,7 @@ target_include_directories(EternalLauncher PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/
 
 # GDI+ desenha a interface, enquanto DWM e UxTheme integram a janela ao tema
 # escuro do Windows. Nenhuma dessas bibliotecas adiciona dependência externa.
-target_link_libraries(EternalLauncher PRIVATE gdiplus dwmapi uxtheme comctl32)
+target_link_libraries(EternalLauncher PRIVATE gdiplus dwmapi uxtheme comctl32 winhttp)
 
 if(MSVC)
     # O gerador do Visual Studio injeta /W3 por padrão. Removê-lo antes de /W4

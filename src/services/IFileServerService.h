@@ -2,16 +2,23 @@
 
 #include <string>
 
-// Contrato genérico para o futuro servidor HTTP de arquivos. A interface não
-// conhece NGINX, permitindo trocar a infraestrutura sem afetar as telas.
+struct FileServerManifestResponse
+{
+    bool success = false;
+    unsigned long httpStatus = 0;
+    std::wstring content;
+    std::wstring errorMessage;
+    long long elapsedMilliseconds = 0;
+};
+
+// Contrato genérico para obtenção do manifesto no servidor HTTP de arquivos.
+// Nenhuma referência ao NGINX aparece aqui, pois ele é apenas a hospedagem atual.
 class IFileServerService
 {
 public:
     virtual ~IFileServerService() = default;
 
-    // TODO: consultar a disponibilidade do servidor HTTP de arquivos.
-    virtual bool isAvailable() = 0;
-
-    // TODO: obter o manifesto remoto sem acoplar a aplicação ao servidor utilizado.
-    virtual std::wstring fetchManifest() = 0;
+    // Obtém o manifesto e devolve dados suficientes para a interface representar
+    // sucesso, indisponibilidade ou respostas HTTP inesperadas.
+    virtual FileServerManifestResponse fetchManifest() = 0;
 };
