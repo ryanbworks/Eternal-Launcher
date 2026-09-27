@@ -13,7 +13,11 @@ void PlayPanelComponent::draw(Gdiplus::Graphics& graphics, const Gdiplus::RectF&
     graphics.FillPath(&cardBrush, cardPath.get());
     DrawingUtils::drawRoundedRectangle(graphics, bounds, 18.0F, Theme::Border);
 
-    const auto stateColor = state.playEnabled ? Theme::Success : Theme::AccentLight;
+    const auto stateColor =
+        state.operation == LauncherOperation::ServerUnavailable ||
+        state.operation == LauncherOperation::LaunchError
+            ? Theme::Error
+            : state.playEnabled ? Theme::Success : Theme::AccentLight;
     Gdiplus::SolidBrush dotBrush(stateColor);
     graphics.FillEllipse(&dotBrush, bounds.X + 24.0F, bounds.Y + 22.0F, 8.0F, 8.0F);
     DrawingUtils::drawText(graphics, L"STATUS ATUAL",
@@ -38,6 +42,8 @@ void PlayPanelComponent::draw(Gdiplus::Graphics& graphics, const Gdiplus::RectF&
         ? L"JOGAR AGORA"
         : state.operation == LauncherOperation::ServerUnavailable
             ? L"SERVIDOR OFFLINE"
+            : state.operation == LauncherOperation::MinecraftRunning
+                ? L"JOGO EM EXECUÇÃO"
             : L"AGUARDE...";
     DrawingUtils::drawText(graphics, buttonLabel, button, 15.0F, Gdiplus::FontStyleBold,
                            Theme::TextPrimary, Gdiplus::StringAlignmentCenter,

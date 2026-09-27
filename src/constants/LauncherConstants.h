@@ -12,6 +12,6 @@ namespace LauncherConstants
     inline constexpr int MinimumWindowHeight = 680;
 
     inline constexpr int NicknameInputId = 1001;
-    inline constexpr UINT_PTR MockProgressTimerId = 2001;
+    inline constexpr UINT_PTR GameProcessTimerId = 2001;
     inline constexpr UINT FileServerResultMessage = WM_APP + 1;
 }
