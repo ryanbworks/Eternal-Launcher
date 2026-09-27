@@ -16,8 +16,9 @@ de mensagens do Windows. Esse nível não contém regras específicas do Minecra
 ### Página
 
 `MainPage` compõe os componentes, mantém o estado visual e encaminha as ações do
-usuário. O fluxo acionado pelo botão principal é temporário e está marcado como
-`MOCK` no código.
+usuário. Ela inicia a consulta HTTP em segundo plano e recebe o resultado por uma
+mensagem interna do Windows. O fluxo acionado pelo botão principal permanece
+temporário e está marcado como `MOCK` no código.
 
 ### Componentes
 
@@ -38,17 +39,21 @@ arquivos ou configurações persistidas.
 `LauncherOperation` já representa estados futuros como erro de conexão, arquivo
 corrompido, atualização disponível e preparação do Minecraft.
 
-`MockLauncherData` fornece apenas dados temporários. Quando as integrações reais
-forem criadas, a página poderá receber estados produzidos por uma camada de
-orquestração, sem reescrever os componentes visuais.
+`MockLauncherData` fornece os dados temporários de instalação, mods, notícias e
+progresso. O cartão do servidor começa como “Conectando” e é substituído pelo
+resultado real do `HttpFileService`.
 
-### Serviços futuros
+### Serviços
 
-Os cabeçalhos de `src/services` são fronteiras arquiteturais, não implementações:
+Os contratos de `src/services` separam a interface das integrações:
 
-- `IFileServerService`: disponibilidade e manifesto do servidor HTTP de arquivos;
+- `IFileServerService`: contrato para obter o manifesto e representar a resposta;
+- `HttpFileService`: implementação real com WinHTTP, timeout e suporte a HTTP/HTTPS;
 - `IUpdateService`: comparação e atualização dos arquivos locais;
 - `IMinecraftLauncherService`: preparação e inicialização do jogo.
+
+Os dois últimos continuam sem implementação concreta. O manifesto recebido ainda
+não é interpretado como uma lista de arquivos e não dispara downloads.
 
 Não existe uma classe chamada `NginxService`: NGINX é apenas uma opção de
 hospedagem e não deve se tornar uma dependência conceitual do launcher.
