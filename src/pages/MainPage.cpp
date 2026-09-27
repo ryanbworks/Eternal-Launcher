@@ -4,6 +4,7 @@
 #include "constants/LauncherConstants.h"
 #include "mocks/MockLauncherData.h"
 #include "services/HttpFileService.h"
+#include "services/JavaRuntimeService.h"
 #include "services/MinecraftLauncherService.h"
 #include "styles/Theme.h"
 #include "utils/DrawingUtils.h"
@@ -33,6 +34,7 @@ MainPage::MainPage(HINSTANCE instance)
       viewState_(MockLauncherData::createInitialState()),
       fileServerService_(std::make_unique<HttpFileService>(
           std::wstring(LauncherConfig::FileServerBaseUrl))),
+      javaRuntimeService_(std::make_unique<JavaRuntimeService>()),
       minecraftLauncherService_(std::make_unique<MinecraftLauncherService>())
 {
 }
@@ -164,6 +166,26 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         }
         return 0;
     }
+    case LauncherConstants::JavaRuntimeProgressMessage:
+    {
+        std::unique_ptr<JavaRuntimeProgress> progress(
+            reinterpret_cast<JavaRuntimeProgress*>(lParam));
+        if (progress != nullptr)
+        {
+            applyJavaRuntimeProgress(*progress);
+        }
+        return 0;
+    }
+    case LauncherConstants::JavaRuntimeResultMessage:
+    {
+        std::unique_ptr<JavaRuntimeResult> result(
+            reinterpret_cast<JavaRuntimeResult*>(lParam));
+        if (result != nullptr)
+        {
+            applyJavaRuntimeResult(*result);
+        }
+        return 0;
+    }
     case WM_CTLCOLOREDIT:
     {
         const HDC editContext = reinterpret_cast<HDC>(wParam);
@@ -174,6 +196,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
     case WM_DESTROY:
         KillTimer(window_, LauncherConstants::GameProcessTimerId);
         fileServerThread_.request_stop();
+        javaRuntimeThread_.request_stop();
         PostQuitMessage(0);
         return 0;
     default:
@@ -301,6 +324,12 @@ void MainPage::handlePrimaryAction()
     }
     else
     {
+        if (launchResult.issue == MinecraftLaunchIssue::JavaMissing)
+        {
+            startJavaRuntimeInstall();
+            return;
+        }
+
         viewState_.operation = LauncherOperation::LaunchError;
         viewState_.headline = L"Não foi possível iniciar";
         viewState_.operationMessage = L"A instalação local precisa ser preparada ou corrigida.";
@@ -370,24 +399,8 @@ void MainPage::applyFileServerResult(const FileServerManifestResponse& response)
         return;
     }
 
-    auto& installationCard = viewState_.statusCards[0];
     const auto installation = minecraftLauncherService_->validateInstallation();
-    if (installation.success)
-    {
-        installationCard.value = L"Pronta";
-        installationCard.detail = L"Minecraft 1.20.1 + Forge 47.4.10";
-        installationCard.tone = StatusTone::Success;
-    }
-    else
-    {
-        installationCard.value = L"Incompleta";
-        installationCard.detail = installation.message.find(L"Java 17") != std::wstring::npos
-            ? L"Java 17 não encontrado"
-            : installation.message.find(L"nativas") != std::wstring::npos
-                ? L"Bibliotecas nativas ausentes"
-                : L"Arquivos do Minecraft/Forge ausentes";
-        installationCard.tone = StatusTone::Error;
-    }
+    updateInstallationState(installation);
 
     auto& serverCard = viewState_.statusCards[2];
     if (response.success)
@@ -410,6 +423,11 @@ void MainPage::applyFileServerResult(const FileServerManifestResponse& response)
             ? L"JOGAR AGORA"
             : L"VERIFICAR INSTALAÇÃO";
         viewState_.playEnabled = true;
+
+        if (installation.issue == MinecraftLaunchIssue::JavaMissing)
+        {
+            startJavaRuntimeInstall();
+        }
     }
     else
     {
@@ -427,4 +445,133 @@ void MainPage::applyFileServerResult(const FileServerManifestResponse& response)
     }
 
     InvalidateRect(window_, nullptr, FALSE);
+}
+
+void MainPage::startJavaRuntimeInstall()
+{
+    if (javaRuntimeThread_.joinable())
+    {
+        javaRuntimeThread_.join();
+    }
+
+    viewState_.operation = LauncherOperation::DownloadingFiles;
+    viewState_.headline = L"Preparando Java 17";
+    viewState_.operationMessage = L"O runtime portátil será instalado automaticamente.";
+    viewState_.primaryActionLabel = L"BAIXANDO JAVA...";
+    viewState_.progressPercent = 1;
+    viewState_.progressVisible = true;
+    viewState_.playEnabled = false;
+    auto& installationCard = viewState_.statusCards[0];
+    installationCard.value = L"Preparando...";
+    installationCard.detail = L"Baixando Java 17 portátil";
+    installationCard.tone = StatusTone::Information;
+    InvalidateRect(window_, nullptr, FALSE);
+
+    javaRuntimeThread_ = std::jthread([this](std::stop_token stopToken)
+    {
+        const auto result = javaRuntimeService_->ensureInstalled(
+            stopToken,
+            [this, stopToken](int percent, std::wstring_view message)
+            {
+                if (stopToken.stop_requested())
+                {
+                    return;
+                }
+                auto* progress = new JavaRuntimeProgress{percent, std::wstring(message)};
+                if (!PostMessage(
+                        window_, LauncherConstants::JavaRuntimeProgressMessage, 0,
+                        reinterpret_cast<LPARAM>(progress)))
+                {
+                    delete progress;
+                }
+            });
+
+        if (stopToken.stop_requested())
+        {
+            return;
+        }
+        auto* transferredResult = new JavaRuntimeResult(result);
+        if (!PostMessage(
+                window_, LauncherConstants::JavaRuntimeResultMessage, 0,
+                reinterpret_cast<LPARAM>(transferredResult)))
+        {
+            delete transferredResult;
+        }
+    });
+}
+
+void MainPage::applyJavaRuntimeProgress(const JavaRuntimeProgress& progress)
+{
+    viewState_.progressPercent = progress.percent;
+    viewState_.operationMessage = progress.message;
+    InvalidateRect(window_, nullptr, FALSE);
+}
+
+void MainPage::applyJavaRuntimeResult(const JavaRuntimeResult& result)
+{
+    if (javaRuntimeThread_.joinable())
+    {
+        javaRuntimeThread_.join();
+    }
+
+    viewState_.progressVisible = false;
+    viewState_.progressPercent = result.success ? 100 : 0;
+    if (!result.success)
+    {
+        viewState_.operation = LauncherOperation::LaunchError;
+        viewState_.headline = L"Falha ao preparar o Java";
+        viewState_.operationMessage = result.message;
+        viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
+        viewState_.playEnabled = true;
+        auto& installationCard = viewState_.statusCards[0];
+        installationCard.value = L"Falha no Java";
+        installationCard.detail = L"Clique para tentar novamente";
+        installationCard.tone = StatusTone::Error;
+        InvalidateRect(window_, nullptr, FALSE);
+        return;
+    }
+
+    const auto installation = minecraftLauncherService_->validateInstallation();
+    updateInstallationState(installation);
+    viewState_.operation = installation.success
+        ? LauncherOperation::ReadyToPlay
+        : LauncherOperation::LaunchError;
+    viewState_.headline = installation.success
+        ? L"Pronto para jogar"
+        : L"Java 17 preparado";
+    viewState_.operationMessage = installation.success
+        ? L"Java, Minecraft e Forge estão prontos."
+        : L"O Java foi instalado; ainda faltam arquivos do Minecraft/Forge.";
+    viewState_.primaryActionLabel = installation.success
+        ? L"JOGAR AGORA"
+        : L"VERIFICAR INSTALAÇÃO";
+    viewState_.playEnabled = true;
+    InvalidateRect(window_, nullptr, FALSE);
+}
+
+void MainPage::updateInstallationState(const MinecraftLaunchResult& installation)
+{
+    auto& installationCard = viewState_.statusCards[0];
+    if (installation.success)
+    {
+        installationCard.value = L"Pronta";
+        installationCard.detail = L"Minecraft 1.20.1 + Forge 47.4.10";
+        installationCard.tone = StatusTone::Success;
+        return;
+    }
+
+    installationCard.value = L"Incompleta";
+    switch (installation.issue)
+    {
+    case MinecraftLaunchIssue::JavaMissing:
+        installationCard.detail = L"Java 17 será baixado automaticamente";
+        break;
+    case MinecraftLaunchIssue::NativeLibrariesMissing:
+        installationCard.detail = L"Bibliotecas nativas ausentes";
+        break;
+    default:
+        installationCard.detail = L"Arquivos do Minecraft/Forge ausentes";
+        break;
+    }
+    installationCard.tone = StatusTone::Error;
 }

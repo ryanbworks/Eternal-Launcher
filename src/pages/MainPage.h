@@ -8,6 +8,7 @@
 #include "components/ProgressComponent.h"
 #include "components/StatusPanelComponent.h"
 #include "services/IFileServerService.h"
+#include "services/IJavaRuntimeService.h"
 #include "services/IMinecraftLauncherService.h"
 #include "types/LauncherState.h"
 
@@ -36,6 +37,10 @@ private:
     void showSettingsPlaceholder() const;
     void checkFileServerAsync();
     void applyFileServerResult(const FileServerManifestResponse& response);
+    void startJavaRuntimeInstall();
+    void applyJavaRuntimeProgress(const JavaRuntimeProgress& progress);
+    void applyJavaRuntimeResult(const JavaRuntimeResult& result);
+    void updateInstallationState(const MinecraftLaunchResult& installation);
 
     HINSTANCE instance_;
     HWND window_ = nullptr;
@@ -57,5 +62,7 @@ private:
     // independente do WinHTTP e do servidor web usado na infraestrutura.
     std::unique_ptr<IFileServerService> fileServerService_;
     std::jthread fileServerThread_;
+    std::unique_ptr<IJavaRuntimeService> javaRuntimeService_;
+    std::jthread javaRuntimeThread_;
     std::unique_ptr<IMinecraftLauncherService> minecraftLauncherService_;
 };
