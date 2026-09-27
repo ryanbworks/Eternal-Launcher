@@ -9,5 +9,5 @@ class ProgressComponent
 {
 public:
     void draw(Gdiplus::Graphics& graphics, const Gdiplus::RectF& bounds,
-              int percent, std::wstring_view message, bool active) const;
+              int percent, std::wstring_view message, bool active, bool healthy) const;
 };

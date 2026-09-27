@@ -7,7 +7,7 @@
 #include <string>
 
 void ProgressComponent::draw(Gdiplus::Graphics& graphics, const Gdiplus::RectF& bounds,
-                             int percent, std::wstring_view message, bool active) const
+                             int percent, std::wstring_view message, bool active, bool healthy) const
 {
     DrawingUtils::fillRoundedRectangle(graphics, bounds, 18.0F, Theme::Surface);
     DrawingUtils::drawRoundedRectangle(graphics, bounds, 18.0F, Theme::Border);
@@ -16,7 +16,9 @@ void ProgressComponent::draw(Gdiplus::Graphics& graphics, const Gdiplus::RectF& 
                            {bounds.X + 22.0F, bounds.Y + 18.0F, 160.0F, 18.0F},
                            10.0F, Gdiplus::FontStyleBold, Theme::TextMuted);
 
-    const std::wstring title = active ? L"Atualização em andamento" : L"Tudo em ordem";
+    const std::wstring title = active
+        ? L"Atualização em andamento"
+        : healthy ? L"Tudo em ordem" : L"Atenção necessária";
     DrawingUtils::drawText(graphics, title,
                            {bounds.X + 22.0F, bounds.Y + 43.0F, bounds.Width - 44.0F, 25.0F},
                            16.0F, Gdiplus::FontStyleBold, Theme::TextPrimary);
@@ -31,15 +33,16 @@ void ProgressComponent::draw(Gdiplus::Graphics& graphics, const Gdiplus::RectF& 
     const float fillWidth = active
         ? track.Width * static_cast<float>(clampedPercent) / 100.0F
         : track.Width;
-    const auto fillColor = active ? Theme::Accent : Theme::Success;
+    const auto fillColor = active ? Theme::Accent : healthy ? Theme::Success : Theme::Error;
     DrawingUtils::fillRoundedRectangle(graphics, {track.X, track.Y, fillWidth, track.Height},
                                        4.0F, fillColor);
 
     const std::wstring progressLabel = active
         ? std::to_wstring(clampedPercent) + L"%"
-        : L"SEM PENDÊNCIAS";
+        : healthy ? L"SEM PENDÊNCIAS" : L"AÇÃO NECESSÁRIA";
     DrawingUtils::drawText(graphics, progressLabel,
                            {bounds.X + 22.0F, bounds.Y + 119.0F, bounds.Width - 44.0F, 17.0F},
-                           9.0F, Gdiplus::FontStyleBold, active ? Theme::AccentLight : Theme::Success,
+                           9.0F, Gdiplus::FontStyleBold,
+                           active ? Theme::AccentLight : healthy ? Theme::Success : Theme::Error,
                            Gdiplus::StringAlignmentFar);
 }

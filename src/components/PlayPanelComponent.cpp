@@ -38,18 +38,14 @@ void PlayPanelComponent::draw(Gdiplus::Graphics& graphics, const Gdiplus::RectF&
         button, startColor, endColor, Gdiplus::LinearGradientModeHorizontal);
     graphics.FillPath(&buttonBrush, buttonPath.get());
 
-    const std::wstring_view buttonLabel = state.playEnabled
+    const std::wstring_view buttonLabel = state.primaryActionLabel.empty()
         ? L"JOGAR AGORA"
-        : state.operation == LauncherOperation::ServerUnavailable
-            ? L"SERVIDOR OFFLINE"
-            : state.operation == LauncherOperation::MinecraftRunning
-                ? L"JOGO EM EXECUÇÃO"
-            : L"AGUARDE...";
+        : std::wstring_view(state.primaryActionLabel);
     DrawingUtils::drawText(graphics, buttonLabel, button, 15.0F, Gdiplus::FontStyleBold,
                            Theme::TextPrimary, Gdiplus::StringAlignmentCenter,
                            Gdiplus::StringAlignmentCenter);
 
-    if (state.playEnabled)
+    if (state.operation == LauncherOperation::ReadyToPlay)
     {
         // Triângulo simples reforça a ação primária sem depender de uma biblioteca de ícones.
         const float iconX = button.X + 90.0F;
