@@ -10,6 +10,22 @@ add_executable(EternalLauncher WIN32
     src/app/LauncherApplication.h
     src/pages/MainPage.cpp
     src/pages/MainPage.h
+    src/components/HeaderComponent.cpp
+    src/components/HeaderComponent.h
+    src/components/HeroComponent.cpp
+    src/components/HeroComponent.h
+    src/components/StatusPanelComponent.cpp
+    src/components/StatusPanelComponent.h
+    src/components/NewsPanelComponent.cpp
+    src/components/NewsPanelComponent.h
+    src/components/PlayerProfileComponent.cpp
+    src/components/PlayerProfileComponent.h
+    src/components/PlayPanelComponent.cpp
+    src/components/PlayPanelComponent.h
+    src/components/ProgressComponent.cpp
+    src/components/ProgressComponent.h
+    src/utils/DrawingUtils.cpp
+    src/utils/DrawingUtils.h
     src/mocks/MockLauncherData.cpp
     src/mocks/MockLauncherData.h
     src/config/LauncherConfig.h
