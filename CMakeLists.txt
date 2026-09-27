@@ -39,6 +39,8 @@ add_executable(EternalLauncher WIN32
     src/services/IMinecraftLauncherService.h
     src/services/MinecraftLauncherService.cpp
     src/services/MinecraftLauncherService.h
+    src/services/MinecraftLaunchCommandBuilder.cpp
+    src/services/MinecraftLaunchCommandBuilder.h
 )
 
 target_compile_features(EternalLauncher PRIVATE cxx_std_20)
@@ -68,6 +70,8 @@ if(BUILD_TESTING)
         tests/MinecraftLauncherServiceTests.cpp
         src/services/MinecraftLauncherService.cpp
         src/services/MinecraftLauncherService.h
+        src/services/MinecraftLaunchCommandBuilder.cpp
+        src/services/MinecraftLaunchCommandBuilder.h
         src/services/IMinecraftLauncherService.h
         src/config/LauncherConfig.h
     )

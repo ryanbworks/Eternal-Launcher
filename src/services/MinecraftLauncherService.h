@@ -13,6 +13,7 @@ public:
     MinecraftLauncherService();
     ~MinecraftLauncherService() override;
 
+    [[nodiscard]] MinecraftLaunchResult validateInstallation() const override;
     MinecraftLaunchResult launch(std::wstring_view nickname) override;
     [[nodiscard]] bool isGameRunning() const override;
     [[nodiscard]] std::filesystem::path gameDirectory() const override;
@@ -20,12 +21,6 @@ public:
 private:
     std::filesystem::path resolveDataDirectory() const;
     std::filesystem::path findJavaExecutable() const;
-    MinecraftLaunchResult validateInstallation(std::wstring_view nickname) const;
-    std::wstring buildClasspath(const std::filesystem::path& gameDirectory) const;
-    std::wstring buildCommandLine(std::wstring_view nickname,
-                                  const std::filesystem::path& javaExecutable,
-                                  const std::filesystem::path& gameDirectory) const;
-
     HANDLE processHandle_ = nullptr;
     unsigned long processId_ = 0;
 };
