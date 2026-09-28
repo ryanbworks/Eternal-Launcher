@@ -6,6 +6,14 @@ instância isolada e inicia o jogo com o nickname informado.
 
 ![Interface principal do Eternal Launcher](docs/images/interface-principal.png)
 
+## Baixar e usar
+
+Baixe o executável ou o pacote ZIP na página de
+[releases do Eternal Launcher](https://github.com/ryanbworks/Eternal-Launcher/releases/latest).
+A distribuição é para Windows x64. Se escolher o ZIP, extraia os arquivos e abra
+`EternalLauncher.exe`. O launcher inclui o runtime C++ e prepara o Java 17
+automaticamente no primeiro clique em **Jogar**, com conexão à internet.
+
 ## Funcionalidades atuais
 
 - Interface nativa para Windows com tema escuro e componentes separados.

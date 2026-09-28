@@ -2,7 +2,13 @@ cmake_minimum_required(VERSION 3.21)
 
 # O launcher utiliza somente C++; declarar a linguagem evita verificações
 # desnecessárias de um compilador C durante a configuração do projeto.
-project(EternalLauncher VERSION 0.1.0 LANGUAGES CXX)
+project(EternalLauncher VERSION 0.1.1 LANGUAGES CXX)
+
+# Inclui o runtime C++ no executável distribuído, sem exigir o Visual C++
+# Redistributable no computador de quem baixar o launcher.
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 
 add_executable(EternalLauncher WIN32
     src/main.cpp
