@@ -21,7 +21,7 @@ LauncherViewState MockLauncherData::createInitialState()
     state.featuredNews = {
         L"AVISO DO SERVIDOR",
         L"O mundo está esperando por você",
-        L"A primeira versão visual do Eternal Launcher já está pronta para testes.",
+        L"Fresquin",
         L"Hoje"
     };
 

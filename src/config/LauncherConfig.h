@@ -10,11 +10,15 @@ namespace LauncherConfig
     inline constexpr std::wstring_view ForgeVersion = L"47.4.10";
     inline constexpr std::wstring_view VersionProfile = L"1.20.1-forge-47.4.10";
     inline constexpr std::wstring_view AssetIndex = L"5";
-    inline constexpr std::wstring_view LauncherVersion = L"0.1.0-Muriçoca";
+    inline constexpr std::wstring_view LauncherVersion = L"0.1.1-Vagalume";
+    // ID público do aplicativo Microsoft. Pode ser substituído pela variável
+    // ETERNAL_LAUNCHER_MICROSOFT_CLIENT_ID sem alterar o executável.
+    inline constexpr std::wstring_view MicrosoftClientId =
+        L"0e262947-bda1-46dc-b648-e1dae22f854e";
     // Endereço atual do serviço de arquivos. Ele permanece genérico para que a
     // aplicação não dependa de detalhes do NGINX utilizado no servidor.
     // TODO: carregar a URL base de uma configuração externa por ambiente.
-    inline constexpr std::wstring_view FileServerBaseUrl = L"http://10.0.0.51";
+    inline constexpr std::wstring_view FileServerBaseUrl = L"https://fastdl.aplot.cloud";
     inline constexpr std::wstring_view FileServerLabel = L"Servidor HTTP";
 
     // A API oficial do Adoptium informa o ZIP portátil mais recente do Temurin

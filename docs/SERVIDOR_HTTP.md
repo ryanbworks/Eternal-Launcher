@@ -2,8 +2,9 @@
 
 ## Endereço atual
 
-- Base: `http://10.0.0.51/`
-- Manifesto: `http://10.0.0.51/manifest.json`
+- Base pública: `https://fastdl.aplot.cloud/`
+- Manifesto público: `https://fastdl.aplot.cloud/manifest.json`
+- Endereço interno: `http://10.0.0.51/`
 - Diretório publicado: `/srv/eternal-launcher/files`
 - Site NGINX: `/etc/nginx/sites-available/eternal-launcher`
 
@@ -20,9 +21,9 @@ hashes manualmente. O launcher consulta a lista novamente quando você clica em
 
 Aguarde alguns segundos depois do fim do upload para o manifesto ser publicado.
 Nomes com espaços ou colchetes também são aceitos. Arquivos ainda sendo enviados
-não entram na lista. Mods removidos do
-servidor deixam de aparecer no manifesto, mas a remoção automática de cópias
-locais ainda não foi implementada.
+não entram na lista. Mods removidos do servidor deixam de aparecer no manifesto;
+no próximo clique em **Jogar**, o launcher remove as cópias `.jar` locais após
+concluir a sincronização.
 
 Para verificar a automação no servidor:
 
@@ -66,4 +67,4 @@ tail -f /var/log/nginx/eternal-launcher.error.log
 - Adicionar HTTPS antes de expor o serviço à internet.
 - Restringir o firewall às redes e portas necessárias.
 - Assinar o manifesto antes de aceitar atualizações públicas.
-- Implementar remoção segura de arquivos que saírem de `files`.
+- Implementar remoção segura de outros arquivos que saírem de `files`.

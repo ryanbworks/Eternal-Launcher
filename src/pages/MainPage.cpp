@@ -160,6 +160,20 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         {
             handlePrimaryAction();
         }
+        else if (viewState_.playEnabled &&
+                 DrawingUtils::contains(playerProfile_.offlineTabBounds(ProfileBounds), x, y))
+        {
+            originalMode_ = false;
+            ShowWindow(nicknameInput_, SW_SHOW);
+            InvalidateRect(window_, nullptr, FALSE);
+        }
+        else if (viewState_.playEnabled &&
+                 DrawingUtils::contains(playerProfile_.originalTabBounds(ProfileBounds), x, y))
+        {
+            originalMode_ = true;
+            ShowWindow(nicknameInput_, SW_HIDE);
+            InvalidateRect(window_, nullptr, FALSE);
+        }
         else if (DrawingUtils::contains(header_.settingsBounds(
                      static_cast<float>(LauncherConstants::WindowWidth)), x, y))
         {
@@ -224,6 +238,41 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         }
         return 0;
     }
+    case LauncherConstants::MicrosoftDeviceCodeMessage:
+    {
+        std::unique_ptr<MicrosoftDeviceCode> code(reinterpret_cast<MicrosoftDeviceCode*>(lParam));
+        if (code)
+        {
+            const std::wstring prompt = L"Abra " + code->url +
+                L" no navegador e digite o código:\n\n" + code->code;
+            MessageBox(window_, prompt.c_str(), L"Entrar com Microsoft", MB_OK | MB_ICONINFORMATION);
+        }
+        return 0;
+    }
+    case LauncherConstants::MicrosoftAuthResultMessage:
+    {
+        std::unique_ptr<MicrosoftAuthResult> result(reinterpret_cast<MicrosoftAuthResult*>(lParam));
+        if (microsoftAuthThread_.joinable()) microsoftAuthThread_.join();
+        if (result && result->success)
+        {
+            microsoftIdentity_ = result->identity;
+            pendingIdentity_ = microsoftIdentity_;
+            pendingNickname_ = microsoftIdentity_.name;
+            InvalidateRect(window_, nullptr, FALSE);
+            beginPlay();
+        }
+        else
+        {
+            viewState_.headline = L"Falha no login Microsoft";
+            viewState_.operationMessage = result ? result->message : L"Falha desconhecida.";
+            viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
+            viewState_.playEnabled = true;
+            InvalidateRect(window_, nullptr, FALSE);
+            MessageBox(window_, viewState_.operationMessage.c_str(), L"Login Microsoft",
+                       MB_OK | MB_ICONWARNING);
+        }
+        return 0;
+    }
     case WM_CTLCOLOREDIT:
     {
         const HDC editContext = reinterpret_cast<HDC>(wParam);
@@ -249,6 +298,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         fileServerThread_.request_stop();
         javaRuntimeThread_.request_stop();
         gameInstallationThread_.request_stop();
+        microsoftAuthThread_.request_stop();
         PostQuitMessage(0);
         return 0;
     default:
@@ -277,7 +327,7 @@ void MainPage::paint()
     hero_.draw(graphics, HeroBounds);
     statusPanel_.draw(graphics, StatusBounds, viewState_.statusCards);
     newsPanel_.draw(graphics, NewsBounds, viewState_.featuredNews);
-    playerProfile_.draw(graphics, ProfileBounds);
+    playerProfile_.draw(graphics, ProfileBounds, originalMode_, microsoftIdentity_.name);
     playPanel_.draw(graphics, PlayBounds, viewState_);
     progress_.draw(graphics, ProgressBounds, viewState_.progressPercent,
                    viewState_.progressVisible
@@ -345,9 +395,23 @@ void MainPage::handlePrimaryAction()
         return;
     }
 
+    if (originalMode_)
+    {
+        if (!microsoftIdentity_.online())
+        {
+            startMicrosoftSignIn();
+            return;
+        }
+        pendingIdentity_ = microsoftIdentity_;
+        pendingNickname_ = microsoftIdentity_.name;
+        beginPlay();
+        return;
+    }
+
     std::array<wchar_t, 32> nickname{};
     GetWindowText(nicknameInput_, nickname.data(), static_cast<int>(nickname.size()));
     pendingNickname_ = nickname.data();
+    pendingIdentity_ = MinecraftIdentity{pendingNickname_};
     if (!NicknameStore::isValid(pendingNickname_))
     {
         viewState_.headline = L"Confira seu nickname";
@@ -367,6 +431,36 @@ void MainPage::handlePrimaryAction()
                    L"Nickname", MB_OK | MB_ICONWARNING);
     }
 
+    beginPlay();
+}
+
+void MainPage::startMicrosoftSignIn()
+{
+    if (microsoftAuthThread_.joinable()) microsoftAuthThread_.join();
+    viewState_.headline = L"Entrando com Microsoft";
+    viewState_.operationMessage = L"Aguarde o código de confirmação...";
+    viewState_.primaryActionLabel = L"CONECTANDO...";
+    viewState_.playEnabled = false;
+    InvalidateRect(window_, nullptr, FALSE);
+    microsoftAuthThread_ = std::jthread([this](std::stop_token stopToken)
+    {
+        MicrosoftAuthService service;
+        auto result = service.signIn(stopToken, [this, stopToken](const MicrosoftDeviceCode& code)
+        {
+            if (stopToken.stop_requested()) return;
+            auto* transferred = new MicrosoftDeviceCode(code);
+            if (!PostMessage(window_, LauncherConstants::MicrosoftDeviceCodeMessage, 0,
+                             reinterpret_cast<LPARAM>(transferred))) delete transferred;
+        });
+        if (stopToken.stop_requested()) return;
+        auto* transferred = new MicrosoftAuthResult(std::move(result));
+        if (!PostMessage(window_, LauncherConstants::MicrosoftAuthResultMessage, 0,
+                         reinterpret_cast<LPARAM>(transferred))) delete transferred;
+    });
+}
+
+void MainPage::beginPlay()
+{
     // Atualiza a lista quando o jogador clica: mods enviados depois da abertura
     // do launcher entram na próxima instalação, sem reiniciar a interface.
     refreshBeforePlay_ = true;
@@ -690,7 +784,7 @@ void MainPage::applyGameInstallationResult(const GameInstallationResult& result)
     UpdateWindow(window_);
 
     const auto launchResult = installation.success
-        ? minecraftLauncherService_->launch(pendingNickname_)
+        ? minecraftLauncherService_->launch(pendingIdentity_)
         : MinecraftLaunchResult{false, installation.message, 0,
                                 MinecraftLaunchIssue::InstallationIncomplete};
     if (!launchResult.success)

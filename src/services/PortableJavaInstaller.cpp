@@ -29,7 +29,8 @@ bool PortableJavaInstaller::isJava17Runtime(const std::filesystem::path& runtime
     {
         if (line.starts_with("JAVA_VERSION=\"17"))
         {
-            return std::filesystem::is_regular_file(runtime / L"bin" / L"javaw.exe");
+            return std::filesystem::is_regular_file(runtime / L"bin" / L"javaw.exe") &&
+                   std::filesystem::is_regular_file(runtime / L"bin" / L"java.exe");
         }
     }
     return false;

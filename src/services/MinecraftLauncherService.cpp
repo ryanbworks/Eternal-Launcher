@@ -179,6 +179,11 @@ MinecraftLaunchResult MinecraftLauncherService::validateInstallation() const
 
 MinecraftLaunchResult MinecraftLauncherService::launch(std::wstring_view nickname)
 {
+    return launch(MinecraftIdentity{std::wstring(nickname)});
+}
+
+MinecraftLaunchResult MinecraftLauncherService::launch(const MinecraftIdentity& identity)
+{
     if (isGameRunning())
     {
         return {false, L"O Minecraft já está em execução.", processId_,
@@ -192,7 +197,7 @@ MinecraftLaunchResult MinecraftLauncherService::launch(std::wstring_view nicknam
         processId_ = 0;
     }
 
-    if (!isValidNickname(nickname))
+    if (!isValidNickname(identity.name))
     {
         return {false,
                 L"O nickname deve ter de 3 a 16 caracteres e usar apenas letras, números ou underline.",
@@ -209,10 +214,14 @@ MinecraftLaunchResult MinecraftLauncherService::launch(std::wstring_view nicknam
     const auto gamePath = gameDirectory();
     const auto javaPath = findJavaExecutable();
 
-    // A identidade desta etapa é local/offline. Uma futura autenticação Microsoft
-    // poderá fornecer UUID e token reais sem alterar a criação do processo.
+    // O comando recebe a identidade selecionada antes de iniciar o Java.
     MinecraftLaunchCommandBuilder commandBuilder;
-    std::wstring commandLine = commandBuilder.build(nickname, javaPath, gamePath);
+    if (identity.online() && (identity.uuid.size() != 32 || identity.clientId.empty()))
+    {
+        return {false, L"A sessão Microsoft está incompleta. Entre novamente.", 0,
+                MinecraftLaunchIssue::InvalidNickname};
+    }
+    std::wstring commandLine = commandBuilder.build(identity, javaPath, gamePath);
 
     STARTUPINFO startupInfo{};
     startupInfo.cb = sizeof(startupInfo);
