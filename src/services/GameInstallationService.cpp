@@ -2,6 +2,8 @@
 
 #include "config/LauncherConfig.h"
 #include "services/MinecraftManifestService.h"
+#include "services/ModCleanup.h"
+#include "services/JavaRuntimeService.h"
 #include "services/VerifiedDownloader.h"
 #include "utils/ArchiveExtractor.h"
 #include "utils/JsonValue.h"
@@ -16,6 +18,7 @@
 #include <fstream>
 #include <iterator>
 #include <stdexcept>
+#include <utility>
 
 namespace
 {
@@ -85,22 +88,118 @@ namespace
         return L"\"" + std::wstring(value) + L"\"";
     }
 
-    bool runForgeInstaller(const std::filesystem::path& java,
-                           const std::filesystem::path& installer,
-                           const std::filesystem::path& gameDirectory,
-                           std::stop_token stopToken)
+    struct ForgeInstallResult
     {
-        std::wstring command = quote(java.wstring()) + L" -jar " + quote(installer.wstring()) +
-                               L" --installClient " + quote(gameDirectory.wstring());
+        bool success;
+        bool retryable;
+        std::wstring message;
+        bool javaStartFailure = false;
+    };
+
+    ForgeInstallResult runForgeInstaller(const std::filesystem::path& java,
+                                         const std::filesystem::path& installer,
+                                         const std::filesystem::path& gameDirectory,
+                                         std::stop_token stopToken,
+                                         int attempt,
+                                         bool alternateNetwork)
+    {
+        const auto logPath = gameDirectory / L"logs" / L"forge-installer.log";
+        std::filesystem::create_directories(logPath.parent_path());
+        {
+            std::ofstream log(logPath, std::ios::binary |
+                (attempt > 1 ? std::ios::app : std::ios::trunc));
+            log << "\n[Eternal] Tentativa " << attempt
+                << (alternateNetwork ? " (rede alternativa IPv4/IPv6)" : " (rede padrão)")
+                << "\nJava: "
+                << wideToUtf8(java.wstring()) << "\nInstalador: "
+                << wideToUtf8(installer.wstring()) << "\nDestino: "
+                << wideToUtf8(gameDirectory.wstring()) << "\n\n";
+            if (!log)
+            {
+                return {false, false,
+                        L"Não foi possível criar o log do Forge: " + logPath.wstring()};
+            }
+        }
+        const auto failure = [&logPath](std::wstring reason, bool retryable = false,
+                                        bool javaStartFailure = false) -> ForgeInstallResult
+        {
+            std::ofstream log(logPath, std::ios::binary | std::ios::app);
+            log << "\n[Eternal] " << wideToUtf8(reason) << '\n';
+            return {false, retryable,
+                    std::move(reason) + L" Log: " + logPath.wstring(), javaStartFailure};
+        };
+
+        if (!std::filesystem::is_regular_file(java))
+        {
+            return failure(L"O java.exe portátil não existe: " + java.wstring(), false, true);
+        }
+        if (!std::filesystem::is_regular_file(installer))
+        {
+            return failure(L"O instalador Forge não existe: " + installer.wstring());
+        }
+        if (!std::filesystem::is_directory(gameDirectory))
+        {
+            return failure(L"A pasta do Minecraft não existe: " + gameDirectory.wstring());
+        }
+
+        SECURITY_ATTRIBUTES inherit{};
+        inherit.nLength = sizeof(inherit);
+        inherit.bInheritHandle = TRUE;
+        const HANDLE output = CreateFileW(logPath.c_str(), FILE_APPEND_DATA,
+                                          FILE_SHARE_READ | FILE_SHARE_WRITE, &inherit,
+                                          OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (output == INVALID_HANDLE_VALUE)
+        {
+            const DWORD error = GetLastError();
+            return failure(L"Não foi possível abrir o log do Forge (erro Windows " +
+                           std::to_wstring(error) + L").");
+        }
+        const HANDLE input = CreateFileW(L"NUL", GENERIC_READ,
+                                         FILE_SHARE_READ | FILE_SHARE_WRITE, &inherit,
+                                         OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (input == INVALID_HANDLE_VALUE)
+        {
+            const DWORD error = GetLastError();
+            CloseHandle(output);
+            return failure(L"Não foi possível preparar a entrada do Forge (erro Windows " +
+                           std::to_wstring(error) + L").");
+        }
+
+        std::wstring command = quote(java.wstring());
+        if (alternateNetwork) command += L" -Djava.net.preferIPv4Stack=false";
+        command += L" -jar " + quote(installer.wstring()) +
+                   L" --installClient " + quote(gameDirectory.wstring());
         STARTUPINFO startup{};
         startup.cb = sizeof(startup);
+        startup.dwFlags = STARTF_USESTDHANDLES;
+        startup.hStdInput = input;
+        startup.hStdOutput = output;
+        startup.hStdError = output;
         PROCESS_INFORMATION process{};
-        if (!CreateProcess(java.c_str(), command.data(), nullptr, nullptr, FALSE,
-                           CREATE_NO_WINDOW, nullptr, gameDirectory.c_str(),
-                           &startup, &process)) return false;
+        const BOOL started = CreateProcessW(java.c_str(), command.data(), nullptr, nullptr, TRUE,
+                                            CREATE_NO_WINDOW, nullptr, gameDirectory.c_str(),
+                                            &startup, &process);
+        const DWORD startError = started ? ERROR_SUCCESS : GetLastError();
+        CloseHandle(input);
+        CloseHandle(output);
+        if (!started)
+        {
+            std::ofstream log(logPath, std::ios::binary | std::ios::app);
+            log << "[Eternal] Diagnóstico de caminhos: java.exe="
+                << std::filesystem::is_regular_file(java)
+                << ", instalador=" << std::filesystem::is_regular_file(installer)
+                << ", destino=" << std::filesystem::is_directory(gameDirectory) << '\n';
+            return failure(L"Não foi possível iniciar o instalador Forge (erro Windows " +
+                           std::to_wstring(startError) + L").", false,
+                           startError == ERROR_FILE_NOT_FOUND ||
+                           startError == ERROR_PATH_NOT_FOUND ||
+                           startError == ERROR_MOD_NOT_FOUND ||
+                           startError == ERROR_BAD_EXE_FORMAT);
+        }
 
         CloseHandle(process.hThread);
-        while (WaitForSingleObject(process.hProcess, 200) == WAIT_TIMEOUT)
+        DWORD waitResult = WAIT_TIMEOUT;
+        while ((waitResult = WaitForSingleObject(process.hProcess, 200)) == WAIT_TIMEOUT)
         {
             if (stopToken.stop_requested())
             {
@@ -109,10 +208,26 @@ namespace
                 break;
             }
         }
-        DWORD exitCode = 1;
-        GetExitCodeProcess(process.hProcess, &exitCode);
+        const DWORD waitError = waitResult == WAIT_FAILED ? GetLastError() : ERROR_SUCCESS;
+        DWORD exitCode = 0;
+        const BOOL hasExitCode = GetExitCodeProcess(process.hProcess, &exitCode);
+        const DWORD exitError = hasExitCode ? ERROR_SUCCESS : GetLastError();
         CloseHandle(process.hProcess);
-        return !stopToken.stop_requested() && exitCode == 0;
+        if (stopToken.stop_requested()) return failure(L"Instalação do Forge cancelada.");
+        if (waitResult == WAIT_FAILED || !hasExitCode)
+        {
+            return failure(L"Não foi possível consultar o resultado do Forge (erro Windows " +
+                           std::to_wstring(waitResult == WAIT_FAILED ? waitError : exitError) +
+                           L").");
+        }
+        if (exitCode != 0)
+        {
+            return failure(L"O instalador Forge terminou com código " +
+                           std::to_wstring(exitCode) + L".", true);
+        }
+        std::ofstream log(logPath, std::ios::binary | std::ios::app);
+        log << "\n[Eternal] Instalador Forge concluído com código 0.\n";
+        return {true, false, L"Instalador Forge concluído."};
     }
 
     bool isSafeRelativePath(const std::filesystem::path& path)
@@ -140,7 +255,11 @@ namespace
 
         const auto* entriesValue = child(&*manifest, "files");
         const auto* entries = entriesValue == nullptr ? nullptr : entriesValue->arrayValue();
-        if (entries == nullptr) return files;
+        if (entries == nullptr)
+        {
+            error = L"O manifesto privado não contém uma lista válida de arquivos.";
+            return files;
+        }
         for (const auto& entry : *entries)
         {
             const auto relativeText = text(child(&entry, "path"));
@@ -336,9 +455,55 @@ GameInstallationResult GameInstallationService::ensureInstalled(
             writeTextFile(gamePath / L"launcher_profiles.json", "{\"profiles\":{}}");
             report(81, L"Instalando Forge 47.4.10...");
             const auto java = dataPath / L"runtime" / L"bin" / L"java.exe";
-            if (!runForgeInstaller(java, forgeInstaller, gamePath, stopToken))
+            int attempt = 1;
+            auto forgeResult = runForgeInstaller(
+                java, forgeInstaller, gamePath, stopToken, attempt, false);
+            if (forgeResult.javaStartFailure && !stopToken.stop_requested())
             {
-                return {false, L"O instalador do Forge não concluiu a preparação.", 0};
+                report(82, L"Reparando o Java portátil para instalar o Forge...");
+                JavaRuntimeService runtime;
+                const auto repair = runtime.reinstall(stopToken,
+                    [&](int percent, std::wstring_view)
+                    {
+                        report(82 + percent * 7 / 100,
+                               L"Reparando o Java portátil para instalar o Forge...");
+                    });
+                if (!repair.success)
+                {
+                    std::ofstream log(gamePath / L"logs" / L"forge-installer.log",
+                                      std::ios::binary | std::ios::app);
+                    log << "[Eternal] Reparo do Java falhou: "
+                        << wideToUtf8(repair.message) << '\n';
+                    return {false, L"Não foi possível reparar o Java: " + repair.message +
+                                   L" Log: " +
+                                   (gamePath / L"logs" / L"forge-installer.log").wstring(), 0};
+                }
+                report(89, L"Tentando instalar o Forge com o Java reparado...");
+                forgeResult = runForgeInstaller(
+                    java, forgeInstaller, gamePath, stopToken, ++attempt, false);
+            }
+            const bool incompleteForge = forgeResult.success && !forgeInstallationReady(gamePath);
+            if (((!forgeResult.success && forgeResult.retryable) || incompleteForge) &&
+                !stopToken.stop_requested())
+            {
+                if (incompleteForge)
+                {
+                    std::ofstream log(gamePath / L"logs" / L"forge-installer.log",
+                                      std::ios::binary | std::ios::app);
+                    log << "[Eternal] Arquivos essenciais ausentes após a primeira tentativa.\n";
+                }
+                report(90, L"Repetindo a instalação Forge com rede alternativa...");
+                forgeResult = runForgeInstaller(
+                    java, forgeInstaller, gamePath, stopToken, ++attempt, true);
+            }
+            if (!forgeResult.success)
+            {
+                return {false, forgeResult.message, 0};
+            }
+            if (!forgeInstallationReady(gamePath))
+            {
+                return {false, L"O Forge terminou, mas faltam arquivos essenciais. Log: " +
+                               (gamePath / L"logs" / L"forge-installer.log").wstring(), 0};
             }
         }
 
@@ -354,6 +519,10 @@ GameInstallationResult GameInstallationService::ensureInstalled(
                        L"Sincronizando mods e configurações...");
             });
         if (!privateResult.success) return {false, privateResult.message, 0};
+        if (stopToken.stop_requested()) return {false, L"Instalação cancelada.", 0};
+        std::vector<std::filesystem::path> expectedMods;
+        for (const auto& file : files) expectedMods.push_back(file.destination);
+        removeObsoleteMods(gamePath / L"mods", expectedMods);
 
         appendForgeClasspath(forgeProfile, gamePath / L"libraries", plan.classpathEntries);
         std::sort(plan.classpathEntries.begin(), plan.classpathEntries.end());

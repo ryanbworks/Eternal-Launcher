@@ -52,6 +52,8 @@ add_executable(EternalLauncher WIN32
     src/services/IGameInstallationService.h
     src/services/GameInstallationService.cpp
     src/services/GameInstallationService.h
+    src/services/ModCleanup.cpp
+    src/services/ModCleanup.h
     src/services/MinecraftManifestService.cpp
     src/services/MinecraftManifestService.h
     src/services/VerifiedDownloader.cpp
@@ -66,6 +68,9 @@ add_executable(EternalLauncher WIN32
     src/services/MinecraftLauncherService.h
     src/services/MinecraftLaunchCommandBuilder.cpp
     src/services/MinecraftLaunchCommandBuilder.h
+    src/services/MicrosoftAuthService.cpp
+    src/services/MicrosoftAuthService.h
+    src/types/MinecraftIdentity.h
 )
 
 target_compile_features(EternalLauncher PRIVATE cxx_std_20)
@@ -97,6 +102,7 @@ if(BUILD_TESTING)
         src/services/MinecraftLauncherService.h
         src/services/MinecraftLaunchCommandBuilder.cpp
         src/services/MinecraftLaunchCommandBuilder.h
+        src/types/MinecraftIdentity.h
         src/services/IMinecraftLauncherService.h
         src/services/HttpDownloadClient.cpp
         src/services/HttpDownloadClient.h
@@ -117,6 +123,8 @@ if(BUILD_TESTING)
         src/config/LauncherConfig.h
         src/config/NicknameStore.cpp
         src/config/NicknameStore.h
+        src/services/ModCleanup.cpp
+        src/services/ModCleanup.h
     )
     target_compile_features(EternalLauncherTests PRIVATE cxx_std_20)
     target_compile_definitions(EternalLauncherTests PRIVATE

@@ -50,10 +50,9 @@ void HeroComponent::draw(Gdiplus::Graphics& graphics, const Gdiplus::RectF& boun
                            {bounds.X + 30.0F, bounds.Y + 160.0F, 500.0F, 28.0F},
                            14.0F, Gdiplus::FontStyleRegular, Theme::TextSecondary);
 
-    const std::array<std::wstring, 3> chips = {
+    const std::array<std::wstring, 2> chips = {
         L"MINECRAFT  " + std::wstring(LauncherConfig::MinecraftVersion),
-        L"FORGE  " + std::wstring(LauncherConfig::ForgeVersion),
-        L"37 MODS"
+        L"FORGE  " + std::wstring(LauncherConfig::ForgeVersion)
     };
     const std::array<float, 3> widths = {154.0F, 138.0F, 90.0F};
     float chipX = bounds.X + 28.0F;

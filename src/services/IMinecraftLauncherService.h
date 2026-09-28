@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <string>
 #include <string_view>
+#include "types/MinecraftIdentity.h"
 
 enum class MinecraftLaunchIssue
 {
@@ -32,6 +33,7 @@ public:
 
     [[nodiscard]] virtual MinecraftLaunchResult validateInstallation() const = 0;
     virtual MinecraftLaunchResult launch(std::wstring_view nickname) = 0;
+    virtual MinecraftLaunchResult launch(const MinecraftIdentity& identity) = 0;
     [[nodiscard]] virtual bool isGameRunning() const = 0;
     [[nodiscard]] virtual std::filesystem::path gameDirectory() const = 0;
 };

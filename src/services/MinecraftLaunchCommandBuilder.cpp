@@ -159,6 +159,14 @@ std::wstring MinecraftLaunchCommandBuilder::build(
     const std::filesystem::path& javaExecutable,
     const std::filesystem::path& gamePath) const
 {
+    return build(MinecraftIdentity{std::wstring(nickname)}, javaExecutable, gamePath);
+}
+
+std::wstring MinecraftLaunchCommandBuilder::build(
+    const MinecraftIdentity& identity,
+    const std::filesystem::path& javaExecutable,
+    const std::filesystem::path& gamePath) const
+{
     const auto libraries = gamePath / L"libraries";
     const auto natives = gamePath / L"natives";
     const auto assets = gamePath / L"assets";
@@ -222,7 +230,7 @@ std::wstring MinecraftLaunchCommandBuilder::build(
         buildClasspath(gamePath),
         L"cpw.mods.bootstraplauncher.BootstrapLauncher",
         L"--username",
-        std::wstring(nickname),
+        identity.name,
         L"--version",
         versionName,
         L"--gameDir",
@@ -232,15 +240,15 @@ std::wstring MinecraftLaunchCommandBuilder::build(
         L"--assetIndex",
         std::wstring(LauncherConfig::AssetIndex),
         L"--uuid",
-        createOfflineUuid(nickname),
+        identity.online() ? identity.uuid : createOfflineUuid(identity.name),
         L"--accessToken",
-        L"0",
+        identity.online() ? identity.accessToken : L"0",
         L"--clientId",
-        L"",
+        identity.online() ? identity.clientId : L"",
         L"--xuid",
-        L"",
+        identity.online() ? identity.xuid : L"",
         L"--userType",
-        L"legacy",
+        identity.online() ? L"msa" : L"legacy",
         L"--versionType",
         L"release",
         L"--launchTarget",

@@ -11,6 +11,7 @@
 #include "services/IJavaRuntimeService.h"
 #include "services/IGameInstallationService.h"
 #include "services/IMinecraftLauncherService.h"
+#include "services/MicrosoftAuthService.h"
 #include "types/LauncherState.h"
 
 #include <windows.h>
@@ -34,6 +35,8 @@ private:
     void createNicknameInput();
     void layoutNicknameInput() const;
     void handlePrimaryAction();
+    void beginPlay();
+    void startMicrosoftSignIn();
     void pollGameProcess();
     void showSettingsPlaceholder() const;
     void checkFileServerAsync();
@@ -70,8 +73,12 @@ private:
     std::jthread javaRuntimeThread_;
     std::unique_ptr<IGameInstallationService> gameInstallationService_;
     std::jthread gameInstallationThread_;
+    std::jthread microsoftAuthThread_;
     std::unique_ptr<IMinecraftLauncherService> minecraftLauncherService_;
     std::wstring fileServerManifest_;
     std::wstring pendingNickname_;
+    MinecraftIdentity microsoftIdentity_;
+    MinecraftIdentity pendingIdentity_;
+    bool originalMode_ = false;
     bool refreshBeforePlay_ = false;
 };

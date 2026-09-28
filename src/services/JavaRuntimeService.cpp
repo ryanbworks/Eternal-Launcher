@@ -60,7 +60,22 @@ JavaRuntimeResult JavaRuntimeService::ensureInstalled(
     std::stop_token stopToken,
     const JavaRuntimeProgressCallback& progress)
 {
-    if (isInstalled())
+    return install(stopToken, progress, false);
+}
+
+JavaRuntimeResult JavaRuntimeService::reinstall(
+    std::stop_token stopToken,
+    const JavaRuntimeProgressCallback& progress)
+{
+    return install(stopToken, progress, true);
+}
+
+JavaRuntimeResult JavaRuntimeService::install(
+    std::stop_token stopToken,
+    const JavaRuntimeProgressCallback& progress,
+    bool force)
+{
+    if (!force && isInstalled())
     {
         return {true, false, L"Java 17 portátil já está disponível."};
     }

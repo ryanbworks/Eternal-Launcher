@@ -2,10 +2,14 @@
 #include "config/NicknameStore.h"
 #include "services/JavaRuntimeService.h"
 #include "services/JavaRuntimePackage.h"
+#include "services/MinecraftLaunchCommandBuilder.h"
+#include "services/ModCleanup.h"
+#include "services/PortableJavaInstaller.h"
 #include "utils/JsonValue.h"
 #include "utils/UrlEncoding.h"
 
 #include <chrono>
+#include <fstream>
 #include <iostream>
 #include <thread>
 
@@ -81,6 +85,22 @@ int main(int argumentCount, char* arguments[])
         return 3;
     }
 
+    const auto runtimeFixture = std::filesystem::temp_directory_path() /
+        (L"eternal-java-test-" + std::to_wstring(
+            std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directories(runtimeFixture / L"bin");
+    std::ofstream(runtimeFixture / L"release") << "JAVA_VERSION=\"17.0.1\"\n";
+    std::ofstream(runtimeFixture / L"bin" / L"javaw.exe").put('w');
+    const bool acceptedWithoutJavaExe = PortableJavaInstaller::isJava17Runtime(runtimeFixture);
+    std::ofstream(runtimeFixture / L"bin" / L"java.exe").put('j');
+    const bool acceptedCompleteRuntime = PortableJavaInstaller::isJava17Runtime(runtimeFixture);
+    std::filesystem::remove_all(runtimeFixture);
+    if (acceptedWithoutJavaExe || !acceptedCompleteRuntime)
+    {
+        std::wcerr << L"Validação do Java portátil não conferiu java.exe.\n";
+        return 20;
+    }
+
     // Usa uma pasta temporária isolada para conferir a persistência local.
     const auto settingsDirectory = std::filesystem::temp_directory_path() /
         (L"eternal-nickname-test-" + std::to_wstring(
@@ -96,6 +116,30 @@ int main(int argumentCount, char* arguments[])
     }
     std::filesystem::remove(NicknameStore::filePath(settingsDirectory));
     std::filesystem::remove(settingsDirectory);
+
+    // Um mod retirado do manifesto desaparece da instância no próximo Jogar.
+    const auto modsDirectory = std::filesystem::temp_directory_path() /
+        (L"eternal-mod-cleanup-test-" + std::to_wstring(
+            std::chrono::steady_clock::now().time_since_epoch().count())) / L"mods";
+    std::filesystem::create_directories(modsDirectory);
+    std::ofstream(modsDirectory / L"atual.jar").put('a');
+    std::ofstream(modsDirectory / L"removido.jar").put('b');
+    std::ofstream(modsDirectory / L"download.jar.part").put('c');
+    removeObsoleteMods(modsDirectory, {modsDirectory / L"atual.jar"});
+    if (!std::filesystem::exists(modsDirectory / L"atual.jar") ||
+        std::filesystem::exists(modsDirectory / L"removido.jar") ||
+        !std::filesystem::exists(modsDirectory / L"download.jar.part"))
+    {
+        std::wcerr << L"Limpeza de mods não respeitou o manifesto.\n";
+        return 18;
+    }
+    removeObsoleteMods(modsDirectory, {});
+    if (std::filesystem::exists(modsDirectory / L"atual.jar"))
+    {
+        std::wcerr << L"Manifesto sem mods não removeu o JAR local.\n";
+        return 19;
+    }
+    std::filesystem::remove_all(modsDirectory.parent_path());
 
     // Garante que o parser escolha o ZIP portátil, não o instalador MSI que
     // aparece antes dele na resposta real do Adoptium.
@@ -127,6 +171,23 @@ int main(int argumentCount, char* arguments[])
     {
         std::wcerr << L"JSON de manifesto válido não foi interpretado corretamente.\n";
         return 5;
+    }
+
+    MinecraftLaunchCommandBuilder commandBuilder;
+    const auto offlineCommand = commandBuilder.build(
+        L"Amigo_123", L"C:\\java.exe", settingsDirectory);
+    const MinecraftIdentity original{L"Amigo_123",
+        L"0123456789abcdef0123456789abcdef", L"real-token", L"", L"client-id"};
+    const auto onlineCommand = commandBuilder.build(original, L"C:\\java.exe", settingsDirectory);
+    if (offlineCommand.find(L"--userType legacy") == std::wstring::npos ||
+        offlineCommand.find(L"--accessToken 0") == std::wstring::npos ||
+        onlineCommand.find(L"--userType msa") == std::wstring::npos ||
+        onlineCommand.find(L"--accessToken real-token") == std::wstring::npos ||
+        onlineCommand.find(original.uuid) == std::wstring::npos ||
+        onlineCommand.find(L"--clientId client-id") == std::wstring::npos)
+    {
+        std::wcerr << L"Identidade não foi passada corretamente ao Minecraft.\n";
+        return 17;
     }
 
     return 0;

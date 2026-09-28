@@ -22,6 +22,15 @@ O instalador oficial do Forge é conferido pelo SHA-1 definido na configuração
 executado com `--installClient` dentro da instância isolada. Depois disso, o
 launcher extrai as DLLs nativas, sincroniza o manifesto privado, grava
 `eternal-classpath.txt` e inicia o jogo com o nickname informado.
+Durante a instalação do Forge, a saída e os erros do instalador são gravados
+em `minecraft\logs\forge-installer.log`. Se o processo não iniciar ou terminar
+com erro, o launcher mostra o código correspondente e o caminho desse log.
+Se o instalador iniciar mas falhar, o launcher repete uma vez com a preferência
+de rede IPv4 desativada. As tentativas ficam no mesmo log.
+O Java portátil só é aceito quando contém `java.exe` e `javaw.exe`.
+Se o Windows não conseguir iniciar `java.exe` por erro de caminho ou de
+executável, o launcher baixa e reinstala o Java portátil e tenta o Forge
+novamente. O log registra cada tentativa e a presença dos caminhos necessários.
 
 O launcher não altera a lista Multiplayer. O IP do servidor de jogo é adicionado
 manualmente dentro do Minecraft, e as entradas existentes são preservadas.
@@ -37,6 +46,7 @@ manualmente dentro do Minecraft, e as entradas existentes são preservadas.
     ├── mods\
     ├── natives\*.dll
     ├── logs\launcher-console.log
+    ├── logs\forge-installer.log
     ├── eternal-classpath.txt
     └── versions\
         ├── 1.20.1\1.20.1.jar
@@ -45,13 +55,16 @@ manualmente dentro do Minecraft, e as entradas existentes são preservadas.
 
 Arquivos existentes com tamanho e hash corretos são reutilizados. Um download
 interrompido permanece em `.part` e não corrompe o destino anterior.
+Após validar o manifesto e concluir os downloads, o launcher remove da pasta
+`minecraft\mods` os arquivos `.jar` que não aparecem mais na lista do servidor.
 
 ## Identidade do jogador
 
-O nickname aceita de 3 a 16 caracteres (`A-Z`, `a-z`, `0-9` e `_`). O UUID é
-derivado de `OfflinePlayer:<nickname>`, compatível com servidores offline. Não
-há autenticação Microsoft ou concessão de licença; os usuários devem possuir o
-jogo.
+No modo de nickname local, o nome aceita de 3 a 16 caracteres (`A-Z`, `a-z`,
+`0-9` e `_`). O UUID é derivado de `OfflinePlayer:<nickname>`, compatível com
+servidores offline. No modo Original, o jogador entra com Microsoft, e o
+launcher usa o nome, UUID e token do perfil Minecraft: Java Edition. Consulte
+o README para configurar o Application ID exigido por esse modo.
 
 ## Validação e execução
 
@@ -81,7 +94,4 @@ ativo; feche o jogo depois do diagnóstico.
 ```cpp
 // TODO: carregar memória e servidor a partir de preferências persistidas.
 
-// TODO: remover com segurança mods que deixarem de existir no manifesto.
-
-// TODO: substituir a identidade offline por autenticação Microsoft, se desejado.
 ```

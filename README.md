@@ -9,6 +9,7 @@ instância isolada e inicia o jogo com o nickname informado.
 ## Funcionalidades atuais
 
 - Interface nativa para Windows com tema escuro e componentes separados.
+- Escolha entre nickname local e login original com conta Microsoft.
 - Campo de nickname com validação de 3 a 16 letras, números ou `_`.
 - Consulta assíncrona ao manifesto do servidor HTTP configurado.
 - Descoberta automática dos mods enviados à pasta `mods/` do servidor.
@@ -16,12 +17,43 @@ instância isolada e inicia o jogo com o nickname informado.
 - Instalação automática do cliente Minecraft, bibliotecas, assets e Forge.
 - Verificação de SHA-1/SHA-256 e publicação atômica dos downloads.
 - Sincronização dos arquivos descritos em `files` no manifesto privado.
+- Remoção de mods locais que saíram do manifesto após a sincronização.
+- Log do instalador Forge e recuperação automática de falhas do Java portátil.
 - Extração das bibliotecas nativas e geração de classpath controlado.
 - Inicialização real do Forge e log técnico em `logs/launcher-console.log`.
 - Instância isolada em `%APPDATA%\.eternal-launcher\minecraft`.
 
-> A identidade ainda é local/offline, sem autenticação Microsoft. Os jogadores
-> devem possuir o jogo e o servidor privado precisa aceitar sessões offline.
+No modo **Nickname local**, o servidor privado precisa aceitar sessões offline.
+No modo **Original**, o launcher obtém nome, UUID e token do perfil Minecraft:
+Java Edition da conta autenticada. A sessão fica apenas na memória e é solicitada
+novamente quando o launcher é reaberto.
+
+### Configurar login original
+
+O Application (client) ID público já está configurado em
+`src/config/LauncherConfig.h` e acompanha o executável compilado. Para usar
+outro registro sem recompilar, defina a variável de ambiente antes de abrir o
+launcher:
+
+```powershell
+$env:ETERNAL_LAUNCHER_MICROSOFT_CLIENT_ID = "SEU-APPLICATION-CLIENT-ID"
+./out/build/x64-debug/EternalLauncher.exe
+```
+
+O ID é público; nunca coloque um client secret no executável. Ao escolher
+**Original** e clicar em **Jogar**, abra a URL mostrada,
+digite o código e conclua o login no navegador. A conta precisa possuir um
+perfil Minecraft: Java Edition. A Microsoft/Minecraft também pode exigir
+autorização específica do registro do aplicativo; se o serviço responder
+`Invalid app registration` (HTTP 403), o login Microsoft e Xbox chegou ao
+Minecraft Services, mas o serviço recusou o Application ID. Mudar o ID no
+executável ou recompilar não concede essa autorização. O erro aponta para
+`https://aka.ms/AppRegInfo`. Um desenvolvedor com o mesmo erro relatou ter
+obtido aprovação da Mojang após enviar o Client ID pelo [formulário de registro
+de aplicativo](https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=v4j5cvGGr0GRqy180BHbR-ajEQ1td1ROpz00KtS8Gd5UNVpPTkVLNFVROVQxNkdRMEtXVjNQQjdXVC4u).
+A aprovação depende da análise da Microsoft/Mojang. Enquanto o registro não
+for autorizado, o modo Original não conseguirá iniciar uma sessão online; o
+modo de nickname local continua disponível.
 
 ## Primeiro uso
 
@@ -45,8 +77,6 @@ Downloads já válidos são reaproveitados. Arquivos incompletos usam a extensã
 
 - Notícias exibidas na tela principal.
 - Persistência das demais preferências.
-- Remoção automática de mods que saíram do manifesto.
-- Autenticação Microsoft e modo online.
 - Atualização automática do executável do launcher.
 - Tela funcional de configurações.
 
@@ -122,6 +152,5 @@ launcher. Na próxima abertura ele reaparece no campo. O valor fica em
 ## TODOs principais
 
 - Mover a URL HTTP e a memória para configurações persistidas.
-- Remover arquivos locais obsoletos com uma política segura.
-- Adicionar autenticação Microsoft, se desejado.
+- Estender a remoção de arquivos obsoletos para outros tipos além dos mods.
 - Implementar atualização assinada do próprio launcher.

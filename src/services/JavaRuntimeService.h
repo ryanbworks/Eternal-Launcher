@@ -12,7 +12,14 @@ public:
     JavaRuntimeResult ensureInstalled(
         std::stop_token stopToken,
         const JavaRuntimeProgressCallback& progress) override;
+    JavaRuntimeResult reinstall(
+        std::stop_token stopToken,
+        const JavaRuntimeProgressCallback& progress);
 
 private:
+    JavaRuntimeResult install(
+        std::stop_token stopToken,
+        const JavaRuntimeProgressCallback& progress,
+        bool force);
     [[nodiscard]] std::filesystem::path dataDirectory() const;
 };
