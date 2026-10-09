@@ -1,57 +1,41 @@
 #include "components/PlayerProfileComponent.h"
-
 #include "styles/Theme.h"
 #include "utils/DrawingUtils.h"
 
-void PlayerProfileComponent::draw(Gdiplus::Graphics& graphics, const Gdiplus::RectF& bounds,
-                                  bool original, std::wstring_view playerName) const
+void PlayerProfileComponent::draw(Gdiplus::Graphics& g,const Gdiplus::RectF& b,
+    bool original,std::wstring_view name,float offlineHover,float originalHover,int focus,bool enabled,float selection) const
 {
-    DrawingUtils::fillRoundedRectangle(graphics, bounds, 18.0F, Theme::Surface);
-    DrawingUtils::drawRoundedRectangle(graphics, bounds, 18.0F, Theme::Border);
-
-    DrawingUtils::drawText(graphics, L"PERFIL DO JOGADOR",
-                           {bounds.X + 24.0F, bounds.Y + 19.0F, 220.0F, 20.0F},
-                           10.0F, Gdiplus::FontStyleBold, Theme::TextMuted);
-    const auto offline = offlineTabBounds(bounds);
-    const auto microsoft = originalTabBounds(bounds);
-    DrawingUtils::fillRoundedRectangle(graphics, offline, 8.0F,
-        original ? Theme::SurfaceElevated : Theme::Border);
-    DrawingUtils::fillRoundedRectangle(graphics, microsoft, 8.0F,
-        original ? Theme::Border : Theme::SurfaceElevated);
-    DrawingUtils::drawText(graphics, L"Nickname local", offline, 11.0F,
-                           Gdiplus::FontStyleBold, Theme::TextPrimary);
-    DrawingUtils::drawText(graphics, L"Original", microsoft, 11.0F,
-                           Gdiplus::FontStyleBold, Theme::TextPrimary);
-
-    const auto input = inputBounds(bounds);
-    DrawingUtils::fillRoundedRectangle(graphics, input, 12.0F, Theme::SurfaceElevated);
-    DrawingUtils::drawRoundedRectangle(graphics, input, 12.0F, Theme::Border);
-    if (original)
-    {
-        DrawingUtils::drawText(graphics,
-            playerName.empty() ? L"Entrar com Microsoft ao clicar em Jogar"
-                               : std::wstring(L"Conectado: ") + std::wstring(playerName),
-            {input.X + 14.0F, input.Y + 11.0F, input.Width - 28.0F, 28.0F},
-            12.0F, Gdiplus::FontStyleBold, Theme::TextPrimary);
-    }
-
-    DrawingUtils::drawText(graphics, original ? L"Conta Minecraft: Java Edition original."
-                                              : L"Usado apenas para identificar você no jogo.",
-                           {bounds.X + 24.0F, bounds.Y + 137.0F, bounds.Width - 48.0F, 18.0F},
-                           10.0F, Gdiplus::FontStyleRegular, Theme::TextMuted);
+    DrawingUtils::drawText(g,L"Seu acesso",{b.X,b.Y,b.Width,30},22,Gdiplus::FontStyleBold,Theme::TextPrimary);
+    DrawingUtils::drawText(g,L"Escolha como entrar no mundo.",{b.X,b.Y+35,b.Width,22},12,Gdiplus::FontStyleRegular,Theme::TextSecondary);
+    DrawingUtils::fillRoundedRectangle(g,{b.X,b.Y+70,b.Width,40},Theme::ControlRadius,Theme::Background);
+    const auto first=offlineTabBounds(b),second=originalTabBounds(b);
+    DrawingUtils::fillRoundedRectangle(g,first,8,DrawingUtils::blend(Theme::Background,Theme::SurfaceElevated,offlineHover));
+    DrawingUtils::fillRoundedRectangle(g,second,8,DrawingUtils::blend(Theme::Background,Theme::SurfaceElevated,originalHover));
+    if(selection<0) selection=original ? 1.0F : 0.0F;
+    DrawingUtils::fillRoundedRectangle(g,{first.X+(second.X-first.X)*selection,first.Y,
+        first.Width+(second.Width-first.Width)*selection,first.Height},8,Theme::SurfaceHover);
+    const auto tab=[&](const Gdiplus::RectF& r,std::wstring_view label,bool selected,bool focused) {
+        DrawingUtils::drawText(g,label,r,12,Gdiplus::FontStyleBold,
+            enabled ? (selected ? Theme::AccentLight : Theme::TextSecondary) : Theme::TextMuted,
+            Gdiplus::StringAlignmentCenter,Gdiplus::StringAlignmentCenter);
+        if(focused) DrawingUtils::drawRoundedRectangle(g,r,8,Theme::AccentLight,2);
+    };
+    tab(first,L"Nickname local",!original,focus==1);
+    tab(second,L"Original",original,focus==2);
+    DrawingUtils::drawText(g,original ? L"Conta Microsoft" : L"Nickname",{b.X,b.Y+126,b.Width,21},12,Gdiplus::FontStyleBold,Theme::TextSecondary);
+    const auto input=inputBounds(b);
+    DrawingUtils::fillRoundedRectangle(g,input,Theme::ControlRadius,Theme::SurfaceElevated);
+    DrawingUtils::drawRoundedRectangle(g,input,Theme::ControlRadius,focus==3 ? Theme::AccentLight : Theme::Border,focus==3 ? 2.0F : 1.0F);
+    if(original) DrawingUtils::drawText(g,name.empty() ? L"Entrar ao clicar em Jogar" : std::wstring(name),
+        {input.X+14,input.Y,input.Width-28,input.Height},13,Gdiplus::FontStyleRegular,Theme::TextPrimary,
+        Gdiplus::StringAlignmentNear,Gdiplus::StringAlignmentCenter);
+    DrawingUtils::drawText(g,original ? L"Requer Minecraft: Java Edition." : L"3 a 16 letras, números ou _",
+        {b.X,b.Y+209,b.Width,20},11,Gdiplus::FontStyleRegular,Theme::TextMuted);
 }
-
-Gdiplus::RectF PlayerProfileComponent::offlineTabBounds(const Gdiplus::RectF& bounds) const
-{
-    return {bounds.X + 24.0F, bounds.Y + 46.0F, 158.0F, 27.0F};
+Gdiplus::RectF PlayerProfileComponent::offlineTabBounds(const Gdiplus::RectF& b) const {
+    return {b.X+4,b.Y+74,(b.Width-8)*0.56F,32};
 }
-
-Gdiplus::RectF PlayerProfileComponent::originalTabBounds(const Gdiplus::RectF& bounds) const
-{
-    return {bounds.X + 190.0F, bounds.Y + 46.0F, 158.0F, 27.0F};
+Gdiplus::RectF PlayerProfileComponent::originalTabBounds(const Gdiplus::RectF& b) const {
+    const auto first=offlineTabBounds(b); return {first.GetRight(),first.Y,(b.Width-8)*0.44F,32};
 }
-
-Gdiplus::RectF PlayerProfileComponent::inputBounds(const Gdiplus::RectF& bounds) const
-{
-    return {bounds.X + 24.0F, bounds.Y + 76.0F, bounds.Width - 48.0F, 50.0F};
-}
+Gdiplus::RectF PlayerProfileComponent::inputBounds(const Gdiplus::RectF& b) const {return {b.X,b.Y+153,b.Width,44};}

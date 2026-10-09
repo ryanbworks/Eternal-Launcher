@@ -1,0 +1,1 @@
+Origin: deterministic production GDI+ render from MainPage.cpp and SettingsPage.cpp using EternalLauncher.exe --render-preview, final RAM-slider build. Synthetic defaults 4 GB/4096 MiB, slider and 4/6/8 GB shortcuts, minimize on launch enabled; not a live window, user saved settings or gameplay.

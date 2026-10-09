@@ -21,7 +21,8 @@ threads próprias. Downloads nunca bloqueiam a thread da interface.
 - `PlayerProfileComponent`: nickname local.
 - `StatusPanelComponent`: instalação, arquivos privados e servidor.
 - `PlayPanelComponent`: estado atual e ação principal.
-- `ProgressComponent`: progresso de Java e da instância.
+- `ProgressComponent`: resumo de atividade e progresso do AutoUpdate.
+- `InstallationPanelComponent`: etapas, transferência atual e controles de recuperação da preparação.
 - `NewsPanelComponent`: conteúdo editorial ainda mockado.
 
 Os componentes apenas desenham dados recebidos. Eles não acessam rede nem disco.
@@ -35,21 +36,27 @@ Os componentes apenas desenham dados recebidos. Eles não acessam rede nem disco
 - `MinecraftManifestService`: converte manifestos oficiais em um plano explícito.
 - `VerifiedDownloader`: baixa em paralelo, usa `.part` e verifica hash/tamanho.
 - `GameInstallationService`: orquestra Mojang, Forge e arquivos privados.
+- `InstallationCoordinator`: consulta o manifesto, prepara Java/jogo e valida a instância em um worker; não inicia o Minecraft.
 - `MinecraftLaunchCommandBuilder`: monta módulos, classpath e argumentos.
 - `MinecraftLauncherService`: valida e acompanha o processo do jogo.
 - `IUpdateService`: fronteira futura para remoção de obsoletos e política de versão.
+- `LauncherUpdateService`: preparação e aplicação do AutoUpdate com backup/rollback.
+- `LauncherUpdateManifest`: versão numérica, assinatura RSA-PSS e validação do contrato.
+- `LauncherUpdateTransport`: WinHTTP assíncrono, cancelamento e limites do AutoUpdate.
 
 ### Utilitários
 
 - `JsonValue`: parser JSON mínimo usado nos manifestos.
 - `FileHash`: SHA-1 e SHA-256 com Windows CNG.
 - `ArchiveExtractor`: extração de ZIP/JAR usando o suporte do Windows.
+- `InstallationProcess`: espera cancelável compartilhada pela extração e pelo instalador Forge.
 - `DrawingUtils`: primitivas compartilhadas da interface.
 
 ## Fluxo atual
 
 ```text
 Abrir launcher
+  → conferir AutoUpdate assinado, aplicar e reabrir se houver versão nova
   → consultar manifesto privado e inspecionar a instalação local
   → aguardar o clique em Jogar
   → garantir Java 17 portátil
@@ -64,6 +71,9 @@ Abrir launcher
 ```
 
 ## Decisões importantes
+
+O [acompanhamento da instalação](ACOMPANHAMENTO_INSTALACAO.md) documenta o
+contrato compartilhado, métricas, mailbox, cancelamento e evidências de teste.
 
 - A instância em `%APPDATA%\.eternal-launcher\minecraft` não mistura mods com a
   `.minecraft` convencional.
@@ -85,5 +95,5 @@ Abrir launcher
 Configurações persistentes
   → política de atualização e remoção segura
   → autenticação Microsoft
-  → atualização assinada do launcher
+  → assinatura do manifesto de mods (AutoUpdate do launcher já implementado)
 ```

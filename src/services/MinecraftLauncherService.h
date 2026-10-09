@@ -1,6 +1,7 @@
 #pragma once
 
 #include "services/IMinecraftLauncherService.h"
+#include "config/LauncherSettings.h"
 
 #include <filesystem>
 #include <windows.h>
@@ -10,7 +11,7 @@
 class MinecraftLauncherService final : public IMinecraftLauncherService
 {
 public:
-    MinecraftLauncherService();
+    explicit MinecraftLauncherService(LauncherSettings settings = {});
     ~MinecraftLauncherService() override;
 
     [[nodiscard]] MinecraftLaunchResult validateInstallation() const override;
@@ -25,4 +26,5 @@ private:
     std::filesystem::path findJavaExecutable() const;
     HANDLE processHandle_ = nullptr;
     unsigned long processId_ = 0;
+    LauncherSettings settings_;
 };

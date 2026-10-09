@@ -20,6 +20,7 @@ struct MinecraftInstallPlanResult
     bool success = false;
     std::wstring message;
     MinecraftInstallPlan plan;
+    InstallationFailure failure = InstallationFailure::None;
 };
 
 // Interpreta os manifestos oficiais da Mojang e converte o perfil 1.20.1 em
@@ -28,5 +29,5 @@ class MinecraftManifestService
 {
 public:
     [[nodiscard]] MinecraftInstallPlanResult createPlan(
-        const std::filesystem::path& gameDirectory) const;
+        const std::filesystem::path& gameDirectory, std::stop_token stop = {}) const;
 };

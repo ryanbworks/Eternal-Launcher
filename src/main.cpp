@@ -6,6 +6,7 @@
 // aplicação ficam encapsulados para manter este arquivo propositalmente simples.
 int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand)
 {
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     LauncherApplication application(instance);
     return application.run(showCommand);
 }

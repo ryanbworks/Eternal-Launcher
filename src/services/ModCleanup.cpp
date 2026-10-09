@@ -18,7 +18,7 @@ namespace
 }
 
 void removeObsoleteMods(const std::filesystem::path& modsDirectory,
-                        const std::vector<std::filesystem::path>& expectedFiles)
+                        const std::vector<std::filesystem::path>& expectedFiles,std::stop_token stop)
 {
     if (!std::filesystem::exists(modsDirectory)) return;
     if (std::filesystem::is_symlink(modsDirectory) ||
@@ -38,6 +38,7 @@ void removeObsoleteMods(const std::filesystem::path& modsDirectory,
 
     for (const auto& entry : std::filesystem::directory_iterator(modsDirectory))
     {
+        if(stop.stop_requested()) return;
         if (entry.is_symlink() || !entry.is_regular_file() ||
             lower(entry.path().extension().wstring()) != L".jar") continue;
 
