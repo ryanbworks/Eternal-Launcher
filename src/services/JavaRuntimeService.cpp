@@ -60,14 +60,20 @@ JavaRuntimeResult JavaRuntimeService::ensureInstalled(
     std::stop_token stopToken,
     const JavaRuntimeProgressCallback& progress)
 {
-    return install(stopToken, progress, false);
+    auto result=install(stopToken, progress, false);
+    result.outcome=stopToken.stop_requested() ? InstallationOutcome::Cancelled : result.success ? InstallationOutcome::Success : InstallationOutcome::Failed;
+    if(result.outcome==InstallationOutcome::Cancelled) {result.success=false;result.message=L"Instalação do Java cancelada.";result.failure=InstallationFailure::None;}
+    return result;
 }
 
 JavaRuntimeResult JavaRuntimeService::reinstall(
     std::stop_token stopToken,
     const JavaRuntimeProgressCallback& progress)
 {
-    return install(stopToken, progress, true);
+    auto result=install(stopToken, progress, true);
+    result.outcome=stopToken.stop_requested() ? InstallationOutcome::Cancelled : result.success ? InstallationOutcome::Success : InstallationOutcome::Failed;
+    if(result.outcome==InstallationOutcome::Cancelled) {result.success=false;result.message=L"Instalação do Java cancelada.";result.failure=InstallationFailure::None;}
+    return result;
 }
 
 JavaRuntimeResult JavaRuntimeService::install(
@@ -77,76 +83,78 @@ JavaRuntimeResult JavaRuntimeService::install(
 {
     if (!force && isInstalled())
     {
+        if(progress) progress({InstallationStage::Java,InstallationActivity::Checking,InstallationStepState::Available,L"Java 17 já disponível."});
         return {true, false, L"Java 17 portátil já está disponível."};
     }
 
     const auto dataPath = dataDirectory();
     const auto downloadPath = dataPath / L"downloads" / L"temurin-17.zip.part";
-    const auto report = [&progress](int percent, std::wstring_view message)
+    const auto report = [&progress](InstallationActivity activity, std::wstring_view message)
     {
         if (progress)
         {
-            progress(percent, message);
+            progress({InstallationStage::Java,activity,InstallationStepState::Active,std::wstring(message)});
         }
     };
     try
     {
-        report(2, L"Consultando a versão portátil do Java 17...");
+        report(InstallationActivity::Checking, L"Consultando a versão portátil do Java 17...");
         HttpDownloadClient http;
-        const auto metadata = http.getText(LauncherConfig::JavaRuntimeMetadataUrl);
+        const auto metadata = http.getText(LauncherConfig::JavaRuntimeMetadataUrl,stopToken);
         if (!metadata.success)
         {
             return {false, false, L"Não foi possível consultar o Java 17: " +
-                                  metadata.errorMessage};
+                                  metadata.errorMessage,metadata.failure};
         }
 
         const auto package = JavaRuntimePackage::parse(metadata.content);
         if (!package)
         {
-            return {false, false, L"A resposta do provedor do Java é inválida."};
+            return {false, false, L"A resposta do provedor do Java é inválida.",InstallationFailure::Configuration};
         }
 
-        report(5, L"Baixando Java 17 portátil...");
+        report(InstallationActivity::Downloading, L"Baixando Java 17 portátil...");
         const auto download = http.downloadFile(
             package->url, downloadPath, stopToken,
             [&](std::uint64_t received, std::uint64_t total)
             {
                 const auto expected = total > 0 ? total : package->size;
-                const int percent = expected > 0
-                    ? 5 + static_cast<int>((received * 75) / expected)
-                    : 5;
-                report(std::min(percent, 80), L"Baixando Java 17 portátil...");
+                InstallationProgress value;
+                value.activity=InstallationActivity::Downloading;value.message=L"Baixando Java 17 portátil...";
+                value.receivedBytes=received;value.totalFiles=1;
+                if(expected) {value.totalBytes=expected;value.percent=std::min(99,static_cast<int>(static_cast<double>(received)*100/static_cast<double>(expected)));}
+                if(progress) progress(value);
             });
         if (!download.success)
         {
-            return {false, false, download.errorMessage};
+            return {false, false, download.errorMessage,download.failure};
         }
 
-        report(82, L"Verificando a integridade do Java...");
-        if (!package->matchesFile(downloadPath))
+        report(InstallationActivity::Verifying, L"Verificando a integridade do Java...");
+        if (!package->matchesFile(downloadPath,stopToken))
         {
             std::filesystem::remove(downloadPath);
-            return {false, false, L"O SHA-256 do Java baixado não confere."};
+            return {false, false, L"O SHA-256 do Java baixado não confere.",InstallationFailure::Integrity};
         }
 
-        report(88, L"Extraindo o Java portátil...");
+        report(InstallationActivity::Extracting, L"Extraindo o Java portátil...");
         const auto installation = PortableJavaInstaller::install(
             downloadPath, dataPath, stopToken);
         std::error_code ignored;
         std::filesystem::remove(downloadPath, ignored);
         if (!installation.success)
         {
-            return {false, false, installation.message};
+            return {false, false, installation.message,InstallationFailure::Process};
         }
 
-        report(100, L"Java 17 portátil instalado.");
+        if(progress) progress({InstallationStage::Java,InstallationActivity::Publishing,InstallationStepState::Complete,L"Java 17 portátil instalado."});
         return {true, true, installation.message};
     }
     catch (const std::exception& error)
     {
         std::error_code ignored;
         std::filesystem::remove(downloadPath, ignored);
-        return {false, false, L"Falha ao preparar o Java: " + utf8ToWide(error.what())};
+        return {false, false, L"Falha ao preparar o Java: " + utf8ToWide(error.what()),InstallationFailure::Disk};
     }
 }
 

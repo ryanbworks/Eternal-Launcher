@@ -1,4 +1,5 @@
 #include "services/GameInstallationService.h"
+#include "utils/InstallationProcess.h"
 
 #include "config/LauncherConfig.h"
 #include "services/MinecraftManifestService.h"
@@ -129,6 +130,8 @@ namespace
                     std::move(reason) + L" Log: " + logPath.wstring(), javaStartFailure};
         };
 
+        if(stopToken.stop_requested()) return failure(L"Instalação do Forge cancelada.");
+
         if (!std::filesystem::is_regular_file(java))
         {
             return failure(L"O java.exe portátil não existe: " + java.wstring(), false, true);
@@ -198,32 +201,19 @@ namespace
         }
 
         CloseHandle(process.hThread);
-        DWORD waitResult = WAIT_TIMEOUT;
-        while ((waitResult = WaitForSingleObject(process.hProcess, 200)) == WAIT_TIMEOUT)
-        {
-            if (stopToken.stop_requested())
-            {
-                TerminateProcess(process.hProcess, ERROR_CANCELLED);
-                WaitForSingleObject(process.hProcess, INFINITE);
-                break;
-            }
-        }
-        const DWORD waitError = waitResult == WAIT_FAILED ? GetLastError() : ERROR_SUCCESS;
-        DWORD exitCode = 0;
-        const BOOL hasExitCode = GetExitCodeProcess(process.hProcess, &exitCode);
-        const DWORD exitError = hasExitCode ? ERROR_SUCCESS : GetLastError();
+        const auto outcome=waitForInstallationProcess(process.hProcess,stopToken);
         CloseHandle(process.hProcess);
-        if (stopToken.stop_requested()) return failure(L"Instalação do Forge cancelada.");
-        if (waitResult == WAIT_FAILED || !hasExitCode)
+        if (outcome.cancelled) return failure(L"Instalação do Forge cancelada.");
+        if (outcome.error)
         {
             return failure(L"Não foi possível consultar o resultado do Forge (erro Windows " +
-                           std::to_wstring(waitResult == WAIT_FAILED ? waitError : exitError) +
+                           std::to_wstring(outcome.error) +
                            L").");
         }
-        if (exitCode != 0)
+        if (outcome.exitCode != 0)
         {
             return failure(L"O instalador Forge terminou com código " +
-                           std::to_wstring(exitCode) + L".", true);
+                           std::to_wstring(outcome.exitCode) + L".", true);
         }
         std::ofstream log(logPath, std::ios::binary | std::ios::app);
         log << "\n[Eternal] Instalador Forge concluído com código 0.\n";
@@ -376,25 +366,47 @@ namespace
 }
 
 GameInstallationResult GameInstallationService::ensureInstalled(
+    std::wstring_view privateManifest,std::stop_token stopToken,const GameInstallationProgressCallback& progress)
+{
+    auto result=install(privateManifest,stopToken,progress);
+    result.outcome=stopToken.stop_requested() ? InstallationOutcome::Cancelled : result.success ? InstallationOutcome::Success : InstallationOutcome::Failed;
+    if(result.outcome==InstallationOutcome::Cancelled) {result.success=false;result.message=L"Instalação cancelada.";result.failure=InstallationFailure::None;}
+    return result;
+}
+
+GameInstallationResult GameInstallationService::install(
     std::wstring_view privateManifest,
     std::stop_token stopToken,
     const GameInstallationProgressCallback& progress)
 {
-    const auto report = [&progress](int percent, std::wstring_view message)
+    const auto report = [&progress](InstallationStage stage,InstallationActivity activity,std::wstring_view message,
+        InstallationStepState state=InstallationStepState::Active)
     {
-        if (progress) progress(percent, message);
+        if (progress) progress({stage,activity,state,std::wstring(message)});
+    };
+    const auto transfer=[&](InstallationStage stage,std::wstring_view label) {
+        return [&,stage,label](const InstallationProgress& value) {
+            auto current=value;current.stage=stage;
+            if(value.activity==InstallationActivity::Downloading) current.message=label;
+            if(progress) progress(current);
+        };
     };
 
     try
     {
         const auto gamePath = gameDirectory();
         const auto dataPath = dataDirectory();
+        std::wstring settingsError;
+        if (!LauncherSettingsStore::validate(settings_, settingsError)) return {false, settingsError, 0,InstallationFailure::Configuration};
+        if(stopToken.stop_requested()) return {false,L"Instalação cancelada.",0};
         std::filesystem::create_directories(gamePath);
+        writeTextFile(gamePath / L"eternal-instance.json", "{\"launcher\":\"Eternal\",\"schemaVersion\":1}\n");
 
-        report(2, L"Consultando os manifestos oficiais do Minecraft...");
+        report(InstallationStage::Minecraft,InstallationActivity::Checking, L"Consultando os manifestos oficiais do Minecraft...");
         MinecraftManifestService manifests;
-        auto planResult = manifests.createPlan(gamePath);
-        if (!planResult.success) return {false, planResult.message, 0};
+        auto planResult = manifests.createPlan(gamePath,stopToken);
+        if (!planResult.success) return {false, planResult.message, 0,planResult.failure};
+        if(stopToken.stop_requested()) return {false,L"Instalação cancelada.",0};
         auto& plan = planResult.plan;
 
         writeTextFile(gamePath / L"versions" / L"1.20.1" / L"1.20.1.json",
@@ -402,20 +414,15 @@ GameInstallationResult GameInstallationService::ensureInstalled(
         writeTextFile(gamePath / L"assets" / L"indexes" / L"5.json",
                       plan.assetIndexMetadata);
 
-        report(5, L"Baixando Minecraft, bibliotecas e assets...");
         VerifiedDownloader downloader;
         const auto baseDownload = downloader.downloadAll(
-            plan.downloads, stopToken,
-            [&](std::uint64_t completed, std::uint64_t total)
-            {
-                const int value = total > 0
-                    ? 5 + static_cast<int>(completed * 65 / total)
-                    : 5;
-                report(std::min(value, 70), L"Baixando Minecraft, bibliotecas e assets...");
-            });
-        if (!baseDownload.success) return {false, baseDownload.message, 0};
+            plan.downloads, stopToken,transfer(InstallationStage::Minecraft,L"Baixando Minecraft, bibliotecas e assets..."));
+        if (!baseDownload.success) return {false, baseDownload.message, 0,baseDownload.failure};
+        report(InstallationStage::Minecraft,InstallationActivity::Verifying,L"Minecraft e assets verificados.",
+            baseDownload.allAvailable ? InstallationStepState::Available : InstallationStepState::Complete);
 
-        report(72, L"Preparando bibliotecas nativas...");
+        report(InstallationStage::Natives,InstallationActivity::Extracting, L"Preparando bibliotecas nativas...");
+        if(stopToken.stop_requested()) return {false,L"Instalação cancelada.",0};
         const auto natives = gamePath / L"natives";
         std::error_code ignored;
         std::filesystem::remove_all(natives, ignored);
@@ -424,49 +431,48 @@ GameInstallationResult GameInstallationService::ensureInstalled(
         {
             if (!ArchiveExtractor::extract(archive, natives, stopToken))
             {
-                return {false, L"Não foi possível extrair uma biblioteca nativa.", 0};
+                return {false, L"Não foi possível extrair uma biblioteca nativa.", 0,InstallationFailure::Process};
             }
         }
         if (!copyNativeLibrariesToRoot(natives))
         {
-            return {false, L"Nenhuma biblioteca nativa compatível foi preparada.", 0};
+            return {false, L"Nenhuma biblioteca nativa compatível foi preparada.", 0,InstallationFailure::Integrity};
         }
+        report(InstallationStage::Natives,InstallationActivity::Extracting,L"Bibliotecas nativas preparadas.",InstallationStepState::Complete);
 
         const auto forgeInstaller = dataPath / L"downloads" /
                                     L"forge-1.20.1-47.4.10-installer.jar";
-        report(75, L"Baixando o instalador oficial do Forge...");
+        report(InstallationStage::Forge,InstallationActivity::Checking, L"Conferindo o Forge...");
         const std::vector<VerifiedDownload> forgeDownload = {{
             std::wstring(LauncherConfig::ForgeInstallerUrl), forgeInstaller,
             std::string(LauncherConfig::ForgeInstallerSha1), 6078070,
             FileHashAlgorithm::Sha1}};
         const auto forgeFileResult = downloader.downloadAll(
-            forgeDownload, stopToken,
-            [&](std::uint64_t completed, std::uint64_t total)
-            {
-                report(total > 0 ? 75 + static_cast<int>(completed * 5 / total) : 75,
-                       L"Baixando o instalador oficial do Forge...");
-            }, 1);
-        if (!forgeFileResult.success) return {false, forgeFileResult.message, 0};
+            forgeDownload, stopToken,transfer(InstallationStage::Forge,L"Baixando o instalador oficial do Forge..."), 1);
+        if (!forgeFileResult.success) return {false, forgeFileResult.message, 0,forgeFileResult.failure};
 
         const auto forgeProfile = gamePath / L"versions" / LauncherConfig::VersionProfile /
                                   L"1.20.1-forge-47.4.10.json";
-        if (!forgeInstallationReady(gamePath))
+        const bool forgeAvailable=forgeInstallationReady(gamePath);
+        if (!forgeAvailable)
         {
             writeTextFile(gamePath / L"launcher_profiles.json", "{\"profiles\":{}}");
-            report(81, L"Instalando Forge 47.4.10...");
-            const auto java = dataPath / L"runtime" / L"bin" / L"java.exe";
+            report(InstallationStage::Forge,InstallationActivity::Installing, L"Executando instalador Forge 47.4.10...");
+            const auto java = settings_.javaExecutable.empty() ? dataPath / L"runtime" / L"bin" / L"java.exe"
+                : settings_.javaExecutable.parent_path() / L"java.exe";
             int attempt = 1;
             auto forgeResult = runForgeInstaller(
                 java, forgeInstaller, gamePath, stopToken, attempt, false);
-            if (forgeResult.javaStartFailure && !stopToken.stop_requested())
+            if (forgeResult.javaStartFailure && settings_.javaExecutable.empty() && !stopToken.stop_requested())
             {
-                report(82, L"Reparando o Java portátil para instalar o Forge...");
+                report(InstallationStage::Forge,InstallationActivity::Installing, L"Reparando o Java portátil para instalar o Forge...");
                 JavaRuntimeService runtime;
                 const auto repair = runtime.reinstall(stopToken,
-                    [&](int percent, std::wstring_view)
+                    [&](const InstallationProgress& value)
                     {
-                        report(82 + percent * 7 / 100,
-                               L"Reparando o Java portátil para instalar o Forge...");
+                        auto current=value;current.stage=InstallationStage::Forge;current.state=InstallationStepState::Active;
+                        current.transferId=1;current.message=L"Reparando Java: "+value.message;
+                        if(progress) progress(current);
                     });
                 if (!repair.success)
                 {
@@ -476,9 +482,9 @@ GameInstallationResult GameInstallationService::ensureInstalled(
                         << wideToUtf8(repair.message) << '\n';
                     return {false, L"Não foi possível reparar o Java: " + repair.message +
                                    L" Log: " +
-                                   (gamePath / L"logs" / L"forge-installer.log").wstring(), 0};
+                                   (gamePath / L"logs" / L"forge-installer.log").wstring(), 0,repair.failure};
                 }
-                report(89, L"Tentando instalar o Forge com o Java reparado...");
+                report(InstallationStage::Forge,InstallationActivity::Installing, L"Tentando instalar o Forge com o Java reparado...");
                 forgeResult = runForgeInstaller(
                     java, forgeInstaller, gamePath, stopToken, ++attempt, false);
             }
@@ -492,37 +498,39 @@ GameInstallationResult GameInstallationService::ensureInstalled(
                                       std::ios::binary | std::ios::app);
                     log << "[Eternal] Arquivos essenciais ausentes após a primeira tentativa.\n";
                 }
-                report(90, L"Repetindo a instalação Forge com rede alternativa...");
+                report(InstallationStage::Forge,InstallationActivity::Installing, L"Repetindo a instalação Forge com rede alternativa...");
                 forgeResult = runForgeInstaller(
                     java, forgeInstaller, gamePath, stopToken, ++attempt, true);
             }
             if (!forgeResult.success)
             {
-                return {false, forgeResult.message, 0};
+                return {false, forgeResult.message, 0,InstallationFailure::Process};
             }
             if (!forgeInstallationReady(gamePath))
             {
                 return {false, L"O Forge terminou, mas faltam arquivos essenciais. Log: " +
-                               (gamePath / L"logs" / L"forge-installer.log").wstring(), 0};
+                               (gamePath / L"logs" / L"forge-installer.log").wstring(), 0,InstallationFailure::Process};
             }
         }
+        report(InstallationStage::Forge,InstallationActivity::Verifying,L"Forge verificado.",
+            forgeAvailable ? InstallationStepState::Available : InstallationStepState::Complete);
 
-        report(94, L"Sincronizando mods e configurações...");
+        report(InstallationStage::Mods,InstallationActivity::Checking, L"Sincronizando mods e configurações...");
         std::wstring manifestError;
         const auto files = privateFiles(privateManifest, gamePath, manifestError);
-        if (!manifestError.empty()) return {false, manifestError, 0};
+        if (!manifestError.empty()) return {false, manifestError, 0,InstallationFailure::Configuration};
         const auto privateResult = downloader.downloadAll(
-            files, stopToken,
-            [&](std::uint64_t completed, std::uint64_t total)
-            {
-                report(total > 0 ? 94 + static_cast<int>(completed * 5 / total) : 99,
-                       L"Sincronizando mods e configurações...");
-            });
-        if (!privateResult.success) return {false, privateResult.message, 0};
+            files, stopToken,transfer(InstallationStage::Mods,L"Baixando mods e configurações..."));
+        if (!privateResult.success) return {false, privateResult.message, 0,privateResult.failure};
         if (stopToken.stop_requested()) return {false, L"Instalação cancelada.", 0};
         std::vector<std::filesystem::path> expectedMods;
         for (const auto& file : files) expectedMods.push_back(file.destination);
-        removeObsoleteMods(gamePath / L"mods", expectedMods);
+        removeObsoleteMods(gamePath / L"mods", expectedMods,stopToken);
+        if(stopToken.stop_requested()) return {false,L"Instalação cancelada.",0};
+        report(InstallationStage::Mods,InstallationActivity::Publishing,L"Mods e configurações sincronizados.",
+            privateResult.allAvailable ? InstallationStepState::Available : InstallationStepState::Complete);
+        if(stopToken.stop_requested()) return {false,L"Instalação cancelada.",0};
+        report(InstallationStage::Validation,InstallationActivity::Publishing,L"Preparando metadados finais...");
 
         appendForgeClasspath(forgeProfile, gamePath / L"libraries", plan.classpathEntries);
         std::sort(plan.classpathEntries.begin(), plan.classpathEntries.end());
@@ -534,14 +542,14 @@ GameInstallationResult GameInstallationService::ensureInstalled(
         {
             classpath << wideToUtf8(entry.wstring()) << '\n';
         }
-        if (!classpath) return {false, L"Não foi possível salvar o classpath do jogo.", 0};
+        if (!classpath) return {false, L"Não foi possível salvar o classpath do jogo.", 0,InstallationFailure::Disk};
 
-        report(100, L"Minecraft 1.20.1 com Forge 47.4.10 está pronto.");
+        report(InstallationStage::Validation,InstallationActivity::Verifying,L"Conferindo a instalação final...");
         return {true, L"Instalação concluída e verificada.", files.size()};
     }
     catch (const std::exception& error)
     {
-        return {false, L"Falha durante a instalação: " + utf8ToWide(error.what()), 0};
+        return {false, L"Falha durante a instalação: " + utf8ToWide(error.what()), 0,InstallationFailure::Disk};
     }
 }
 
@@ -555,5 +563,5 @@ std::filesystem::path GameInstallationService::dataDirectory() const
 
 std::filesystem::path GameInstallationService::gameDirectory() const
 {
-    return dataDirectory() / LauncherConfig::GameDirectoryName;
+    return LauncherSettingsStore::effectiveGameDirectory(settings_);
 }

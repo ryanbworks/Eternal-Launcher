@@ -1,48 +1,90 @@
 #include "components/HeaderComponent.h"
-
 #include "config/LauncherConfig.h"
 #include "styles/Theme.h"
 #include "utils/DrawingUtils.h"
-
+#include <cmath>
+#include <cstring>
 #include <string>
+#include <windows.h>
 
-void HeaderComponent::draw(Gdiplus::Graphics& graphics, float width) const
+HeaderComponent::HeaderComponent()
 {
-    const Gdiplus::RectF logoBounds(32.0F, 24.0F, 52.0F, 52.0F);
-    auto logoPath = DrawingUtils::createRoundedPath(logoBounds, 15.0F);
-    Gdiplus::LinearGradientBrush logoBrush(
-        logoBounds, Theme::AccentLight, Theme::Accent, Gdiplus::LinearGradientModeForwardDiagonal);
-    graphics.FillPath(&logoBrush, logoPath.get());
-
-    // A letra estilizada funciona como marca provisória sem depender de um bitmap.
-    DrawingUtils::drawText(graphics, L"E", logoBounds, 27.0F, Gdiplus::FontStyleBold,
-                           Theme::TextPrimary, Gdiplus::StringAlignmentCenter,
-                           Gdiplus::StringAlignmentCenter);
-
-    DrawingUtils::drawText(graphics, L"ETERNAL", {100.0F, 25.0F, 250.0F, 30.0F},
-                           24.0F, Gdiplus::FontStyleBold, Theme::TextPrimary);
-    DrawingUtils::drawText(graphics, L"PRIVATE MODDED EXPERIENCE", {101.0F, 56.0F, 300.0F, 20.0F},
-                           10.0F, Gdiplus::FontStyleBold, Theme::TextMuted);
-
-    const std::wstring versionText = L"VERSÃO  " + std::wstring(LauncherConfig::LauncherVersion);
-    const Gdiplus::RectF versionBounds(width - 230.0F, 31.0F, 138.0F, 36.0F);
-    DrawingUtils::fillRoundedRectangle(graphics, versionBounds, 18.0F, Theme::Surface);
-    DrawingUtils::drawRoundedRectangle(graphics, versionBounds, 18.0F, Theme::Border);
-    DrawingUtils::drawText(graphics, versionText, versionBounds, 10.0F, Gdiplus::FontStyleBold,
-                           Theme::TextSecondary, Gdiplus::StringAlignmentCenter,
-                           Gdiplus::StringAlignmentCenter);
-
-    const auto settings = settingsBounds(width);
-    DrawingUtils::fillRoundedRectangle(graphics, settings, 18.0F, Theme::Surface);
-    DrawingUtils::drawRoundedRectangle(graphics, settings, 18.0F, Theme::Border);
-
-    // Engrenagem minimalista: círculos concêntricos preservam legibilidade em qualquer DPI.
-    Gdiplus::Pen gearPen(Theme::TextSecondary, 2.0F);
-    graphics.DrawEllipse(&gearPen, settings.X + 11.0F, settings.Y + 11.0F, 14.0F, 14.0F);
-    graphics.DrawEllipse(&gearPen, settings.X + 16.0F, settings.Y + 16.0F, 4.0F, 4.0F);
+    loadLogo();
 }
 
-Gdiplus::RectF HeaderComponent::settingsBounds(float width) const
+HeaderComponent::~HeaderComponent()
 {
-    return {width - 76.0F, 31.0F, 36.0F, 36.0F};
+    logo_.reset();
+    if (logoStream_) logoStream_->Release();
 }
+
+void HeaderComponent::loadLogo()
+{
+    const auto resource = FindResourceW(nullptr, MAKEINTRESOURCEW(105), RT_RCDATA);
+    if (!resource) return;
+    const auto loaded = LoadResource(nullptr, resource);
+    const auto data = loaded ? LockResource(loaded) : nullptr;
+    const auto size = loaded ? SizeofResource(nullptr, resource) : 0;
+    if (!data || !size) return;
+
+    const auto memory = GlobalAlloc(GMEM_MOVEABLE, size);
+    if (!memory) return;
+    const auto target = GlobalLock(memory);
+    if (!target) {
+        GlobalFree(memory);
+        return;
+    }
+    std::memcpy(target, data, size);
+    GlobalUnlock(memory);
+
+    IStream* stream = nullptr;
+    if (FAILED(CreateStreamOnHGlobal(memory, TRUE, &stream))) {
+        GlobalFree(memory);
+        return;
+    }
+    auto bitmap = std::unique_ptr<Gdiplus::Bitmap>(Gdiplus::Bitmap::FromStream(stream));
+    if (!bitmap || bitmap->GetLastStatus() != Gdiplus::Ok) {
+        if (bitmap) bitmap.reset();
+        stream->Release();
+        return;
+    }
+    logoStream_ = stream;
+    logo_ = std::move(bitmap);
+}
+
+void HeaderComponent::draw(Gdiplus::Graphics& g, float width, float hover, bool focused, bool showSettings) const
+{
+    if (logo_) {
+        DrawingUtils::drawCachedImage(g,*logo_,scaledLogo_,{35,24,46,46},
+            {0,0,static_cast<float>(logo_->GetWidth()),static_cast<float>(logo_->GetHeight())});
+    } else {
+        DrawingUtils::drawLogo(g, {36, 25, 43, 43}, Theme::Accent);
+    }
+    DrawingUtils::drawDisplayText(g,L"eternal",{92,22,145,38},26,Theme::TextPrimary);
+    DrawingUtils::drawText(g,L"LAUNCHER",{94,59,140,18},10,Gdiplus::FontStyleBold,Theme::TextMuted);
+    Gdiplus::Pen rule(Theme::Border);
+    g.DrawLine(&rule,248.0F,33.0F,248.0F,66.0F);
+    DrawingUtils::drawText(g,L"Minecraft",{271,34,150,28},15,Gdiplus::FontStyleBold,Theme::TextPrimary);
+    DrawingUtils::drawText(g,L"Java Edition",{384,37,150,22},12,Gdiplus::FontStyleRegular,Theme::TextMuted);
+    DrawingUtils::drawText(g,L"v" + std::wstring(LauncherConfig::LauncherVersion),
+        {width-238,37,133,22},12,Gdiplus::FontStyleRegular,Theme::TextMuted,Gdiplus::StringAlignmentFar);
+    if (showSettings) {
+    const auto b = settingsBounds(width);
+    DrawingUtils::fillRoundedRectangle(g,b,Theme::ControlRadius,
+        DrawingUtils::blend(Theme::Background,Theme::SurfaceHover,hover));
+    const float cx = b.X + b.Width/2, cy = b.Y + b.Height/2;
+    const auto gearState=g.Save();
+    g.TranslateTransform(cx,cy);g.RotateTransform(60*hover);g.TranslateTransform(-cx,-cy);
+    Gdiplus::Pen gear(Theme::TextSecondary,1.7F);
+    g.DrawEllipse(&gear,cx-7,cy-7,14.0F,14.0F);
+    g.DrawEllipse(&gear,cx-2.5F,cy-2.5F,5.0F,5.0F);
+    for(int i=0;i<8;++i) {
+        const float a = static_cast<float>(i)*3.14159265F/4;
+        g.DrawLine(&gear,cx+std::cos(a)*7,cy+std::sin(a)*7,cx+std::cos(a)*10,cy+std::sin(a)*10);
+    }
+    g.Restore(gearState);
+    if(focused) DrawingUtils::drawRoundedRectangle(g,b,Theme::ControlRadius,Theme::AccentLight,2);
+    }
+    g.DrawLine(&rule,36.0F,88.0F,width-36,88.0F);
+}
+Gdiplus::RectF HeaderComponent::settingsBounds(float width) const { return {width-80,28,44,44}; }

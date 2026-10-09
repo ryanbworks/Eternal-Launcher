@@ -11,7 +11,7 @@ class HttpFileService final : public IFileServerService
 public:
     explicit HttpFileService(std::wstring baseUrl);
 
-    FileServerManifestResponse fetchManifest() override;
+    FileServerManifestResponse fetchManifest(std::stop_token stop = {}) override;
 
 private:
     std::wstring baseUrl_;

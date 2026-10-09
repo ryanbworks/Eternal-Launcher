@@ -128,7 +128,7 @@ std::optional<JavaRuntimePackage> JavaRuntimePackage::parse(std::string_view met
     return JavaRuntimePackage{utf8ToWide(*link), *checksum, jsonUnsigned(object, "size")};
 }
 
-bool JavaRuntimePackage::matchesFile(const std::filesystem::path& file) const
+bool JavaRuntimePackage::matchesFile(const std::filesystem::path& file, std::stop_token stop) const
 {
-    return FileHash::sha256(file) == sha256;
+    return FileHash::sha256(file,stop) == sha256;
 }

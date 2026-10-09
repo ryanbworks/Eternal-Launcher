@@ -90,7 +90,7 @@ namespace
         const std::wstring host(parts.lpszHostName, parts.dwHostNameLength);
         std::wstring path(parts.lpszUrlPath, parts.dwUrlPathLength);
         if (parts.dwExtraInfoLength) path.append(parts.lpszExtraInfo, parts.dwExtraInfoLength);
-        Handle session(WinHttpOpen(L"EternalLauncher/0.1", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+        Handle session(WinHttpOpen(ETERNAL_USER_AGENT, WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
                                   WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
         if (!session.value) return std::nullopt;
         WinHttpSetTimeouts(session.value, 5000, 5000, 10000, 15000);

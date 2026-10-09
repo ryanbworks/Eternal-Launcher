@@ -4,22 +4,20 @@
 #include <stop_token>
 #include <string>
 #include <string_view>
+#include "types/InstallationProgress.h"
 
-struct GameInstallationProgress
-{
-    int percent = 0;
-    std::wstring message;
-};
+using GameInstallationProgress = InstallationProgress;
 
 struct GameInstallationResult
 {
     bool success = false;
     std::wstring message;
     std::size_t synchronizedFiles = 0;
+    InstallationFailure failure = InstallationFailure::None;
+    InstallationOutcome outcome = InstallationOutcome::Failed;
 };
 
-using GameInstallationProgressCallback =
-    std::function<void(int percent, std::wstring_view message)>;
+using GameInstallationProgressCallback = InstallationProgressCallback;
 
 // Contrato do instalador completo da instância Minecraft mantida pelo launcher.
 class IGameInstallationService

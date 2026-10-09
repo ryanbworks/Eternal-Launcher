@@ -62,6 +62,11 @@ PortableJavaInstallResult PortableJavaInstaller::install(
         return {false, L"O pacote extraído não contém um Java 17 válido."};
     }
 
+    if(stopToken.stop_requested()) {
+        std::filesystem::remove_all(staging,ignored);
+        return {false,L"Instalação do Java cancelada."};
+    }
+
     std::filesystem::remove_all(backup, ignored);
     if (std::filesystem::exists(runtime))
     {

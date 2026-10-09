@@ -6,6 +6,7 @@
 #include <stop_token>
 #include <string>
 #include <vector>
+#include "types/InstallationProgress.h"
 
 enum class FileHashAlgorithm
 {
@@ -26,10 +27,11 @@ struct VerifiedDownloadResult
 {
     bool success = false;
     std::wstring message;
+    InstallationFailure failure = InstallationFailure::None;
+    bool allAvailable = false;
 };
 
-using VerifiedDownloadProgress =
-    std::function<void(std::uint64_t completedBytes, std::uint64_t totalBytes)>;
+using VerifiedDownloadProgress = InstallationProgressCallback;
 
 // Executa downloads paralelos com arquivos .part e só publica cada destino
 // depois que tamanho e hash coincidirem com o manifesto de origem.

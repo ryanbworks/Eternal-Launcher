@@ -6,6 +6,7 @@
 #include <stop_token>
 #include <string>
 #include <string_view>
+#include "types/InstallationProgress.h"
 
 struct HttpDownloadResult
 {
@@ -13,6 +14,8 @@ struct HttpDownloadResult
     unsigned long statusCode = 0;
     std::string content;
     std::wstring errorMessage;
+    InstallationFailure failure = InstallationFailure::None;
+    bool cancelled = false;
 };
 
 using HttpDownloadProgressCallback =
@@ -23,7 +26,7 @@ using HttpDownloadProgressCallback =
 class HttpDownloadClient
 {
 public:
-    [[nodiscard]] HttpDownloadResult getText(std::wstring_view url) const;
+    [[nodiscard]] HttpDownloadResult getText(std::wstring_view url, std::stop_token stopToken = {}) const;
     [[nodiscard]] HttpDownloadResult downloadFile(
         std::wstring_view url,
         const std::filesystem::path& destination,

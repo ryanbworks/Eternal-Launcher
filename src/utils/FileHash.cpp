@@ -11,7 +11,7 @@
 
 namespace
 {
-    std::string calculate(const std::filesystem::path& file, const wchar_t* algorithmName)
+    std::string calculate(const std::filesystem::path& file, const wchar_t* algorithmName, std::stop_token stop)
     {
         BCRYPT_ALG_HANDLE algorithm = nullptr;
         BCRYPT_HASH_HANDLE hash = nullptr;
@@ -43,7 +43,7 @@ namespace
         std::ifstream input(file, std::ios::binary);
         std::array<char, 64 * 1024> buffer{};
         bool success = static_cast<bool>(input);
-        while (success && input)
+        while (success && input && !stop.stop_requested())
         {
             input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
             const auto bytesRead = input.gcount();
@@ -54,7 +54,7 @@ namespace
                 success = false;
             }
         }
-        success = success && BCryptFinishHash(
+        success = success && !stop.stop_requested() && BCryptFinishHash(
             hash, digest.data(), static_cast<ULONG>(digest.size()), 0) >= 0;
 
         BCryptDestroyHash(hash);
@@ -71,12 +71,12 @@ namespace
     }
 }
 
-std::string FileHash::sha1(const std::filesystem::path& file)
+std::string FileHash::sha1(const std::filesystem::path& file, std::stop_token stop)
 {
-    return calculate(file, BCRYPT_SHA1_ALGORITHM);
+    return calculate(file, BCRYPT_SHA1_ALGORITHM, stop);
 }
 
-std::string FileHash::sha256(const std::filesystem::path& file)
+std::string FileHash::sha256(const std::filesystem::path& file, std::stop_token stop)
 {
-    return calculate(file, BCRYPT_SHA256_ALGORITHM);
+    return calculate(file, BCRYPT_SHA256_ALGORITHM, stop);
 }

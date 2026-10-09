@@ -1,4 +1,5 @@
 #include "utils/ArchiveExtractor.h"
+#include "utils/InstallationProcess.h"
 
 #include <windows.h>
 
@@ -28,6 +29,7 @@ bool ArchiveExtractor::extract(
     const std::filesystem::path& destination,
     std::stop_token stopToken)
 {
+    if(stopToken.stop_requested()) return false;
     const auto tar = std::filesystem::path(environmentVariable(L"SystemRoot")) /
                      L"System32" / L"tar.exe";
     if (!std::filesystem::is_regular_file(tar)) return false;
@@ -42,18 +44,7 @@ bool ArchiveExtractor::extract(
                        CREATE_NO_WINDOW, nullptr, nullptr, &startup, &process)) return false;
 
     CloseHandle(process.hThread);
-    while (WaitForSingleObject(process.hProcess, 100) == WAIT_TIMEOUT)
-    {
-        if (stopToken.stop_requested())
-        {
-            TerminateProcess(process.hProcess, ERROR_CANCELLED);
-            WaitForSingleObject(process.hProcess, INFINITE);
-            break;
-        }
-    }
-
-    DWORD exitCode = 1;
-    GetExitCodeProcess(process.hProcess, &exitCode);
+    const auto result=waitForInstallationProcess(process.hProcess,stopToken);
     CloseHandle(process.hProcess);
-    return !stopToken.stop_requested() && exitCode == 0;
+    return result.success;
 }

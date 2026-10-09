@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string_view>
+#include "config/LauncherVersion.h"
 
 namespace LauncherConfig
 {
@@ -10,7 +11,10 @@ namespace LauncherConfig
     inline constexpr std::wstring_view ForgeVersion = L"47.4.10";
     inline constexpr std::wstring_view VersionProfile = L"1.20.1-forge-47.4.10";
     inline constexpr std::wstring_view AssetIndex = L"5";
-    inline constexpr std::wstring_view LauncherVersion = L"0.1.1-Vagalume";
+    inline constexpr std::wstring_view LauncherVersion = ETERNAL_VERSION_DISPLAY;
+    inline constexpr std::string_view NumericVersion = ETERNAL_VERSION_NUMERIC;
+    inline constexpr std::wstring_view UpdateManifestUrl = L"https://eternalfast.aplot.cloud/launcher/latest.json";
+    inline constexpr std::wstring_view LauncherDownloadUrl = L"https://eternalfast.aplot.cloud/launcher/";
     // ID público do aplicativo Microsoft. Pode ser substituído pela variável
     // ETERNAL_LAUNCHER_MICROSOFT_CLIENT_ID sem alterar o executável.
     inline constexpr std::wstring_view MicrosoftClientId =
@@ -18,7 +22,7 @@ namespace LauncherConfig
     // Endereço atual do serviço de arquivos. Ele permanece genérico para que a
     // aplicação não dependa de detalhes do NGINX utilizado no servidor.
     // TODO: carregar a URL base de uma configuração externa por ambiente.
-    inline constexpr std::wstring_view FileServerBaseUrl = L"https://fastdl.aplot.cloud";
+    inline constexpr std::wstring_view FileServerBaseUrl = L"https://eternalfast.aplot.cloud";
     inline constexpr std::wstring_view FileServerLabel = L"Servidor HTTP";
 
     // A API oficial do Adoptium informa o ZIP portátil mais recente do Temurin

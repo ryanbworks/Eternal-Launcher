@@ -15,9 +15,17 @@ enum class StatusTone
 enum class LauncherOperation
 {
     Idle,
+    NeedsInstallation,
+    SigningIn,
+    AuthenticationError,
+    InvalidNickname,
     CheckingInstallation,
     CheckingMods,
     CheckingUpdates,
+    CheckingLauncherUpdate,
+    DownloadingLauncherUpdate,
+    ApplyingLauncherUpdate,
+    RestartingLauncher,
     DownloadingFiles,
     UpdatingMods,
     PreparingMinecraft,
@@ -32,6 +40,17 @@ enum class LauncherOperation
     MinecraftRunning,
     LaunchError
 };
+
+inline bool isLauncherError(LauncherOperation operation)
+{
+    return operation == LauncherOperation::ConnectionError ||
+           operation == LauncherOperation::DownloadError ||
+           operation == LauncherOperation::CorruptedFile ||
+           operation == LauncherOperation::ServerUnavailable ||
+           operation == LauncherOperation::LaunchError ||
+           operation == LauncherOperation::AuthenticationError ||
+           operation == LauncherOperation::InvalidNickname;
+}
 
 struct StatusCardData
 {

@@ -167,6 +167,13 @@ std::wstring MinecraftLaunchCommandBuilder::build(
     const std::filesystem::path& javaExecutable,
     const std::filesystem::path& gamePath) const
 {
+    return build(identity,javaExecutable,gamePath,LauncherSettings{});
+}
+
+std::wstring MinecraftLaunchCommandBuilder::build(
+    const MinecraftIdentity& identity, const std::filesystem::path& javaExecutable,
+    const std::filesystem::path& gamePath, const LauncherSettings& settings) const
+{
     const auto libraries = gamePath / L"libraries";
     const auto natives = gamePath / L"natives";
     const auto assets = gamePath / L"assets";
@@ -197,8 +204,8 @@ std::wstring MinecraftLaunchCommandBuilder::build(
 
     std::vector<std::wstring> arguments = {
         javaExecutable.wstring(),
-        L"-Xms" + std::to_wstring(LauncherConfig::MinimumMemoryMegabytes) + L"M",
-        L"-Xmx" + std::to_wstring(LauncherConfig::MaximumMemoryMegabytes) + L"M",
+        L"-Xms" + std::to_wstring(settings.minimumMemoryMegabytes) + L"M",
+        L"-Xmx" + std::to_wstring(settings.maximumMemoryMegabytes) + L"M",
         L"-Djava.library.path=" + natives.wstring(),
         L"-Djna.tmpdir=" + natives.wstring(),
         L"-Dorg.lwjgl.system.SharedLibraryExtractPath=" + natives.wstring(),
@@ -263,6 +270,9 @@ std::wstring MinecraftLaunchCommandBuilder::build(
         L"20230612.114412"
     };
 
+    arguments.insert(arguments.end(), {L"--width",std::to_wstring(settings.windowWidth),
+                                      L"--height",std::to_wstring(settings.windowHeight)});
+    if (settings.fullscreen) arguments.push_back(L"--fullscreen");
     return joinArguments(arguments);
 }
 

@@ -95,14 +95,14 @@ namespace
 }
 
 MinecraftInstallPlanResult MinecraftManifestService::createPlan(
-    const std::filesystem::path& gameDirectory) const
+    const std::filesystem::path& gameDirectory, std::stop_token stop) const
 {
     HttpDownloadClient http;
-    const auto manifestResponse = http.getText(VersionManifestUrl);
+    const auto manifestResponse = http.getText(VersionManifestUrl,stop);
     if (!manifestResponse.success)
     {
         return {false, L"Não foi possível obter o manifesto oficial do Minecraft: " +
-                           manifestResponse.errorMessage, {}};
+                           manifestResponse.errorMessage, {},manifestResponse.failure};
     }
 
     std::wstring parseError;
@@ -127,10 +127,10 @@ MinecraftInstallPlanResult MinecraftManifestService::createPlan(
         return {false, L"Minecraft 1.20.1 não foi encontrado no manifesto oficial.", {}};
     }
 
-    const auto versionResponse = http.getText(utf8ToWide(versionUrl));
+    const auto versionResponse = http.getText(utf8ToWide(versionUrl),stop);
     if (!versionResponse.success)
     {
-        return {false, L"Não foi possível obter os metadados do Minecraft 1.20.1.", {}};
+        return {false, versionResponse.errorMessage, {},versionResponse.failure};
     }
     const auto version = parseDocument(versionResponse.content, parseError);
     if (!version) return {false, parseError, {}};
@@ -203,10 +203,10 @@ MinecraftInstallPlanResult MinecraftManifestService::createPlan(
     {
         return {false, L"O manifesto não contém o índice de assets do Minecraft.", {}};
     }
-    const auto assetResponse = http.getText(utf8ToWide(assetUrl));
+    const auto assetResponse = http.getText(utf8ToWide(assetUrl),stop);
     if (!assetResponse.success)
     {
-        return {false, L"Não foi possível obter o índice de assets do Minecraft.", {}};
+        return {false, assetResponse.errorMessage, {},assetResponse.failure};
     }
     plan.assetIndexMetadata = assetResponse.content;
     const auto assets = parseDocument(assetResponse.content, parseError);

@@ -10,6 +10,7 @@ enum class MinecraftLaunchIssue
     None,
     GameAlreadyRunning,
     InvalidNickname,
+    InvalidConfiguration,
     JavaMissing,
     InstallationIncomplete,
     NativeLibrariesMissing,

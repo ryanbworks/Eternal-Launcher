@@ -22,3 +22,9 @@ Thumbs.db
 # Configurações locais que poderão conter caminhos específicos do usuário.
 config.local.json
 launcher-settings.json
+
+# Cache Python e quadros intermediários reproduzíveis das validações visuais.
+__pycache__/
+*.py[cod]
+/.impeccable/review/motion/*.png
+/.impeccable/review/navigation-performance/*.png
