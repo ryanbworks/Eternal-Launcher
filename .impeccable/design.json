@@ -1,0 +1,428 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-03T14:27:09.796Z",
+  "title": "Design System: Eternal Launcher",
+  "extensions": {
+    "colorMeta": {
+      "background": {
+        "role": "neutral",
+        "displayName": "Graphite Ground",
+        "canonical": "#0d0e14",
+        "tonalRamp": [
+          "oklch(15% 0.0127 277.51)",
+          "oklch(26% 0.0127 277.51)",
+          "oklch(38% 0.0127 277.51)",
+          "oklch(49% 0.0127 277.51)",
+          "oklch(61% 0.0127 277.51)",
+          "oklch(72% 0.0127 277.51)",
+          "oklch(84% 0.0127 277.51)",
+          "oklch(95% 0.0127 277.51)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Indigo Surface",
+        "canonical": "#161721",
+        "tonalRamp": [
+          "oklch(15% 0.0199 280.07)",
+          "oklch(26% 0.0199 280.07)",
+          "oklch(38% 0.0199 280.07)",
+          "oklch(49% 0.0199 280.07)",
+          "oklch(61% 0.0199 280.07)",
+          "oklch(72% 0.0199 280.07)",
+          "oklch(84% 0.0199 280.07)",
+          "oklch(95% 0.0199 280.07)"
+        ]
+      },
+      "surface-elevated": {
+        "role": "neutral",
+        "displayName": "Raised Indigo",
+        "canonical": "#1e1f2c",
+        "tonalRamp": [
+          "oklch(15% 0.0248 280.97)",
+          "oklch(26% 0.0248 280.97)",
+          "oklch(38% 0.0248 280.97)",
+          "oklch(49% 0.0248 280.97)",
+          "oklch(61% 0.0248 280.97)",
+          "oklch(72% 0.0248 280.97)",
+          "oklch(84% 0.0248 280.97)",
+          "oklch(95% 0.0248 280.97)"
+        ]
+      },
+      "surface-hover": {
+        "role": "neutral",
+        "displayName": "Muted Violet Surface",
+        "canonical": "#2a283b",
+        "tonalRamp": [
+          "oklch(15% 0.0345 288.86)",
+          "oklch(26% 0.0345 288.86)",
+          "oklch(38% 0.0345 288.86)",
+          "oklch(49% 0.0345 288.86)",
+          "oklch(61% 0.0345 288.86)",
+          "oklch(72% 0.0345 288.86)",
+          "oklch(84% 0.0345 288.86)",
+          "oklch(95% 0.0345 288.86)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Indigo Hairline",
+        "canonical": "#343446",
+        "tonalRamp": [
+          "oklch(15% 0.0316 284.56)",
+          "oklch(26% 0.0316 284.56)",
+          "oklch(38% 0.0316 284.56)",
+          "oklch(49% 0.0316 284.56)",
+          "oklch(61% 0.0316 284.56)",
+          "oklch(72% 0.0316 284.56)",
+          "oklch(84% 0.0316 284.56)",
+          "oklch(95% 0.0316 284.56)"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Portal Violet",
+        "canonical": "#a582ff",
+        "tonalRamp": [
+          "oklch(15% 0.1788 294.16)",
+          "oklch(26% 0.1788 294.16)",
+          "oklch(38% 0.1788 294.16)",
+          "oklch(49% 0.1788 294.16)",
+          "oklch(61% 0.1788 294.16)",
+          "oklch(72% 0.1788 294.16)",
+          "oklch(84% 0.1788 294.16)",
+          "oklch(95% 0.1788 294.16)"
+        ]
+      },
+      "accent-light": {
+        "role": "primary",
+        "displayName": "Pale Lilac",
+        "canonical": "#c9b6ff",
+        "tonalRamp": [
+          "oklch(15% 0.1030 295.99)",
+          "oklch(26% 0.1030 295.99)",
+          "oklch(38% 0.1030 295.99)",
+          "oklch(49% 0.1030 295.99)",
+          "oklch(61% 0.1030 295.99)",
+          "oklch(72% 0.1030 295.99)",
+          "oklch(84% 0.1030 295.99)",
+          "oklch(95% 0.1030 295.99)"
+        ]
+      },
+      "accent-ink": {
+        "role": "primary",
+        "displayName": "Violet Ink",
+        "canonical": "#1a1031",
+        "tonalRamp": [
+          "oklch(15% 0.0629 294.20)",
+          "oklch(26% 0.0629 294.20)",
+          "oklch(38% 0.0629 294.20)",
+          "oklch(49% 0.0629 294.20)",
+          "oklch(61% 0.0629 294.20)",
+          "oklch(72% 0.0629 294.20)",
+          "oklch(84% 0.0629 294.20)",
+          "oklch(95% 0.0629 294.20)"
+        ]
+      },
+      "success": {
+        "role": "secondary",
+        "displayName": "Mint Success",
+        "canonical": "#37d690",
+        "tonalRamp": [
+          "oklch(15% 0.1639 159.01)",
+          "oklch(26% 0.1639 159.01)",
+          "oklch(38% 0.1639 159.01)",
+          "oklch(49% 0.1639 159.01)",
+          "oklch(61% 0.1639 159.01)",
+          "oklch(72% 0.1639 159.01)",
+          "oklch(84% 0.1639 159.01)",
+          "oklch(95% 0.1639 159.01)"
+        ]
+      },
+      "warning": {
+        "role": "secondary",
+        "displayName": "Amber Attention",
+        "canonical": "#fbbf24",
+        "tonalRamp": [
+          "oklch(15% 0.1644 84.43)",
+          "oklch(26% 0.1644 84.43)",
+          "oklch(38% 0.1644 84.43)",
+          "oklch(49% 0.1644 84.43)",
+          "oklch(61% 0.1644 84.43)",
+          "oklch(72% 0.1644 84.43)",
+          "oklch(84% 0.1644 84.43)",
+          "oklch(95% 0.1644 84.43)"
+        ]
+      },
+      "error": {
+        "role": "secondary",
+        "displayName": "Coral Error",
+        "canonical": "#f87171",
+        "tonalRamp": [
+          "oklch(15% 0.1661 22.22)",
+          "oklch(26% 0.1661 22.22)",
+          "oklch(38% 0.1661 22.22)",
+          "oklch(49% 0.1661 22.22)",
+          "oklch(61% 0.1661 22.22)",
+          "oklch(72% 0.1661 22.22)",
+          "oklch(84% 0.1661 22.22)",
+          "oklch(95% 0.1661 22.22)"
+        ]
+      },
+      "information": {
+        "role": "secondary",
+        "displayName": "Clear Blue Information",
+        "canonical": "#60a5fa",
+        "tonalRamp": [
+          "oklch(15% 0.1434 254.62)",
+          "oklch(26% 0.1434 254.62)",
+          "oklch(38% 0.1434 254.62)",
+          "oklch(49% 0.1434 254.62)",
+          "oklch(61% 0.1434 254.62)",
+          "oklch(72% 0.1434 254.62)",
+          "oklch(84% 0.1434 254.62)",
+          "oklch(95% 0.1434 254.62)"
+        ]
+      },
+      "text-primary": {
+        "role": "neutral",
+        "displayName": "Cool White",
+        "canonical": "#f5f7fa",
+        "tonalRamp": [
+          "oklch(15% 0.0045 258.32)",
+          "oklch(26% 0.0045 258.32)",
+          "oklch(38% 0.0045 258.32)",
+          "oklch(49% 0.0045 258.32)",
+          "oklch(61% 0.0045 258.32)",
+          "oklch(72% 0.0045 258.32)",
+          "oklch(84% 0.0045 258.32)",
+          "oklch(95% 0.0045 258.32)"
+        ]
+      },
+      "text-secondary": {
+        "role": "neutral",
+        "displayName": "Soft Silver",
+        "canonical": "#b2b3c3",
+        "tonalRamp": [
+          "oklch(15% 0.0227 283.00)",
+          "oklch(26% 0.0227 283.00)",
+          "oklch(38% 0.0227 283.00)",
+          "oklch(49% 0.0227 283.00)",
+          "oklch(61% 0.0227 283.00)",
+          "oklch(72% 0.0227 283.00)",
+          "oklch(84% 0.0227 283.00)",
+          "oklch(95% 0.0227 283.00)"
+        ]
+      },
+      "text-muted": {
+        "role": "neutral",
+        "displayName": "Quiet Silver",
+        "canonical": "#9697ac",
+        "tonalRamp": [
+          "oklch(15% 0.0307 283.39)",
+          "oklch(26% 0.0307 283.39)",
+          "oklch(38% 0.0307 283.39)",
+          "oklch(49% 0.0307 283.39)",
+          "oklch(61% 0.0307 283.39)",
+          "oklch(72% 0.0307 283.39)",
+          "oklch(84% 0.0307 283.39)",
+          "oklch(95% 0.0307 283.39)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Multiline hero only; private embedded Sora Bold in the native app."
+      },
+      "wordmark": {
+        "displayName": "Wordmark",
+        "purpose": "Eternal brand name."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Access heading."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Installation heading."
+      },
+      "status-title": {
+        "displayName": "Status Title",
+        "purpose": "Readiness heading and status values."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Hero explanations and account display."
+      },
+      "body-small": {
+        "displayName": "Body Small",
+        "purpose": "Instructions and operation messages."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Identity modes and field labels."
+      },
+      "action": {
+        "displayName": "Action",
+        "purpose": "Uppercase primary action."
+      },
+      "input": {
+        "displayName": "Input",
+        "purpose": "Scaled native nickname EDIT."
+      },
+      "micro": {
+        "displayName": "Micro",
+        "purpose": "Helpers, activity detail and provenance."
+      },
+      "category": {
+        "displayName": "Category",
+        "purpose": "Compact status labels."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "hover-easing",
+        "value": "x += (target - x) * (1 - exp(-dt / 35ms))",
+        "purpose": "Native time-based color interpolation. HTML previews approximate it with a 180ms CSS ease transition."
+      },
+      {
+        "name": "progress-easing",
+        "value": "x += (target - x) * (1 - exp(-dt / 85ms))",
+        "purpose": "Ease forward toward real progress; reset immediately when the operation phase goes backwards."
+      },
+      {
+        "name": "indeterminate-cycle",
+        "value": "1600ms",
+        "purpose": "35%-wide clipped segment only during active zero-percent operations."
+      },
+      {
+        "name": "animation-tick",
+        "value": "16ms",
+        "purpose": "Timer request, not guaranteed frame cadence; stopped when settled or minimized."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "SPI_GETCLIENTAREAANIMATION",
+        "purpose": "Windows client-area animation setting disables transitions and fixes the indeterminate phase. CSS preview uses prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": []
+  },
+  "components": [
+    {
+      "name": "Primary Action",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Ready action; HTML focus and 180ms transition approximate the native inset ring and exponential easing.",
+      "html": "<button class=\"ds-primary\"><svg viewBox=\"0 0 10 14\" aria-hidden=\"true\"><path d=\"M0 0L10 7L0 14Z\"/></svg><span>JOGAR AGORA</span></button>",
+      "css": ".ds-primary{display:inline-flex;align-items:center;justify-content:center;gap:40px;width:288px;height:54px;padding:0;background:#a582ff;color:#1a1031;border:0;border-radius:10px;font:700 13px 'Segoe UI',sans-serif;cursor:pointer;transition:background-color 180ms ease}.ds-primary svg{width:10px;height:14px;fill:currentColor}.ds-primary:hover,.ds-primary:active{background:#c9b6ff}.ds-primary:focus-visible{outline:2px solid #1a1031;outline-offset:-5px}@media(prefers-reduced-motion:reduce){.ds-primary,.ds-nav-button,.ds-settings{transition:none}}"
+    },
+    {
+      "name": "Busy Action",
+      "kind": "button",
+      "refersTo": "button-primary-disabled",
+      "description": "Disabled while preparing files or signing in; no decorative play mark.",
+      "html": "<button class=\"ds-busy\" disabled>PREPARANDO...</button>",
+      "css": ".ds-busy{width:288px;height:54px;padding:0;background:#2a283b;color:#b2b3c3;border:0;border-radius:10px;font:700 13px 'Segoe UI',sans-serif;cursor:default}"
+    },
+    {
+      "name": "Nickname Field",
+      "kind": "input",
+      "refersTo": "nickname-field",
+      "description": "Visual counterpart of the native nickname EDIT; native selection, editing and metrics remain Windows behavior.",
+      "html": "<label class=\"ds-field-label\" for=\"ds-nickname\">Nickname</label><input id=\"ds-nickname\" class=\"ds-field\" value=\"Steve\" maxlength=\"16\" aria-describedby=\"ds-nickname-help\"><span id=\"ds-nickname-help\" class=\"ds-field-help\">3 a 16 letras, números ou _</span>",
+      "css": ".ds-field-label{display:block;margin-bottom:8px;font:700 12px 'Segoe UI',sans-serif;color:#b2b3c3}.ds-field{display:block;width:258px;height:42px;padding:0 14px;background:#1e1f2c;color:#f5f7fa;border:1px solid #343446;border-radius:10px;font:400 15px 'Segoe UI',sans-serif}.ds-field:focus-visible{outline:2px solid #c9b6ff;outline-offset:-2px}.ds-field-help{display:block;margin-top:10px;color:#9697ac;font:400 11px 'Segoe UI',sans-serif}"
+    },
+    {
+      "name": "Identity Navigation",
+      "kind": "nav",
+      "refersTo": "identity-selected",
+      "description": "Native owner-drawn identity buttons in a segmented well; static selection shown in this portable preview.",
+      "html": "<nav class=\"ds-identity\" aria-label=\"Tipo de acesso\"><button class=\"ds-nav-button ds-selected\" aria-pressed=\"true\">Nickname local</button><button class=\"ds-nav-button\" aria-pressed=\"false\">Original</button></nav>",
+      "css": ".ds-identity{display:flex;width:280px;padding:4px;background:#0d0e14;border-radius:10px}.ds-nav-button{width:44%;height:32px;padding:0;color:#b2b3c3;background:#0d0e14;border:0;border-radius:8px;font:700 12px 'Segoe UI',sans-serif;transition:background-color 180ms ease;cursor:pointer}.ds-nav-button:first-child{width:56%}.ds-nav-button:hover{background:#1e1f2c}.ds-nav-button.ds-selected{color:#c9b6ff;background:#2a283b}.ds-nav-button:focus-visible{outline:2px solid #c9b6ff;outline-offset:-2px}@media(prefers-reduced-motion:reduce){.ds-primary,.ds-nav-button,.ds-settings{transition:none}}"
+    },
+    {
+      "name": "Access Console",
+      "kind": "card",
+      "refersTo": "access-console",
+      "description": "Continuous indigo grouping surface; compact preview excerpt, rather than a reproduction of the page's full height.",
+      "html": "<section class=\"ds-console\"><h2>Seu acesso</h2><p>Escolha como entrar no mundo.</p><div class=\"ds-console-rule\"></div><strong>Pronto para jogar</strong><p>Seu mundo está preparado. Boa aventura!</p></section>",
+      "css": ".ds-console{width:288px;padding:24px;background:#161721;border-radius:14px;color:#f5f7fa;font:400 12px 'Segoe UI',sans-serif}.ds-console h2{margin:0 0 12px;font:700 22px 'Segoe UI',sans-serif}.ds-console p{margin:12px 0;color:#b2b3c3}.ds-console strong{font:700 17px 'Segoe UI',sans-serif}.ds-console-rule{height:1px;margin:24px 0;background:#343446}"
+    },
+    {
+      "name": "Flat Installation Status",
+      "kind": "custom",
+      "description": "Flat status group with mint success marker; synthetic values demonstrate styling, not server state.",
+      "html": "<section class=\"ds-status\"><div class=\"ds-status-label\"><span aria-hidden=\"true\"></span>INSTALAÇÃO</div><strong>Pronta</strong><p>Minecraft e Forge preparados</p></section>",
+      "css": ".ds-status{padding:0;color:#f5f7fa;font-family:'Segoe UI',sans-serif}.ds-status-label{display:flex;align-items:center;gap:8px;color:#9697ac;font-size:10px;font-weight:700}.ds-status-label span{width:6px;height:6px;border-radius:50%;background:#37d690}.ds-status strong{display:block;margin-top:14px;font-size:17px;font-weight:700}.ds-status p{margin:12px 0 0;color:#b2b3c3;font-size:11px}"
+    },
+    {
+      "name": "Active Progress",
+      "kind": "custom",
+      "description": "Rail at a synthetic 47%; native integer labels are real values and the fill eases independently.",
+      "html": "<section class=\"ds-progress\"><div class=\"ds-progress-heading\"><strong>Preparando seu mundo</strong><span>47%</span></div><p>Baixando e verificando os arquivos do modpack...</p><div class=\"ds-progress-track\" role=\"progressbar\" aria-label=\"Preparação\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"47\"><div></div></div></section>",
+      "css": ".ds-progress{width:288px;border-top:1px solid #343446;padding-top:17px;color:#f5f7fa;font-family:'Segoe UI',sans-serif}.ds-progress-heading{display:flex;justify-content:space-between;align-items:center}.ds-progress-heading strong{font-size:13px}.ds-progress-heading span{color:#c9b6ff;font-size:12px;font-weight:700}.ds-progress p{margin:16px 0 24px;color:#b2b3c3;font-size:11px}.ds-progress-track{height:4px;background:#2a283b;border-radius:2px;overflow:hidden}.ds-progress-track div{width:47%;height:4px;background:#a582ff;border-radius:2px}"
+    },
+    {
+      "name": "Settings Button",
+      "kind": "button",
+      "refersTo": "settings-button",
+      "description": "Authored outline gear; opens native settings for Save-only RAM, window, Java and instance preferences, with minimization enabled by default. Portable snippet illustrates the gear, not the settings form or its runtime behavior.",
+      "html": "<button class=\"ds-settings\" aria-label=\"Configurações\"><svg viewBox=\"0 0 24 24\" fill=\"none\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"7\"/><circle cx=\"12\" cy=\"12\" r=\"2.5\"/><path d=\"M12 2V5M12 19V22M2 12H5M19 12H22M5 5L7 7M17 17L19 19M5 19L7 17M17 7L19 5\"/></svg></button>",
+      "css": ".ds-settings{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;padding:0;border:0;border-radius:10px;background:#0d0e14;color:#b2b3c3;cursor:pointer;transition:background-color 180ms ease}.ds-settings svg{width:24px;height:24px;stroke:currentColor;stroke-width:1.7}.ds-settings:hover{background:#2a283b}.ds-settings:focus-visible{outline:2px solid #c9b6ff;outline-offset:-2px}@media(prefers-reduced-motion:reduce){.ds-primary,.ds-nav-button,.ds-settings{transition:none}}"
+    },
+    {
+      "name": "Maximum RAM Selector",
+      "kind": "input",
+      "description": "Portable visual excerpt at 4 GB: native app uses TRACKBAR input in 512 MiB steps, an expanding range and exact MiB fields. The static HTML readout/preset selection does not implement synchronization, persistence or native GDI+ paint.",
+      "html": "<section class=\"ds-ram\"><div class=\"ds-ram-heading\"><label for=\"ds-ram-range\">RAM máxima · passos de 0,5 GB</label><output for=\"ds-ram-range\">4 GB</output></div><input id=\"ds-ram-range\" class=\"ds-ram-range\" type=\"range\" min=\"0.5\" max=\"16\" step=\"0.5\" value=\"4\" aria-label=\"RAM máxima em GB\" aria-describedby=\"ds-ram-help\"><div class=\"ds-ram-limits\"><span>0,5 GB</span><span>16 GB</span></div><div class=\"ds-ram-presets\"><button class=\"ds-ram-preset ds-ram-selected\" aria-pressed=\"true\">4 GB</button><button class=\"ds-ram-preset\" aria-pressed=\"false\">6 GB</button><button class=\"ds-ram-preset\" aria-pressed=\"false\">8 GB</button></div><p id=\"ds-ram-help\">1 GB = 1024 MiB. Salve para aplicar.</p></section>",
+      "css": ".ds-ram{width:488px;max-width:100%;color:#b2b3c3;font-family:'Segoe UI',sans-serif}.ds-ram-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:4px}.ds-ram-heading label{font-size:12px;font-weight:700}.ds-ram-heading output{font-size:18px;font-weight:700;color:#c9b6ff}.ds-ram-range{display:block;appearance:none;width:100%;height:32px;margin:0;background:transparent;border:0;border-radius:8px;cursor:pointer}.ds-ram-range::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:linear-gradient(to right,#a582ff 22.58%,#343446 22.58%)}.ds-ram-range::-webkit-slider-thumb{appearance:none;width:18px;height:18px;margin-top:-6px;border:0;border-radius:50%;background:#a582ff}.ds-ram-range::-moz-range-track{height:6px;border-radius:3px;background:#343446}.ds-ram-range::-moz-range-progress{height:6px;border-radius:3px;background:#a582ff}.ds-ram-range::-moz-range-thumb{width:18px;height:18px;border:0;border-radius:50%;background:#a582ff}.ds-ram-range:hover::-webkit-slider-thumb,.ds-ram-range:focus-visible::-webkit-slider-thumb{background:#c9b6ff}.ds-ram-range:hover::-moz-range-thumb,.ds-ram-range:focus-visible::-moz-range-thumb{background:#c9b6ff}.ds-ram-range:focus-visible{outline:2px solid #c9b6ff;outline-offset:-2px}.ds-ram-range:disabled{opacity:0.6;cursor:default}.ds-ram-limits{display:flex;justify-content:space-between;color:#9697ac;font-size:10px}.ds-ram-presets{display:flex;gap:16px;margin-top:4px}.ds-ram-preset{flex:1;height:30px;padding:0;background:#161721;color:#f5f7fa;border:0;border-radius:10px;font:700 12px 'Segoe UI',sans-serif;cursor:pointer}.ds-ram-preset:hover,.ds-ram-preset:active,.ds-ram-preset.ds-ram-selected{background:#2a283b}.ds-ram-preset.ds-ram-selected{color:#c9b6ff}.ds-ram-preset:focus-visible{outline:2px solid #c9b6ff;outline-offset:-2px}.ds-ram-preset:disabled{color:#9697ac;cursor:default}.ds-ram p{margin:10px 0 0;color:#9697ac;font-size:11px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Portal observation console",
+    "overview": "Eternal uses graphite and indigo surfaces, violet active controls and a geometric portal E to give a private Minecraft launcher a dark, futuristic identity. A cinematic voxel landscape supplies atmosphere; a calm access console makes identity, installation readiness and the next action easy to read.\n\nThe system is a native Windows application built with Win32 and GDI+. Sora Bold gives the wordmark and hero a distinct voice, while Segoe UI keeps controls and operational copy familiar and compact. Tonal layers, precise hairlines and generous separation organize the information without shadows or ornamental motion.",
+    "keyCharacteristics": [
+      "Graphite field, indigo layers and restrained violet emphasis.",
+      "Sora display type paired with Segoe UI for native interaction.",
+      "One environmental illustration and a geometric portal monogram.",
+      "Continuous access surfaces and flat status groups.",
+      "Semantic states, visible keyboard focus and motion tied to activity."
+    ],
+    "rules": [
+      {
+        "name": "Action Violet",
+        "body": "Reserve violet emphasis for identity, selection, focus and the primary action; use semantic state colors to explain service results.",
+        "section": "colors"
+      },
+      {
+        "name": "Display and Control",
+        "body": "Use the embedded Sora Bold for the hero and wordmark. Keep interactive controls, body copy and status text in Segoe UI.",
+        "section": "typography"
+      },
+      {
+        "name": "Quiet Depth",
+        "body": "Use tonal surfaces, hairlines and the artwork's atmospheric depth. Do not add interface drop shadows to this system.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use the Theme.h palette and the documented semantic state mapping.",
+      "Do preserve native window controls, text editing, keyboard order and visible focus.",
+      "Do pair status colors with readable labels and concrete operation messages.",
+      "Do respect the Windows client-area animation preference and stop the animation timer when activity settles.",
+      "Do describe the landscape as concept art and label sample news as demonstration content.",
+      "Do verify the native layout and edit control at the intended DPI and window size."
+    ],
+    "donts": [
+      "Don't use gameplay connection or player-count claims to decorate HTTP file-service status.",
+      "Don't apply Sora to native controls or status copy.",
+      "Don't replace the continuous console with repeated elevated cards.",
+      "Don't turn an ordinary first installation into an error state.",
+      "Don't treat preview renders as evidence of live authentication, downloads or game launch.",
+      "Don't infer a mobile layout or browser breakpoint system from the uniformly scaled Windows canvas."
+    ]
+  }
+}

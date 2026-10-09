@@ -37,7 +37,7 @@ namespace
         std::string line;
         while (std::getline(input, line))
         {
-            if (line.starts_with("JAVA_VERSION=\"17") ||
+            if (line.starts_with("JAVA_VERSION=\"17\"") ||
                 line.starts_with("JAVA_VERSION=\"17."))
             {
                 return true;
@@ -86,7 +86,7 @@ namespace
     }
 }
 
-MinecraftLauncherService::MinecraftLauncherService() = default;
+MinecraftLauncherService::MinecraftLauncherService(LauncherSettings settings) : settings_(std::move(settings)) {}
 
 MinecraftLauncherService::~MinecraftLauncherService()
 {
@@ -98,6 +98,11 @@ MinecraftLauncherService::~MinecraftLauncherService()
 
 MinecraftLaunchResult MinecraftLauncherService::validateInstallation() const
 {
+    std::wstring error;
+    if (!LauncherSettingsStore::validate(settings_,error,false) ||
+        (!settings_.javaExecutable.empty() && !LauncherSettingsStore::isJava17Executable(settings_.javaExecutable)))
+        return {false,error.empty() ? L"O Java personalizado não está disponível. Confira as configurações." : error,
+                0,MinecraftLaunchIssue::InvalidConfiguration};
     const auto javaPath = findJavaExecutable();
     if (javaPath.empty())
     {
@@ -221,7 +226,7 @@ MinecraftLaunchResult MinecraftLauncherService::launch(const MinecraftIdentity& 
         return {false, L"A sessão Microsoft está incompleta. Entre novamente.", 0,
                 MinecraftLaunchIssue::InvalidNickname};
     }
-    std::wstring commandLine = commandBuilder.build(identity, javaPath, gamePath);
+    std::wstring commandLine = commandBuilder.build(identity, javaPath, gamePath, settings_);
 
     STARTUPINFO startupInfo{};
     startupInfo.cb = sizeof(startupInfo);
@@ -295,7 +300,7 @@ unsigned long MinecraftLauncherService::processExitCode() const
 
 std::filesystem::path MinecraftLauncherService::gameDirectory() const
 {
-    return resolveDataDirectory() / LauncherConfig::GameDirectoryName;
+    return LauncherSettingsStore::effectiveGameDirectory(settings_);
 }
 
 std::filesystem::path MinecraftLauncherService::resolveDataDirectory() const
@@ -310,6 +315,8 @@ std::filesystem::path MinecraftLauncherService::resolveDataDirectory() const
 
 std::filesystem::path MinecraftLauncherService::findJavaExecutable() const
 {
+    if (!settings_.javaExecutable.empty())
+        return LauncherSettingsStore::isJava17Executable(settings_.javaExecutable) ? settings_.javaExecutable : std::filesystem::path{};
     const auto bundledJava = resolveDataDirectory() / L"runtime" / L"bin" / L"java.exe";
     if (std::filesystem::is_regular_file(bundledJava) && isJava17Runtime(bundledJava))
     {

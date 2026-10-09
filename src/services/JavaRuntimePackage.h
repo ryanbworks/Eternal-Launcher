@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <stop_token>
 
 // Representa o pacote ZIP informado pela API do Adoptium e concentra a
 // interpretação dos metadados e a verificação criptográfica do arquivo.
@@ -16,5 +17,5 @@ struct JavaRuntimePackage
 
     [[nodiscard]] static std::optional<JavaRuntimePackage> parse(
         std::string_view metadata);
-    [[nodiscard]] bool matchesFile(const std::filesystem::path& file) const;
+    [[nodiscard]] bool matchesFile(const std::filesystem::path& file, std::stop_token stop = {}) const;
 };

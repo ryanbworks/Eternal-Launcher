@@ -1,0 +1,18 @@
+2026-10-04: WindowPaintingTests --benchmark-motion
+Each drawing series: 8 warm-up frames, 40 measured. Each native cadence: 1.4 s.
+Normal client 1180x730; compact client 944x584. Same per-monitor-v2 awareness,
+native children and WS_EX_COMPOSITED as production. Synthetic state, no network.
+WM_PAINT intervals are not physical compositor FPS. Entry/return includes cold
+form preparation and uncached home rendering. No absolute timing assertions.
+
+BEFORE
+settings_1180 median_ms=9.4453 p95_ms=10.7118
+settings_944 median_ms=9.6101 p95_ms=12.225
+navigation_cadence_1180 frames=69 median_ms=19.0482 p95_ms=24.1788
+navigation_cadence_944 frames=76 median_ms=17.7843 p95_ms=35.8277
+
+AFTER
+settings_1180 median_ms=2.6506 p95_ms=3.1997
+settings_944 median_ms=2.3805 p95_ms=3.9627
+navigation_cadence_1180 frames=80 median_ms=16.3067 p95_ms=31.0859
+navigation_cadence_944 frames=83 median_ms=15.0219 p95_ms=24.0927

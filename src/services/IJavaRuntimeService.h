@@ -5,22 +5,20 @@
 #include <stop_token>
 #include <string>
 #include <string_view>
+#include "types/InstallationProgress.h"
 
-struct JavaRuntimeProgress
-{
-    int percent = 0;
-    std::wstring message;
-};
+using JavaRuntimeProgress = InstallationProgress;
 
 struct JavaRuntimeResult
 {
     bool success = false;
     bool installedNow = false;
     std::wstring message;
+    InstallationFailure failure = InstallationFailure::None;
+    InstallationOutcome outcome = InstallationOutcome::Failed;
 };
 
-using JavaRuntimeProgressCallback =
-    std::function<void(int percent, std::wstring_view message)>;
+using JavaRuntimeProgressCallback = InstallationProgressCallback;
 
 // Fronteira responsável por disponibilizar um Java portátil sem alterar a
 // instalação global do Windows ou exigir configuração manual do usuário.
