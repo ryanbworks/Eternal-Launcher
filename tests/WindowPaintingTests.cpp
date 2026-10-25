@@ -160,6 +160,9 @@ public:
             const HWND back=GetDlgItem(page.window_,SettingsPage::Back),edit=GetDlgItem(page.window_,SettingsPage::MinRam);
             const auto font=SendMessageW(edit,WM_GETFONT,0,0);
             const int start=childLeft(back);
+            // The desktop work area can constrain the requested window size on CI.
+            // Assert the 96 logical-pixel travel at the actual client scale.
+            const int entryPixels=static_cast<int>(std::round(96*page.viewScale_));
             page.prepareFrame();
             check(page.settingsTransitionFrame_!=nullptr,"settings entry prepares a reusable form raster");
             const auto cachedForm=page.settingsTransitionFrame_.get();
@@ -196,8 +199,12 @@ public:
             check(page.pageTravel_==1 && childLeft(page.actions_[2])==page.mainControlBounds_[2].left,
                 "return transition settles on exact native hit targets at both sizes");
             page.showSettings();for(int i=0;i<11;++i) tick();
-            check(page.pageTravel_==1 && childLeft(back)==start-static_cast<int>(std::round(96*scale)) && !page.animationTimer_,
-                "settings entrance settles and stops its timer at both sizes");
+            check(page.pageTravel_==1,"settings entrance completes at both sizes");
+            if(childLeft(back)!=start-entryPixels)
+                std::cerr << "settings entrance: requested scale=" << scale << ", actual scale=" << page.viewScale_
+                    << ", actual left=" << childLeft(back) << ", expected left=" << start-entryPixels << '\n';
+            check(childLeft(back)==start-entryPixels,"settings entrance settles on its exact scaled hit target at both sizes");
+            check(!page.animationTimer_,"settings entrance stops its timer at both sizes");
             check(!page.settingsTransitionFrame_,"settled settings releases the raster instead of retaining stale UI");
             page.hideSettings();for(int i=0;i<10;++i) tick();
         }
