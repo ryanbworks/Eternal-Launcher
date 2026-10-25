@@ -25,8 +25,8 @@ struct MinecraftLaunchResult
     MinecraftLaunchIssue issue = MinecraftLaunchIssue::None;
 };
 
-// Fronteira para inicialização do jogo. A interface trabalha apenas com este
-// contrato e não conhece detalhes dos argumentos Java ou do perfil Forge.
+// Boundary for launching the game. The interface only works with this
+// contract and knows nothing about the Java arguments or the Forge profile.
 class IMinecraftLauncherService
 {
 public:

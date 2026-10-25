@@ -145,8 +145,8 @@ private:
     InstallationTrackingState installation_;
     InstallationMailbox installationMailbox_;
 
-    // O serviço é acessado pela interface genérica para manter a página
-    // independente do WinHTTP e do servidor web usado na infraestrutura.
+    // The service is accessed through the generic interface to keep the page
+    // independent of WinHTTP and of the web server used in the infrastructure.
     std::unique_ptr<IFileServerService> fileServerService_;
     std::jthread fileServerThread_;
     std::unique_ptr<IJavaRuntimeService> javaRuntimeService_;

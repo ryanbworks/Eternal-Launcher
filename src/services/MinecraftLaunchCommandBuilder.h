@@ -6,9 +6,9 @@
 #include "types/MinecraftIdentity.h"
 #include "config/LauncherSettings.h"
 
-// Monta a linha de comando específica do Minecraft 1.20.1 com Forge 47.4.10.
-// Separar esta responsabilidade mantém o serviço de processo focado em validar
-// a instalação, iniciar o Java e acompanhar o jogo.
+// Builds the command line specific to Minecraft 1.20.1 with Forge 47.4.10.
+// Separating this responsibility keeps the process service focused on validating
+// the installation, starting Java and monitoring the game.
 class MinecraftLaunchCommandBuilder
 {
 public:

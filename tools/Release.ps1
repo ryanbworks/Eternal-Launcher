@@ -7,7 +7,7 @@ $projectRoot = Split-Path $PSScriptRoot -Parent
 Set-Location $projectRoot
 . (Join-Path $PSScriptRoot 'ReleaseCrypto.ps1')
 if ($CiSigningKey) {
-    if ($InitializeKeyOnly) { throw 'A chave de CI deve corresponder à chave pública existente.' }
+    if ($InitializeKeyOnly) { throw 'The CI key must match the existing public key.' }
     . (Join-Path $PSScriptRoot 'CiSigning.ps1')
     $rsa = Get-EternalCiSigningKey
 } else {
@@ -26,22 +26,22 @@ try {
     }
     if ($InitializeKeyOnly) {
         if ((Test-Path $headerPath) -and !$publicHeaderMatches) {
-            throw 'A chave pública existente difere desta chave privada. Não é permitido trocá-la silenciosamente.'
+            throw 'The existing public key differs from this private key. Replacing it silently is not allowed.'
         }
         [IO.File]::WriteAllText($headerPath, $header)
-        Write-Host 'Chave local protegida por DPAPI; somente a chave pública foi gravada no projeto.'
+        Write-Host 'Local key protected by DPAPI; only the public key was written to the project.'
         return
     }
     if (!$publicHeaderMatches) {
-        throw 'A chave privada não corresponde à chave pública compilada.'
+        throw 'The private key does not match the compiled public key.'
     }
     $cmakeText = Get-Content CMakeLists.txt -Raw
     $version = [regex]::Match($cmakeText, 'project\(EternalLauncher VERSION ([0-9]+\.[0-9]+\.[0-9]+)').Groups[1].Value
     $codename = [regex]::Match($cmakeText, 'set\(ETERNAL_CODENAME "([A-Za-z0-9]+)"').Groups[1].Value
-    if (!$version -or !$codename) { throw 'Versão ou nome inválido no CMakeLists.txt.' }
+    if (!$version -or !$codename) { throw 'Invalid version or name in CMakeLists.txt.' }
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
     $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-    if (!$vs) { throw 'Visual Studio C++ não encontrado.' }
+    if (!$vs) { throw 'Visual Studio C++ tools not found.' }
     Import-Module (Join-Path $vs 'Common7/Tools/Microsoft.VisualStudio.DevShell.dll')
     Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' | Out-Null
     $cmake = Join-Path $vs 'Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
@@ -50,18 +50,18 @@ try {
         $releasePowerShell = Join-Path $PSHOME 'pwsh.exe'
         & $cmake -S . -B $BuildDirectory -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON `
             -DETERNAL_REQUIRE_UPDATE_TESTS=ON "-DETERNAL_POWERSHELL:FILEPATH=$releasePowerShell"
-        if ($LASTEXITCODE) { throw 'Falha na configuração.' }
+        if ($LASTEXITCODE) { throw 'CMake configuration failed.' }
         & $cmake --build $BuildDirectory
-        if ($LASTEXITCODE) { throw 'Falha na compilação.' }
+        if ($LASTEXITCODE) { throw 'Build failed.' }
         & $ctest --test-dir $BuildDirectory --output-on-failure
-        if ($LASTEXITCODE) { throw 'Testes reprovados; release não gerada.' }
+        if ($LASTEXITCODE) { throw 'Tests failed; release not generated.' }
     }
     $executable = Join-Path $BuildDirectory 'EternalLauncher.exe'
     $info = [Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path $executable))
-    if ($info.ProductVersion -ne "$version-$codename") { throw 'Versão do executável não corresponde ao código.' }
+    if ($info.ProductVersion -ne "$version-$codename") { throw 'The executable version does not match the code.' }
     $pe = [IO.File]::ReadAllBytes((Resolve-Path $executable))
     $peOffset = [BitConverter]::ToInt32($pe, 0x3c)
-    if ([BitConverter]::ToUInt16($pe, $peOffset+4) -ne 0x8664) { throw 'A distribuição precisa ser x64.' }
+    if ([BitConverter]::ToUInt16($pe, $peOffset+4) -ne 0x8664) { throw 'The distribution must be x64.' }
     $package = Join-Path $projectRoot "out/releases/$version"
     $artifactFolder = Join-Path $package "launcher/releases/$version"
     [IO.Directory]::CreateDirectory($artifactFolder) | Out-Null
@@ -73,5 +73,5 @@ try {
     $manifest = New-EternalEnvelope $rsa $payload
     [IO.File]::WriteAllText((Join-Path $package 'launcher/latest.json'), $manifest + "`n")
     [IO.File]::WriteAllText((Join-Path $package 'SHA256SUMS.txt'), "$($payload.sha256)  launcher/releases/$version/EternalLauncher.exe`n")
-    Write-Host "Pacote para SFTP/FileZilla: $package"
+    Write-Host "Package for SFTP/FileZilla: $package"
 } finally { $rsa.Dispose() }

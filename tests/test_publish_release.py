@@ -123,7 +123,7 @@ class PublisherTests(unittest.TestCase):
 
     def test_old_or_same_version_is_rejected(self):
         self.latest.write_bytes(self.new)
-        with self.assertRaisesRegex(ValueError, "maior"):
+        with self.assertRaisesRegex(ValueError, "higher"):
             self.publish()
         self.assertEqual(self.sftp.events, [])
 

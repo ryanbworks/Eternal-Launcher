@@ -21,7 +21,7 @@ namespace
         const auto result = service.launch(nickname);
         if (result.success || result.message.find(L"nickname") == std::wstring::npos)
         {
-            std::wcerr << L"Nickname inválido aceito: " << nickname << L'\n';
+            std::wcerr << L"Invalid nickname accepted: " << nickname << L'\n';
             return false;
         }
         return true;
@@ -30,8 +30,8 @@ namespace
 
 int main(int argumentCount, char* arguments[])
 {
-    // Este modo opcional permite validar manualmente a instância instalada sem
-    // tornar o ambiente do usuário uma dependência dos testes automatizados.
+    // This optional mode lets you validate the installed instance manually without
+    // making the user's environment a dependency of the automated tests.
     if (argumentCount >= 2 && std::string_view(arguments[1]) == "--validate-installed")
     {
         MinecraftLauncherService service;
@@ -40,8 +40,8 @@ int main(int argumentCount, char* arguments[])
         return result.success ? 0 : 10;
     }
 
-    // Diagnóstico manual usado para confirmar que o processo Forge permanece
-    // ativo. O nickname é deliberadamente ASCII, como exige o Minecraft.
+    // Manual diagnostic used to confirm the Forge process stays
+    // alive. The nickname is deliberately ASCII, as Minecraft requires.
     if (argumentCount >= 3 && std::string_view(arguments[1]) == "--launch-installed")
     {
         const std::string nicknameText(arguments[2]);
@@ -53,13 +53,13 @@ int main(int argumentCount, char* arguments[])
         std::this_thread::sleep_for(std::chrono::seconds(30));
         if (!service.isGameRunning())
         {
-            std::wcout << L"Processo encerrado com código " << service.processExitCode() << L".\n";
+            std::wcout << L"Process exited with code " << service.processExitCode() << L".\n";
             return 12;
         }
         return 0;
     }
 
-    // Estes casos exercitam a validação antes de qualquer acesso ao Java ou ao jogo.
+    // These cases exercise validation before any access to Java or the game.
     if (!expectInvalidNickname(L"ab") ||
         !expectInvalidNickname(L"nickname_com_mais_de_16") ||
         !expectInvalidNickname(L"nome inválido"))
@@ -73,7 +73,7 @@ int main(int argumentCount, char* arguments[])
     const auto suffixText = expectedSuffix.wstring();
     if (!gameDirectoryText.ends_with(suffixText))
     {
-        std::wcerr << L"Diretório isolado inesperado: " << gameDirectoryText << L'\n';
+        std::wcerr << L"Unexpected isolated directory: " << gameDirectoryText << L'\n';
         return 2;
     }
 
@@ -81,7 +81,7 @@ int main(int argumentCount, char* arguments[])
     const auto runtimeSuffix = std::filesystem::path(L".eternal-launcher") / L"runtime";
     if (!runtimeService.runtimeDirectory().wstring().ends_with(runtimeSuffix.wstring()))
     {
-        std::wcerr << L"Diretório isolado do Java inesperado.\n";
+        std::wcerr << L"Unexpected isolated Java directory.\n";
         return 3;
     }
 
@@ -97,27 +97,27 @@ int main(int argumentCount, char* arguments[])
     std::filesystem::remove_all(runtimeFixture);
     if (acceptedWithoutJavaExe || !acceptedCompleteRuntime)
     {
-        std::wcerr << L"Validação do Java portátil não conferiu java.exe.\n";
+        std::wcerr << L"Portable Java validation did not check java.exe.\n";
         return 20;
     }
 
-    // Usa uma pasta temporária isolada para conferir a persistência local.
+    // Uses an isolated temporary folder to check local persistence.
     const auto settingsDirectory = std::filesystem::temp_directory_path() /
         (L"eternal-nickname-test-" + std::to_wstring(
             std::chrono::steady_clock::now().time_since_epoch().count()));
-    // Nicknames inválidos não devem substituir a preferência válida anterior.
+    // Invalid nicknames must not replace the previous valid preference.
     if (!NicknameStore::save(settingsDirectory, L"Amigo_123") ||
         NicknameStore::load(settingsDirectory) != L"Amigo_123" ||
         NicknameStore::save(settingsDirectory, L"nome inválido") ||
         NicknameStore::load(settingsDirectory) != L"Amigo_123")
     {
-        std::wcerr << L"Persistência do nickname falhou.\n";
+        std::wcerr << L"Nickname persistence failed.\n";
         return 15;
     }
     std::filesystem::remove(NicknameStore::filePath(settingsDirectory));
     std::filesystem::remove(settingsDirectory);
 
-    // Um mod retirado do manifesto desaparece da instância no próximo Jogar.
+    // A mod removed from the manifest disappears from the instance on the next Play.
     const auto modsDirectory = std::filesystem::temp_directory_path() /
         (L"eternal-mod-cleanup-test-" + std::to_wstring(
             std::chrono::steady_clock::now().time_since_epoch().count())) / L"mods";
@@ -133,20 +133,20 @@ int main(int argumentCount, char* arguments[])
         !std::filesystem::exists(modsDirectory / L"[1.20.1] Usuário.jar") ||
         !std::filesystem::exists(modsDirectory / L"download.jar.part"))
     {
-        std::wcerr << L"Limpeza de mods não respeitou o manifesto.\n";
+        std::wcerr << L"Mod cleanup did not respect the manifest.\n";
         return 18;
     }
     removeObsoleteMods(modsDirectory, {});
     if (std::filesystem::exists(modsDirectory / L"atual.jar") ||
         !std::filesystem::exists(modsDirectory / L"[1.20.1] Usuário.jar"))
     {
-        std::wcerr << L"Manifesto sem mods não removeu o JAR gerenciado ou apagou o mod do usuário.\n";
+        std::wcerr << L"Empty mod manifest did not remove the managed JAR or deleted the user's mod.\n";
         return 19;
     }
     std::filesystem::remove_all(modsDirectory.parent_path());
 
-    // Garante que o parser escolha o ZIP portátil, não o instalador MSI que
-    // aparece antes dele na resposta real do Adoptium.
+    // Ensures the parser picks the portable ZIP, not the MSI installer that
+    // appears before it in the real Adoptium response.
     constexpr std::string_view metadata = R"json(
         {"binary":{"installer":{"link":"https://example.test/java.msi"},
         "package":{"checksum":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -155,7 +155,7 @@ int main(int argumentCount, char* arguments[])
     const auto package = JavaRuntimePackage::parse(metadata);
     if (!package || package->url != L"https://example.test/java.zip" || package->size != 12345)
     {
-        std::wcerr << L"Metadados do runtime Java não foram interpretados corretamente.\n";
+        std::wcerr << L"Java runtime metadata was not parsed correctly.\n";
         return 4;
     }
 
@@ -164,7 +164,7 @@ int main(int argumentCount, char* arguments[])
             "mods/%5B1.20.1%5D%20SecurityCraft%20v1.10.1.jar" ||
         encodeRelativeUrlPath("mods/A+B.jar") != "mods/A%2BB.jar")
     {
-        std::wcerr << L"Nome de mod não foi codificado para URL corretamente.\n";
+        std::wcerr << L"Mod name was not URL-encoded correctly.\n";
         return 16;
     }
 
@@ -173,7 +173,7 @@ int main(int argumentCount, char* arguments[])
     if (!json || files == nullptr || files->arrayValue() == nullptr ||
         files->arrayValue()->size() != 1)
     {
-        std::wcerr << L"JSON de manifesto válido não foi interpretado corretamente.\n";
+        std::wcerr << L"Valid manifest JSON was not parsed correctly.\n";
         return 5;
     }
 
@@ -190,7 +190,7 @@ int main(int argumentCount, char* arguments[])
         onlineCommand.find(original.uuid) == std::wstring::npos ||
         onlineCommand.find(L"--clientId client-id") == std::wstring::npos)
     {
-        std::wcerr << L"Identidade não foi passada corretamente ao Minecraft.\n";
+        std::wcerr << L"Identity was not passed to Minecraft correctly.\n";
         return 17;
     }
 

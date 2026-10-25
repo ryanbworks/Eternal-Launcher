@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Instalar a distribuição de arquivos do launcher em Debian/Ubuntu com systemd.
+# Install the launcher's file distribution on Debian/Ubuntu with systemd.
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
-    echo "Execute como root: sudo bash server/install.sh" >&2
+    echo "Run as root: sudo bash server/install.sh" >&2
     exit 1
 fi
 
@@ -17,7 +17,7 @@ command -v systemctl >/dev/null
 site_link=/etc/nginx/sites-enabled/eternal-launcher
 if [ -e "$site_link" ] || [ -L "$site_link" ]; then
     if [ ! -L "$site_link" ] || [ "$(readlink -f "$site_link")" != /etc/nginx/sites-available/eternal-launcher ]; then
-        echo "O site habilitado já existe com outro destino: $site_link" >&2
+        echo "The enabled site already exists with a different target: $site_link" >&2
         exit 1
     fi
 fi
@@ -31,7 +31,7 @@ install -d -m 0755 /srv/eternal-launcher "$files_root" \
     "$files_root/shaderpacks" "$files_root/launcher/releases" \
     /usr/local/lib/eternal-launcher
 
-# Preservar as configurações substituídas para permitir recuperação.
+# Keep replaced configs so they can be restored.
 backup_root="$(mktemp -d /root/eternal-launcher-backup.XXXXXXXX)"
 for target in /usr/local/lib/eternal-launcher/refresh_manifest.py \
     /etc/systemd/system/eternal-manifest.service \
@@ -46,7 +46,7 @@ install -m 0644 "$project_root/server/refresh_manifest.py" /usr/local/lib/eterna
 install -m 0644 "$project_root/server/eternal-manifest.service" /etc/systemd/system/eternal-manifest.service
 install -m 0644 "$project_root/server/eternal-manifest.timer" /etc/systemd/system/eternal-manifest.timer
 install -m 0644 "$project_root/infrastructure/nginx/eternal-launcher.conf" /etc/nginx/sites-available/eternal-launcher
-# Normalizar arquivos copiados a partir de checkouts no Windows.
+# Normalize files copied from Windows checkouts.
 sed -i 's/\r$//' /usr/local/lib/eternal-launcher/refresh_manifest.py \
     /etc/systemd/system/eternal-manifest.service \
     /etc/systemd/system/eternal-manifest.timer \
@@ -56,7 +56,7 @@ if [ ! -L "$site_link" ]; then
     ln -s /etc/nginx/sites-available/eternal-launcher "$site_link"
 fi
 
-# Criar um manifesto vazio válido mesmo antes de receber os primeiros mods.
+# Create a valid empty manifest even before the first mods arrive.
 if [ ! -e "$files_root/manifest.json" ]; then
     printf '{"schemaVersion": 1, "files": []}\n' > "$files_root/manifest.json"
     chmod 0644 "$files_root/manifest.json"
@@ -68,7 +68,7 @@ systemctl daemon-reload
 systemctl start eternal-manifest.service
 systemctl enable --now eternal-manifest.timer nginx
 systemctl reload nginx
-# O reload retorna antes de os novos workers começarem a atender.
+# reload returns before the new workers start serving.
 curl --fail --silent --show-error --retry 5 --retry-delay 1 --retry-all-errors \
     --max-time 10 -H 'Host: eternalfast.aplot.cloud' http://127.0.0.1/manifest.json
-printf '\nInstalação concluída. Envie os arquivos por SFTP para %s.\nBackup: %s\n' "$files_root" "$backup_root"
+printf '\nInstallation complete. Upload files over SFTP to %s.\nBackup: %s\n' "$files_root" "$backup_root"

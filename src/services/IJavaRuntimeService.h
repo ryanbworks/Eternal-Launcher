@@ -20,8 +20,8 @@ struct JavaRuntimeResult
 
 using JavaRuntimeProgressCallback = InstallationProgressCallback;
 
-// Fronteira responsável por disponibilizar um Java portátil sem alterar a
-// instalação global do Windows ou exigir configuração manual do usuário.
+// Boundary responsible for providing a portable Java without changing the
+// global Windows installation or requiring manual setup from the user.
 class IJavaRuntimeService
 {
 public:

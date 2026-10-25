@@ -4,7 +4,7 @@
 #include <string>
 #include <string_view>
 
-// Persiste apenas o nickname local; não representa autenticação ou conta Minecraft.
+// Persists only the local nickname; it is not authentication or a Minecraft account.
 class NicknameStore
 {
 public:

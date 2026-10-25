@@ -7,8 +7,8 @@
 #include <variant>
 #include <vector>
 
-// DOM JSON mínimo usado para interpretar manifestos externos sem adicionar um
-// runtime web ou uma dependência binária ao launcher.
+// Minimal JSON DOM used to parse external manifests without adding a
+// web runtime or a binary dependency to the launcher.
 class JsonValue
 {
 public:

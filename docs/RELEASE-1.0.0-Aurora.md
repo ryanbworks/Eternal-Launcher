@@ -1,56 +1,54 @@
 # v1.0.0-Aurora
 
-Primeira release estável com AutoUpdate do executável. Publicada em 3 de outubro
-de 2026 para Windows x64.
+First stable release with executable AutoUpdate. Published on October 3, 2026 for
+Windows x64.
 
-- [Baixar EternalLauncher.exe](https://eternalfast.aplot.cloud/launcher/releases/1.0.0/EternalLauncher.exe)
-- [Manifesto assinado](https://eternalfast.aplot.cloud/launcher/latest.json)
-- [Gerar e publicar as próximas versões](AUTOUPDATE.md)
+- [Download EternalLauncher.exe](https://eternalfast.aplot.cloud/launcher/releases/1.0.0/EternalLauncher.exe)
+- [Signed manifest](https://eternalfast.aplot.cloud/launcher/latest.json)
+- [Build and publish the next versions](AUTOUPDATE.md)
 
-## Mudanças
+## Changes
 
-- Verificação automática na abertura, download validado e reabertura automática.
-- Assinatura RSA-PSS/SHA-256 com chave pública incorporada.
-- Backup e rollback se a nova versão não confirmar a abertura em 30 segundos.
-- Recuperação após interrupções; falhas permitem continuar na versão instalada.
-- Link de download manual na interface e ferramenta de release para PowerShell 7.
-- Versão centralizada no CMake e nas propriedades do executável.
+- Automatic check on startup, validated download and automatic restart.
+- RSA-PSS/SHA-256 signature with an embedded public key.
+- Backup and rollback if the new version doesn't confirm it opened within 30 seconds.
+- Recovery after interruptions; failures let you keep using the installed version.
+- Manual download link in the interface and a PowerShell 7 release tool.
+- Version centralized in CMake and in the executable's properties.
 
-Usuários da v0.1.1-Vagalume devem substituir o executável manualmente uma vez.
-As atualizações seguintes são automáticas a partir da Aurora. A RAM máxima
-padrão continua em 4 GB, e as preferências e a instância do jogo são preservadas.
+Users of v0.1.1-Vagalume must replace the executable manually once. Later updates
+are automatic starting with Aurora. The default maximum RAM stays at 4 GB, and
+preferences and the game instance are preserved.
 
-## Evidência da distribuição
+## Distribution evidence
 
 ```text
-Arquivo: EternalLauncher.exe
-Versão: 1.0.0-Aurora
-Arquitetura: x64
-Tamanho: 3469824 bytes
-SHA-256: c1699d4ad1adc6ee6f892f0beeebd921e256807aa101432b5485d2af629b48ed
+File:         EternalLauncher.exe
+Version:      1.0.0-Aurora
+Architecture: x64
+Size:         3469824 bytes
+SHA-256:      c1699d4ad1adc6ee6f892f0beeebd921e256807aa101432b5485d2af629b48ed
 ```
 
-Compilação Release MSVC `/W4` sem avisos. CTest: **5/5 aprovado**, incluindo
-**53 verificações de AutoUpdate** com chave exclusiva de testes, troca real de
-executáveis, rollback, timeout, permissões, bloqueio, cancelamento, corrupção,
-concorrência e recuperação. Controles nativos de bloqueio/recuperação também
-foram exercitados em janela de testes oculta.
+MSVC Release `/W4` build with no warnings. CTest: **5/5 passed**, including
+**53 AutoUpdate checks** with a test-only key, real executable swaps, rollback,
+timeout, permissions, locking, cancellation, corruption, concurrency and recovery.
+Native lock/recovery controls were also exercised in a hidden test window.
 
-As sete capturas em `.impeccable/review/autoupdate/` foram verificadas nos tamanhos
-1180 × 730 e 944 × 584. O revisor independente retornou `ship` para o escopo dos
-estados de atualização, link de recuperação e identidade de versão. São previews
-sintéticos do renderer de produção; não comprovam comportamento de uma sessão
-de jogo. Login Microsoft, instalação completa e gameplay não foram repetidos
-nesta release.
+The seven captures in `.impeccable/review/autoupdate/` were checked at 1180 × 730
+and 944 × 584. The independent reviewer returned `ship` for the scope of the update
+states, recovery link and version identity. They are synthetic previews from the
+production renderer; they don't prove the behavior of a game session. Microsoft
+login, full installation and gameplay were not repeated for this release.
 
-Publicação feita por SFTP em `/srv/eternal-launcher/files/launcher/`, com SHA-256
-remoto conferido e manifesto publicado por renomeação após o executável. NGINX
-passou em `nginx -t` antes da recarga; o timer de mods permaneceu ativo.
+Published over SFTP to `/srv/eternal-launcher/files/launcher/`, with the remote
+SHA-256 checked and the manifest published by rename after the executable. NGINX
+passed `nginx -t` before reloading; the mods timer stayed active.
 
-Após publicar, foram verificados pelo HTTPS público a assinatura, tamanho,
-SHA-256 e `Cache-Control: no-store`. O mesmo transporte WinHTTP usado pelo
-launcher baixou e validou o executável publicado. O teste de cancelamento real
-do transporte respondeu em 63 ms. Arquivos temporários `.upload` retornam HTTP
-403; o manifesto de mods continuou HTTP 200 com 146 entradas.
+After publishing, the signature, size, SHA-256 and `Cache-Control: no-store` were
+checked over public HTTPS. The same WinHTTP transport the launcher uses downloaded
+and validated the published executable. The real transport cancellation test
+responded in 63 ms. Temporary `.upload` files return HTTP 403; the mod manifest
+stayed at HTTP 200 with 146 entries.
 
-Não foram publicadas versões fictícias, chaves privadas nem credenciais.
+No fictitious versions, private keys or credentials were published.

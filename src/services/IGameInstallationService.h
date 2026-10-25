@@ -19,7 +19,7 @@ struct GameInstallationResult
 
 using GameInstallationProgressCallback = InstallationProgressCallback;
 
-// Contrato do instalador completo da instância Minecraft mantida pelo launcher.
+// Contract for the full installer of the Minecraft instance managed by the launcher.
 class IGameInstallationService
 {
 public:

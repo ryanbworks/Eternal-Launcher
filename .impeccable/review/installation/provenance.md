@@ -14,5 +14,5 @@ and Enter assertions, then captures the client at 1180 × 730 and 944 × 584.
 No network, authentication, game installation or game launch is performed by
 that capture command. The test host is destroyed at the end.
 
-docs/images/instalacao.png is copied from installation-download.png, with an
+docs/images/installation.png is copied from installation-download.png, with an
 adjacent origin file. No new raster asset or AI-generated image was introduced.

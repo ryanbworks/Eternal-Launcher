@@ -3,8 +3,8 @@
 #include <string>
 #include <string_view>
 
-// Codifica os bytes UTF-8 do caminho para que nomes com espaço, + ou colchetes
-// continuem válidos em URLs HTTP sem mudar o nome local do arquivo.
+// Encodes the path's UTF-8 bytes so names with spaces, + or brackets
+// stay valid in HTTP URLs without changing the local file name.
 inline std::string encodeRelativeUrlPath(std::string_view path)
 {
     constexpr char digits[] = "0123456789ABCDEF";

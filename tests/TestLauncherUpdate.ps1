@@ -34,19 +34,19 @@ function Wait-Result([string]$Dir, [string]$Expected, [int]$Seconds = 20) {
     $deadline = [datetime]::UtcNow.AddSeconds($Seconds)
     $file = Join-Path $Dir 'result.txt'
     while (!(Test-Path $file) -and [datetime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 100 }
-    Assert-True (Test-Path $file) "resultado ausente: $Expected"
-    Assert-True ([IO.File]::ReadAllText($file) -eq $Expected) "resultado esperado: $Expected"
+    Assert-True (Test-Path $file) "missing result: $Expected"
+    Assert-True ([IO.File]::ReadAllText($file) -eq $Expected) "expected result: $Expected"
     Start-Sleep -Milliseconds 350
 }
 function Verify-Case([string]$Name, [string]$Envelope, [bool]$Valid) {
     $file = Join-Path $testRoot "$Name.json"
     [IO.File]::WriteAllText($file, $Envelope)
     & $OldExecutable --verify $file | Out-Null
-    Assert-True (($LASTEXITCODE -eq 0) -eq $Valid) "manifesto $Name"
+    Assert-True (($LASTEXITCODE -eq 0) -eq $Valid) "manifest $Name"
 }
 try {
     & $OldExecutable --unit
-    Assert-True ($LASTEXITCODE -eq 0) 'comparação numérica de versões'
+    Assert-True ($LASTEXITCODE -eq 0) 'numeric version comparison'
     $payload = Make-Payload $NewExecutable
     $valid = New-EternalEnvelope $testKey $payload
     Verify-Case 'valid' $valid $true
@@ -70,10 +70,10 @@ try {
 
     $case = New-Case 'success'; $process = Start-Case $case
     Wait-Result $case 'updated'
-    Assert-True ((Get-FileHash (Join-Path $case 'Launcher á.exe')).Hash -eq (Get-FileHash $NewExecutable).Hash) 'executável novo aplicado'
+    Assert-True ((Get-FileHash (Join-Path $case 'Launcher á.exe')).Hash -eq (Get-FileHash $NewExecutable).Hash) 'new executable applied'
     $process.WaitForExit(5000) | Out-Null
     $second = Start-Case $case '--recover'; $second.WaitForExit(5000) | Out-Null
-    Assert-True (!(Test-Path (Join-Path $case 'Launcher á.exe.update'))) 'limpeza após confirmação'
+    Assert-True (!(Test-Path (Join-Path $case 'Launcher á.exe.update'))) 'cleanup after confirmation'
 
     foreach ($marker in @('fail-child', 'hang-child')) {
         $case = New-Case $marker
@@ -99,7 +99,7 @@ try {
     try {
         Set-Acl -LiteralPath $case -AclObject $denyAcl
         $process = Start-Case $case; $process.WaitForExit(10000) | Out-Null
-        Assert-True ([IO.File]::ReadAllText((Join-Path $case 'result.txt')) -eq 'failed') 'pasta sem permissão'
+        Assert-True ([IO.File]::ReadAllText((Join-Path $case 'result.txt')) -eq 'failed') 'folder without permission'
     } finally { Set-Acl -LiteralPath $case -AclObject $originalAcl }
 
     foreach ($scenario in @('offline','cancel','corrupt','older','equal')) {
@@ -116,7 +116,7 @@ try {
             }
         }
         $process = Start-Case $case; Wait-Result $case $expected
-        Assert-True ((Get-FileHash (Join-Path $case 'Launcher á.exe')).Hash -eq (Get-FileHash $OldExecutable).Hash) "preservação $scenario"
+        Assert-True ((Get-FileHash (Join-Path $case 'Launcher á.exe')).Hash -eq (Get-FileHash $OldExecutable).Hash) "preservation $scenario"
     }
     $case = New-Case 'concurrent'
     $holder = Start-Case $case '--hold-update'
@@ -137,7 +137,7 @@ try {
             Copy-Item -LiteralPath $NewExecutable -Destination (Join-Path $case 'Launcher á.exe') -Force
         }
         $process = Start-Case $case '--recover'; Wait-Result $case 'recovered'
-        Assert-True (!(Test-Path $tx)) "recuperação de interrupção $phase"
+        Assert-True (!(Test-Path $tx)) "interruption recovery $phase"
     }
-    Write-Host "AutoUpdate: $script:checks verificações aprovadas. Evidências: $testRoot"
+    Write-Host "AutoUpdate: $script:checks checks passed. Evidence: $testRoot"
 } finally { $testKey.Dispose() }

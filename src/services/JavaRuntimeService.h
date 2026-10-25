@@ -2,8 +2,8 @@
 
 #include "services/IJavaRuntimeService.h"
 
-// Baixa o Temurin 17 portátil, confere o SHA-256 publicado pelo Adoptium e
-// instala o conteúdo de forma isolada e transacional para o Eternal Launcher.
+// Downloads portable Temurin 17, checks the SHA-256 published by Adoptium and
+// installs the content in an isolated, transactional way for Eternal Launcher.
 class JavaRuntimeService final : public IJavaRuntimeService
 {
 public:

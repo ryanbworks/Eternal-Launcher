@@ -1,4 +1,4 @@
-"""Testes locais da geração automática do manifesto de mods."""
+"""Local tests for the automatic mod manifest generation."""
 
 import hashlib
 import json
@@ -37,7 +37,7 @@ class RefreshManifestTests(unittest.TestCase):
                 "size": 8,
             })
 
-            # Mesmo com o mesmo tamanho, uma substituição deve mudar o hash.
+            # Even with the same size, a replacement must change the hash.
             mod.write_bytes(b"versao-2")
             os.utime(mod, (old + 1, old + 1))
             self.assertEqual(refresh(root, cache), 1)
@@ -49,7 +49,7 @@ class RefreshManifestTests(unittest.TestCase):
             entries = json.loads(manifest.read_text(encoding="utf-8"))["files"]
             self.assertEqual(len(entries), 1)
 
-            # Nomes reais de mods podem conter espaços e colchetes.
+            # Real mod names can contain spaces and brackets.
             named_mod = mods / "[1.20.1] SecurityCraft v1.10.1.jar"
             named_mod.write_bytes(b"mod")
             os.utime(named_mod, (old, old))

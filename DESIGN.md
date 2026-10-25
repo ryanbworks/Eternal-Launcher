@@ -163,7 +163,7 @@ and BUTTON controls, using synthetic transfer values and Steve. Automated tests
 exercise HTTP against a loopback fixture and game-launch decisions against doubles.
 These captures do not demonstrate a public-service installation, real Forge or
 Minecraft execution, physical pointer interaction, monitor DPI transitions or
-screen-reader announcements. See `docs/ACOMPANHAMENTO_INSTALACAO.md` for scope.
+screen-reader announcements. See `docs/INSTALLATION_TRACKING.md` for scope.
 
 ## Overview
 
@@ -323,7 +323,7 @@ Feedback uses time-based exponential easing: main hover has a 35ms time constant
 
 The Windows client-area animation preference makes transitions immediate and fixes the indeterminate phase. Atmospheric idle motion is authorized by the owner's latest request and limited to foreground home. HTML/CSS snippets in the sidecar are portable visual approximations of these native components; they are not the runtime implementation and cannot prove native semantics or exact GDI+ metrics.
 
-Motion evidence (2026-10-04): `.impeccable/review/motion/` contains deterministic normal/compact time samples from production rendering in a test-owned host. WindowPaintingTests covers interruption, repeated selection, immediate controls, transfer resets, reduced-motion feedback, timer suspension and raster reuse/rebuild across scales. The reduced-motion branch is exercised by injecting the preference; no system preference is changed. A separate visible native-host benchmark measured normal WM_PAINT median intervals improving from 72.63ms to 15.40ms and warm home rendering from 64.32ms to 10.86ms. These are host measurements, not physical display-compositor FPS or a guarantee on every device. The denser GIF preview uses 20ms samples. See `docs/ANIMACOES.md` for methodology and limits.
+Motion evidence (2026-10-04): `.impeccable/review/motion/` contains deterministic normal/compact time samples from production rendering in a test-owned host. WindowPaintingTests covers interruption, repeated selection, immediate controls, transfer resets, reduced-motion feedback, timer suspension and raster reuse/rebuild across scales. The reduced-motion branch is exercised by injecting the preference; no system preference is changed. A separate visible native-host benchmark measured normal WM_PAINT median intervals improving from 72.63ms to 15.40ms and warm home rendering from 64.32ms to 10.86ms. These are host measurements, not physical display-compositor FPS or a guarantee on every device. The denser GIF preview uses 20ms samples. See `docs/ANIMATIONS.md` for methodology and limits.
 
 ### Verification Scope
 

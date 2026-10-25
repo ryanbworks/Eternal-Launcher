@@ -4,6 +4,6 @@
 
 namespace MockLauncherData
 {
-    // Cria os dados temporários utilizados exclusivamente na primeira versão visual.
+    // Creates the temporary data used only by the first visual version.
     LauncherViewState createInitialState();
 }

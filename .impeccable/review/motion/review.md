@@ -26,7 +26,7 @@ Evidence: PNG samples from production rendering at 1180 × 730 / 944 × 584 and 
 previews encoded from those frames. Host state and nickname are synthetic.
 Desktop frame cadence, physical pointer interaction, monitor transitions and
 screen-reader behavior were not measured. The test injects reduced motion rather
-than changing the Windows preference. Source details are in docs/ANIMACOES.md.
+than changing the Windows preference. Source details are in docs/ANIMATIONS.md.
 
 ## Performance follow-up
 
@@ -110,5 +110,5 @@ intervals are 16.31/15.02ms, normal/compact. All six suites pass (47.89s).
 The native capture fixture now prints children at explicit client origins,
 correcting the previous WM_PRINT/PRF_CHILDREN offset. The GIF's settings frames
 were refreshed accordingly. Full evidence and limits are in
-`../navigation-performance/review.md` and `docs/ANIMACOES.md`.
+`../navigation-performance/review.md` and `docs/ANIMATIONS.md`.
 No publication or system preference change was performed.

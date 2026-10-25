@@ -21,7 +21,7 @@ The animated GIF is assembled from those unmodified PNG frames using Pillow.
 The updated GIF uses 167 production frames, with 20ms samples during movement and
 holds on completed states. Its timing illustrates the intended motion and is not
 a desktop frame-rate recording. The separate visible-host benchmark reports actual
-WM_PAINT intervals and warm drawing times; methodology is in docs/ANIMACOES.md.
+WM_PAINT intervals and warm drawing times; methodology is in docs/ANIMATIONS.md.
 
 The expanded preview simulates landscape hover, Play hover/press and gear hover;
 it also shows a simulated completed Java stage and a Minecraft transfer. It uses

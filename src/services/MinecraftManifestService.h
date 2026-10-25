@@ -23,8 +23,8 @@ struct MinecraftInstallPlanResult
     InstallationFailure failure = InstallationFailure::None;
 };
 
-// Interpreta os manifestos oficiais da Mojang e converte o perfil 1.20.1 em
-// uma lista explícita de downloads, nativas e entradas de classpath.
+// Parses Mojang's official manifests and turns the 1.20.1 profile into
+// an explicit list of downloads, natives and classpath entries.
 class MinecraftManifestService
 {
 public:

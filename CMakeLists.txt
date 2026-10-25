@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.21)
 
-# O launcher utiliza somente C++; declarar a linguagem evita verificações
-# desnecessárias de um compilador C durante a configuração do projeto.
-project(EternalLauncher VERSION 1.0.11 LANGUAGES CXX)
-set(ETERNAL_CODENAME "Aura")
+# The launcher only uses C++; declaring the language avoids unnecessary
+# C compiler checks while configuring the project.
+project(EternalLauncher VERSION 1.0.14 LANGUAGES CXX)
+set(ETERNAL_CODENAME "Federation")
 configure_file(src/config/LauncherVersion.h.in generated/config/LauncherVersion.h @ONLY)
 include_directories("${CMAKE_CURRENT_BINARY_DIR}/generated")
 enable_language(RC)
@@ -13,8 +13,8 @@ if(ETERNAL_REQUIRE_UPDATE_TESTS AND NOT BUILD_TESTING)
     message(FATAL_ERROR "ETERNAL_REQUIRE_UPDATE_TESTS requires BUILD_TESTING=ON.")
 endif()
 
-# Inclui o runtime C++ no executável distribuído, sem exigir o Visual C++
-# Redistributable no computador de quem baixar o launcher.
+# Bundle the C++ runtime into the distributed executable so the Visual C++
+# Redistributable is not required on the computer that downloads the launcher.
 if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
@@ -161,13 +161,13 @@ target_compile_definitions(EternalLauncher PRIVATE
 
 target_include_directories(EternalLauncher PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
-# GDI+ desenha a interface, enquanto DWM e UxTheme integram a janela ao tema
-# escuro do Windows. Nenhuma dessas bibliotecas adiciona dependência externa.
+# GDI+ draws the interface, while DWM and UxTheme integrate the window with the
+# Windows dark theme. None of these libraries adds an external dependency.
 target_link_libraries(EternalLauncher PRIVATE gdiplus dwmapi uxtheme comctl32 winhttp bcrypt ole32 shell32 comdlg32)
 
 if(MSVC)
-    # O gerador do Visual Studio injeta /W3 por padrão. Removê-lo antes de /W4
-    # evita o aviso de opção sobrescrita e mantém a saída da compilação limpa.
+    # The Visual Studio generator injects /W3 by default. Removing it before /W4
+    # avoids the overridden-option warning and keeps the build output clean.
     string(REGEX REPLACE "/W[0-4]" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
     target_compile_options(EternalLauncher PRIVATE /W4 /permissive- /utf-8)
 endif()
