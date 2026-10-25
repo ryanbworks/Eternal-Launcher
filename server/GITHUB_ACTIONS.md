@@ -103,6 +103,17 @@ restaura o anúncio anterior quando ele ainda corresponde à própria publicaç�
 Uma repetição pode reutilizar um EXE idêntico; nunca substitui bytes diferentes
 de uma versão existente.
 
+O domínio de produção passa pela Cloudflare. A conferência HTTPS envia um
+User-Agent próprio (`EternalLauncher-Publisher`), porque o padrão
+`Python-urllib` é bloqueado com HTTP 403. Se a Cloudflare ainda bloquear o
+executor (Bot Fight Mode ou regra WAF), o log mostra o status HTTP e o CF-RAY;
+liberar esse User-Agent em uma regra de WAF para `/launcher/*`.
+
+Se uma execução falhar depois do envio do EXE, a pasta da versão permanece no
+servidor sem ser anunciada. Um novo build gera bytes diferentes, então a
+próxima tentativa deve usar uma versão maior (por exemplo, 1.0.14) ou reexecutar
+somente o job `publish` da mesma execução.
+
 O workflow serializa publicações e o servidor usa a pasta `.ci-publish-lock`
 como trava adicional. Se o processo for encerrado abruptamente, conferir que
 nenhuma publicação está rodando antes de remover essa pasta vazia pelo SFTP.

@@ -12,6 +12,7 @@ import re
 import stat
 import struct
 import sys
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 import uuid
 
@@ -21,6 +22,7 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 MAX_MANIFEST = 65536
 MAX_EXECUTABLE = 268435456
+USER_AGENT = "EternalLauncher-Publisher/1.0 (+https://github.com/ryanbworks/Eternal-Launcher)"
 
 
 def public_key(header: Path):
@@ -73,7 +75,18 @@ def verify_stream(stream, payload: dict):
 
 
 def https_download(base_url: str, resource: str):
-    return urlopen(Request(base_url.rstrip("/") + resource, headers={"Cache-Control": "no-cache"}), timeout=30)
+    # The production domain is behind Cloudflare, which rejects the default
+    # "Python-urllib" User-Agent. Identify as the launcher itself would.
+    url = base_url.rstrip("/") + resource
+    request = Request(url, headers={"Cache-Control": "no-cache", "User-Agent": USER_AGENT})
+    try:
+        return urlopen(request, timeout=30)
+    except HTTPError as error:
+        ray = error.headers.get("CF-RAY", "") if error.headers else ""
+        detail = f" (CF-RAY {ray})" if ray else ""
+        raise RuntimeError(f"Falha ao conferir {url} pelo HTTPS: HTTP {error.code} {error.reason}{detail}") from error
+    except URLError as error:
+        raise RuntimeError(f"Falha ao conferir {url} pelo HTTPS: {error.reason}") from error
 
 
 def verify_public_artifact(base_url: str, payload: dict):
