@@ -1,26 +1,38 @@
 #Requires -Version 7.0
 [CmdletBinding()]
 param([switch]$InitializeKeyOnly, [switch]$SkipBuild,
-    [string]$BuildDirectory = 'out/build/aurora')
+    [string]$BuildDirectory = 'out/build/aurora', [switch]$CiSigningKey)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 Set-Location $projectRoot
 . (Join-Path $PSScriptRoot 'ReleaseCrypto.ps1')
-$rsa = Get-EternalSigningKey -Initialize:$InitializeKeyOnly
+if ($CiSigningKey) {
+    if ($InitializeKeyOnly) { throw 'A chave de CI deve corresponder à chave pública existente.' }
+    . (Join-Path $PSScriptRoot 'CiSigning.ps1')
+    $rsa = Get-EternalCiSigningKey
+} else {
+    $rsa = Get-EternalSigningKey -Initialize:$InitializeKeyOnly
+}
 try {
     $blob = Get-EternalPublicBlob $rsa
     $headerPath = Join-Path $projectRoot 'src/config/UpdatePublicKey.h'
     $hex = ($blob | ForEach-Object { '0x{0:x2}' -f $_ }) -join ','
     $header = "#pragma once`n#include <array>`nnamespace LauncherUpdateTrust {`ninline constexpr std::array<unsigned char, $($blob.Length)> PublicKey = {$hex};`n}`n"
+    $publicHeaderMatches = $false
+    if (Test-Path -LiteralPath $headerPath) {
+        [byte[]]$storedBlob = [regex]::Matches([IO.File]::ReadAllText($headerPath), '0x([0-9a-fA-F]{2})') |
+            ForEach-Object { [Convert]::ToByte($_.Groups[1].Value, 16) }
+        $publicHeaderMatches = [Convert]::ToBase64String($storedBlob) -ceq [Convert]::ToBase64String($blob)
+    }
     if ($InitializeKeyOnly) {
-        if ((Test-Path $headerPath) -and [IO.File]::ReadAllText($headerPath) -ne $header) {
+        if ((Test-Path $headerPath) -and !$publicHeaderMatches) {
             throw 'A chave pública existente difere desta chave privada. Não é permitido trocá-la silenciosamente.'
         }
         [IO.File]::WriteAllText($headerPath, $header)
         Write-Host 'Chave local protegida por DPAPI; somente a chave pública foi gravada no projeto.'
         return
     }
-    if (!(Test-Path $headerPath) -or [IO.File]::ReadAllText($headerPath) -ne $header) {
+    if (!$publicHeaderMatches) {
         throw 'A chave privada não corresponde à chave pública compilada.'
     }
     $cmakeText = Get-Content CMakeLists.txt -Raw
