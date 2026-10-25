@@ -1,5 +1,5 @@
 [Unit]
-Description=Atualiza o manifesto de mods do Eternal Launcher
+Description=Refresh the Eternal Launcher mod manifest
 
 [Service]
 Type=oneshot

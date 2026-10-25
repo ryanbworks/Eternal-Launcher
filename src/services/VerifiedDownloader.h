@@ -33,8 +33,8 @@ struct VerifiedDownloadResult
 
 using VerifiedDownloadProgress = InstallationProgressCallback;
 
-// Executa downloads paralelos com arquivos .part e só publica cada destino
-// depois que tamanho e hash coincidirem com o manifesto de origem.
+// Runs parallel downloads with .part files and only publishes each destination
+// after its size and hash match the source manifest.
 class VerifiedDownloader
 {
 public:

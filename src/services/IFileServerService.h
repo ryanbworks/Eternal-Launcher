@@ -14,14 +14,14 @@ struct FileServerManifestResponse
     InstallationFailure failure = InstallationFailure::None;
 };
 
-// Contrato genérico para obtenção do manifesto no servidor HTTP de arquivos.
-// Nenhuma referência ao NGINX aparece aqui, pois ele é apenas a hospedagem atual.
+// Generic contract for fetching the manifest from the HTTP file server.
+// NGINX is never referenced here, since it is only the current host.
 class IFileServerService
 {
 public:
     virtual ~IFileServerService() = default;
 
-    // Obtém o manifesto e devolve dados suficientes para a interface representar
-    // sucesso, indisponibilidade ou respostas HTTP inesperadas.
+    // Fetches the manifest and returns enough data for the interface to show
+    // success, unavailability or unexpected HTTP responses.
     virtual FileServerManifestResponse fetchManifest(std::stop_token stop = {}) = 0;
 };

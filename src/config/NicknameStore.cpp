@@ -8,7 +8,7 @@
 
 bool NicknameStore::isValid(std::wstring_view nickname)
 {
-    // Mesmas regras aceitas pelo campo e pela inicialização offline do jogo.
+    // Same rules accepted by the field and by the game's offline launch.
     return nickname.size() >= 3 && nickname.size() <= 16 &&
         std::all_of(nickname.begin(), nickname.end(), [](wchar_t character)
         {
@@ -49,7 +49,7 @@ bool NicknameStore::save(
     std::filesystem::create_directories(dataDirectory, error);
     if (error) return false;
 
-    // Escreve primeiro em arquivo temporário para não perder o último valor válido.
+    // Write to a temporary file first so the last valid value is never lost.
     const auto destination = filePath(dataDirectory);
     const auto temporary = std::filesystem::path(destination.wstring() + L".tmp");
     {

@@ -5,8 +5,8 @@
 
 namespace ArchiveExtractor
 {
-    // Usa o bsdtar fornecido pelo Windows para ZIP/JAR sem depender de um
-    // interpretador ou ferramenta instalada pelo usuário.
+    // Uses the bsdtar shipped with Windows for ZIP/JAR without depending on an
+    // interpreter or a tool installed by the user.
     [[nodiscard]] bool extract(
         const std::filesystem::path& archive,
         const std::filesystem::path& destination,

@@ -168,8 +168,8 @@ MinecraftInstallPlanResult MinecraftManifestService::createPlan(
             const auto* downloads = child(&library, "downloads");
             if (auto artifact = createDownload(child(downloads, "artifact"), librariesRoot))
             {
-                // Manifestos novos representam a nativa x64 como uma biblioteca
-                // separada; manifestos antigos usam natives/classifiers.
+                // Newer manifests represent the x64 native as a separate
+                // library; older manifests use natives/classifiers.
                 if (libraryName.ends_with(":natives-windows"))
                 {
                     plan.nativeArchives.push_back(artifact->destination);

@@ -102,8 +102,8 @@ namespace
 
 std::optional<JavaRuntimePackage> JavaRuntimePackage::parse(std::string_view metadata)
 {
-    // O objeto "installer" aparece antes de "package" na resposta. Isolar o
-    // segundo evita escolher acidentalmente o MSI em vez do ZIP portátil.
+    // The "installer" object appears before "package" in the response. Isolating the
+    // latter avoids picking the MSI instead of the portable ZIP by accident.
     const auto packageStart = metadata.find("\"package\"");
     if (packageStart == std::string_view::npos)
     {

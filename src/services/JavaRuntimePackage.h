@@ -7,8 +7,8 @@
 #include <string_view>
 #include <stop_token>
 
-// Representa o pacote ZIP informado pela API do Adoptium e concentra a
-// interpretação dos metadados e a verificação criptográfica do arquivo.
+// Represents the ZIP package reported by the Adoptium API and centralizes
+// metadata parsing and the file's cryptographic verification.
 struct JavaRuntimePackage
 {
     std::wstring url;

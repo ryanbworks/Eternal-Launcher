@@ -1,190 +1,214 @@
+<div align="center">
+
 # Eternal Launcher
 
-Launcher desktop privado para uma instalação padronizada de Minecraft `1.20.1`
-com Forge `47.4.10`. A aplicação consulta um manifesto HTTP, prepara uma
-instância isolada e inicia o jogo com o nickname informado.
+**Native Windows launcher that prepares and starts the Eternal server's Minecraft Forge setup in one click.**
 
-![Interface principal do Eternal Launcher](docs/images/interface-principal.png)
+[![Build](https://github.com/ryanbworks/Eternal-Launcher/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/ryanbworks/Eternal-Launcher/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/ryanbworks/Eternal-Launcher?label=release&color=7c3aed)](https://github.com/ryanbworks/Eternal-Launcher/releases/latest)
+![Platform](https://img.shields.io/badge/Windows-x64-0078d4?logo=windows&logoColor=white)
+![Minecraft](https://img.shields.io/badge/Minecraft-1.20.1-62b47a)
+![Forge](https://img.shields.io/badge/Forge-47.4.10-e0a43a)
+![C++20](https://img.shields.io/badge/C%2B%2B-20-00599c?logo=cplusplus&logoColor=white)
 
-Prévia ilustrativa do novo design. A janela real exibe o estado consultado dos
-serviços. A interface usa uma marca própria, paisagem incorporada, detalhes
-violeta, transições suaves e controles nativos com navegação por teclado.
+[**⬇️ Download the latest version**](https://github.com/ryanbworks/Eternal-Launcher/releases/latest) ·
+[Changelog](CHANGELOG.md) ·
+[Architecture](docs/ARCHITECTURE.md)
 
-## Baixar e usar
+</div>
 
-Baixe o [Eternal Launcher v1.0.0-Aurora](https://eternalfast.aplot.cloud/launcher/releases/1.0.0/EternalLauncher.exe).
-A distribuição é um único executável portátil para Windows x64. Abra
-`EternalLauncher.exe`. O launcher inclui o runtime C++ e prepara o Java 17
-automaticamente no primeiro clique em **Jogar**, com conexão à internet.
+Private desktop launcher for a standardized Minecraft `1.20.1` installation with
+Forge `47.4.10`. It reads an HTTP manifest, prepares an isolated instance and
+starts the game with the chosen nickname.
 
-Quem usa a v0.1.1-Vagalume precisa substituir o executável manualmente uma vez.
-A Aurora verifica as próximas versões na abertura e pergunta antes de baixar.
-Ao confirmar com **OK**, atualiza e reabre automaticamente.
-Preferências e arquivos do jogo são preservados. Se o update falhar, o launcher
-permite continuar na versão instalada e oferece o download manual.
+> The launcher's interface is in Brazilian Portuguese. UI labels below are quoted
+> as they appear in the app, followed by their English meaning.
 
-Para preparar uma próxima versão, abra [PrepararAtualizacao.cmd](PrepararAtualizacao.cmd).
-O assistente pede a versão, compila, testa e gera a pasta `FILEZILLA` com o
-executável e o JSON assinado. Depois, guia o envio e a conferência pelo HTTPS.
-Veja o [passo a passo de publicação](docs/AUTOUPDATE.md#assistente-de-dois-cliques).
+![Eternal Launcher main screen](docs/images/main-interface.png)
 
-## Funcionalidades atuais
+Illustrative preview of the current design. The real window shows the live status
+of the services. The interface has its own brand, a built-in landscape, violet
+accents, smooth transitions and native controls with keyboard navigation.
 
-- Interface nativa redimensionável para Windows, tema escuro e escala de DPI.
-- Logo vetorial e ícone próprio, com paisagem e fonte embutidas no executável.
-- Abertura do portal, partículas em três camadas, luz acompanhando o cursor no Jogar, navegação animada nas configurações e transição para a instalação, respeitando a preferência de animação do Windows. [Detalhes das animações](docs/ANIMACOES.md).
-- Escolha entre nickname local e login original com conta Microsoft.
-- Campo de nickname com validação de 3 a 16 letras, números ou `_`.
-- Consulta assíncrona ao manifesto do servidor HTTP configurado.
-- AutoUpdate do executável com assinatura RSA-PSS/SHA-256, backup e rollback.
-- Descoberta automática dos mods enviados à pasta `mods/` do servidor.
-- Download automático do Java 17 portátil pela API oficial do Eclipse Adoptium.
-- Instalação automática do cliente Minecraft, bibliotecas, assets e Forge.
-- Verificação de SHA-1/SHA-256 e publicação atômica dos downloads.
-- Sincronização dos arquivos descritos em `files` no manifesto privado.
-- Remoção de mods locais que saíram do manifesto após a sincronização.
-- Log do instalador Forge e recuperação automática de falhas do Java portátil.
-- Extração das bibliotecas nativas e geração de classpath controlado.
-- Inicialização real do Forge e log técnico em `logs/launcher-console.log`.
-- Instância isolada em `%APPDATA%\.eternal-launcher\minecraft` ou em uma pasta exclusiva escolhida.
-- Configurações persistentes de RAM, resolução, tela cheia, Java e pasta do jogo.
-- Minimizar ao jogar, retornar após o jogo encerrar e atalhos para jogo, mods e logs.
+## Download and use
 
-No modo **Nickname local**, o servidor privado precisa aceitar sessões offline.
-No modo **Original**, o launcher obtém nome, UUID e token do perfil Minecraft:
-Java Edition da conta autenticada. A sessão fica apenas na memória e é solicitada
-novamente quando o launcher é reaberto.
+Download [Eternal Launcher v1.0.14-Federation](https://eternalfast.aplot.cloud/launcher/releases/1.0.14/EternalLauncher.exe)
+(see [what's new](https://github.com/ryanbworks/Eternal-Launcher/releases/latest)).
+The distribution is a single portable executable for Windows x64. Open
+`EternalLauncher.exe`. The launcher ships with the C++ runtime and sets up Java 17
+automatically the first time you click **Jogar** (Play), with an internet connection.
 
-### Configurar Minecraft
+Users of v0.1.1-Vagalume need to replace the executable manually once.
+Since Aurora, the launcher checks for new versions on startup and asks before downloading.
+After you confirm with **OK**, it updates and restarts automatically.
+Preferences and game files are preserved. If the update fails, the launcher lets
+you keep using the installed version and offers a manual download.
 
-Abra a engrenagem no cabeçalho para ajustar:
+To publish a new version, use Actions → **Publish launcher** → Run workflow:
+GitHub builds, tests, signs and publishes to the server, verifying the download
+over HTTPS before announcing the update. See the [publishing guide](server/GITHUB_ACTIONS.md).
+The local wizard [PrepareUpdate.cmd](PrepareUpdate.cmd) is still available as an
+alternative ([step by step](docs/AUTOUPDATE.md#two-click-wizard)).
 
-- Barra de RAM máxima em passos de 0,5 GB: 1, 1,5, 2, 4,5, 6,5 GB etc., com atalhos de 4, 6 e 8 GB.
-- Campos de RAM inicial/máxima em MiB para valores precisos (512 a 65536; inicial não pode superar a máxima).
-- Largura e altura da janela, com opção de iniciar em tela cheia.
-- Java 17 automático ou executável personalizado (`java.exe` / `javaw.exe`).
-- Pasta exclusiva da instância e minimização do launcher ao jogar.
+## Features
 
-A barra funciona com mouse e setas do teclado. Neste seletor, 1 GB corresponde
-a 1024 MiB (6,5 GB = 6656 MiB). A faixa inicial de 0,5 a 16 GB cresce para
-acomodar valores maiores digitados ou já salvos. Barra, atalhos e campo numérico
-ficam sincronizados; se um atalho reduzir a máxima abaixo da inicial, a inicial
-também é reduzida.
+- Resizable native Windows interface with a dark theme and DPI scaling.
+- Vector logo and custom icon, with the landscape and font embedded in the executable.
+- Portal opening, three-layer particles, a light that follows the cursor on the Play button, animated settings navigation and a transition into the installation view, all respecting the Windows animation preference. [Animation details](docs/ANIMATIONS.md).
+- Choice between a local nickname and an original Microsoft account login.
+- Nickname field validated to 3–16 letters, digits or `_`.
+- Asynchronous query of the configured HTTP server's manifest.
+- Executable AutoUpdate with RSA-PSS/SHA-256 signatures, backup and rollback.
+- Automatic discovery of mods uploaded to the server's `mods/` folder.
+- Automatic download of a portable Java 17 from the official Eclipse Adoptium API.
+- Automatic installation of the Minecraft client, libraries, assets and Forge.
+- SHA-1/SHA-256 verification and atomic publication of downloads.
+- Synchronization of the files listed under `files` in the private manifest.
+- Removal of launcher-installed mods that left the manifest, preserving mods added by the player.
+- Forge installer log and automatic recovery from portable Java failures.
+- Native library extraction and a controlled classpath.
+- Real Forge launch with a technical log at `logs/launcher-console.log`.
+- Isolated instance at `%APPDATA%\.eternal-launcher\minecraft` or in a dedicated folder of your choice.
+- Persistent settings for RAM, resolution, fullscreen, Java and game folder.
+- Minimize while playing, return when the game exits, and shortcuts to the game, mods and logs folders.
 
-**Salvar preferências** aplica os valores na próxima sessão. **Cancelar**, **Voltar**
-ou Esc descartam alterações não salvas. **Restaurar padrões** preenche o formulário;
-clique em Salvar para aplicar. Os valores ficam em
-`%APPDATA%\.eternal-launcher\settings.json`, com gravação atômica. Um arquivo inválido
-é preservado e o launcher carrega os padrões com um aviso na tela de configurações.
+In **Nickname local** (local nickname) mode, the private server must accept offline
+sessions. In **Original** mode, the launcher gets the name, UUID and token of the
+authenticated account's Minecraft: Java Edition profile. The session lives only in
+memory and is requested again when the launcher is reopened.
 
-O modo automático procura Java 17 no runtime privado, em `JAVA_HOME` e no `PATH`;
-prepara o runtime privado se necessário. O modo personalizado exige uma instalação
-Java 17 com arquivo `release` e `bin/java.exe` disponível para preparar o Forge.
-As preferências ficam bloqueadas durante login, preparação e execução do Minecraft.
+### Minecraft settings
 
-Trocar a pasta prepara outra instância: seus mundos permanecem na pasta anterior.
-Escolha uma pasta vazia ou uma instância já criada pelo Eternal. A pasta padrão
-`.minecraft`, a raiz do disco e os dados internos do launcher são protegidos.
-Os atalhos **Abrir jogo**, **Abrir mods** e **Abrir logs** usam a instância salva.
-**Minimizar launcher ao jogar** vem ativado por padrão, inclusive ao restaurar
-os padrões. O launcher retorna após o jogo encerrar. Se você desativar e salvar,
-essa escolha permanece nas próximas aberturas.
+Open the gear icon in the header to adjust:
 
-![Prévia ilustrativa das configurações](docs/images/configuracoes.png)
+- Maximum RAM slider in 0.5 GB steps: 1, 1.5, 2, 4.5, 6.5 GB and so on, with 4, 6 and 8 GB shortcuts.
+- Initial/maximum RAM fields in MiB for precise values (512 to 65536; initial cannot exceed maximum).
+- Window width and height, with an option to start in fullscreen.
+- Automatic Java 17 or a custom executable (`java.exe` / `javaw.exe`).
+- Dedicated instance folder and minimizing the launcher while playing.
 
-### Configurar login original
+The slider works with the mouse and the arrow keys. In this selector, 1 GB equals
+1024 MiB (6.5 GB = 6656 MiB). The initial 0.5–16 GB range grows to fit larger
+values that are typed or already saved. Slider, shortcuts and numeric field stay
+in sync; if a shortcut lowers the maximum below the initial value, the initial
+value is lowered too.
 
-O Application (client) ID público já está configurado em
-`src/config/LauncherConfig.h` e acompanha o executável compilado. Para usar
-outro registro sem recompilar, defina a variável de ambiente antes de abrir o
-launcher:
+**Salvar preferências** (Save preferences) applies the values from the next session.
+**Cancelar** (Cancel), **Voltar** (Back) or Esc discard unsaved changes.
+**Restaurar padrões** (Restore defaults) fills in the form; click Save to apply.
+Values are stored in `%APPDATA%\.eternal-launcher\settings.json` with atomic writes.
+An invalid file is preserved and the launcher loads the defaults, showing a warning
+on the settings screen.
+
+Automatic mode looks for Java 17 in the private runtime, in `JAVA_HOME` and on the
+`PATH`, and prepares the private runtime when needed. Custom mode requires a Java 17
+installation with a `release` file and `bin/java.exe` available to prepare Forge.
+Preferences are locked during login, preparation and while Minecraft is running.
+
+Changing the folder prepares a different instance: your worlds stay in the previous
+folder. Choose an empty folder or an instance already created by Eternal. The default
+`.minecraft` folder, the drive root and the launcher's internal data are protected.
+The **Abrir jogo**, **Abrir mods** and **Abrir logs** shortcuts (open game, mods and
+logs folders) use the saved instance. **Minimizar launcher ao jogar** (minimize
+launcher while playing) is on by default, including after restoring defaults. The
+launcher comes back when the game exits. If you turn it off and save, that choice
+persists across launches.
+
+![Illustrative preview of the settings screen](docs/images/settings.png)
+
+### Original login setup
+
+The public Application (client) ID is already configured in
+`src/config/LauncherConfig.h` and ships with the compiled executable. To use a
+different registration without rebuilding, set the environment variable before
+starting the launcher:
 
 ```powershell
-$env:ETERNAL_LAUNCHER_MICROSOFT_CLIENT_ID = "SEU-APPLICATION-CLIENT-ID"
+$env:ETERNAL_LAUNCHER_MICROSOFT_CLIENT_ID = "YOUR-APPLICATION-CLIENT-ID"
 ./out/build/x64-debug/EternalLauncher.exe
 ```
 
-O ID é público; nunca coloque um client secret no executável. Ao escolher
-**Original** e clicar em **Jogar**, abra a URL mostrada,
-digite o código e conclua o login no navegador. A conta precisa possuir um
-perfil Minecraft: Java Edition. A Microsoft/Minecraft também pode exigir
-autorização específica do registro do aplicativo; se o serviço responder
-`Invalid app registration` (HTTP 403), o login Microsoft e Xbox chegou ao
-Minecraft Services, mas o serviço recusou o Application ID. Mudar o ID no
-executável ou recompilar não concede essa autorização. O erro aponta para
-`https://aka.ms/AppRegInfo`. Um desenvolvedor com o mesmo erro relatou ter
-obtido aprovação da Mojang após enviar o Client ID pelo [formulário de registro
-de aplicativo](https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=v4j5cvGGr0GRqy180BHbR-ajEQ1td1ROpz00KtS8Gd5UNVpPTkVLNFVROVQxNkdRMEtXVjNQQjdXVC4u).
-A aprovação depende da análise da Microsoft/Mojang. Enquanto o registro não
-for autorizado, o modo Original não conseguirá iniciar uma sessão online; o
-modo de nickname local continua disponível.
+The ID is public; never put a client secret in the executable. After choosing
+**Original** and clicking **Jogar**, open the URL shown, enter the code and finish
+signing in through the browser. The account must own a Minecraft: Java Edition
+profile. Microsoft/Minecraft may also require specific authorization for the app
+registration; if the service responds with `Invalid app registration` (HTTP 403),
+the Microsoft and Xbox sign-in reached Minecraft Services, but the service rejected
+the Application ID. Changing the ID in the executable or rebuilding does not grant
+that authorization. The error points to `https://aka.ms/AppRegInfo`. A developer
+with the same error reported getting Mojang approval after submitting the Client ID
+through the [application registration form](https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=v4j5cvGGr0GRqy180BHbR-ajEQ1td1ROpz00KtS8Gd5UNVpPTkVLNFVROVQxNkdRMEtXVjNQQjdXVC4u).
+Approval depends on Microsoft/Mojang's review. Until the registration is
+authorized, Original mode cannot start an online session; local nickname mode
+remains available.
 
-## Primeiro uso
+## First run
 
-Ao abrir, o launcher verifica primeiro sua própria atualização e depois mostra
-o estado da instalação local. Os downloads do jogo começam ao clicar em **Jogar**:
+On startup, the launcher first checks for its own update and then shows the state
+of the local installation. Game downloads start when you click **Jogar**:
 
 ```text
-Preparar Java 17 portátil
-  → consultar manifestos oficiais da Mojang
-  → baixar e verificar Minecraft, bibliotecas e assets
-  → extrair DLLs nativos
-  → baixar e executar o instalador oficial do Forge 47.4.10
-  → sincronizar os arquivos do manifesto privado
-  → iniciar o jogo com o nickname escolhido
+Prepare portable Java 17
+  → read Mojang's official manifests
+  → download and verify Minecraft, libraries and assets
+  → extract native DLLs
+  → download and run the official Forge 47.4.10 installer
+  → synchronize the private manifest's files
+  → start the game with the chosen nickname
 ```
 
-Downloads já válidos são reaproveitados. Arquivos incompletos usam a extensão
-`.part` e só substituem o destino depois da conferência do hash.
+Downloads that are already valid are reused. Incomplete files use the `.part`
+extension and only replace the destination after the hash is verified.
 
-### Acompanhar e cancelar a instalação
+### Tracking and cancelling the installation
 
-Ao clicar em **Jogar**, a área esquerda passa a mostrar seis etapas: verificações
-e Java 17, Minecraft e assets, bibliotecas nativas, Forge, mods e configurações,
-e validação final. A conta e o resumo continuam à direita. O Minecraft abre
-automaticamente quando a preparação termina com sucesso.
+After clicking **Jogar**, the left area shows six stages: checks and Java 17,
+Minecraft and assets, native libraries, Forge, mods and configuration, and final
+validation. The account and the summary stay on the right. Minecraft opens
+automatically when preparation finishes successfully.
 
-Durante transferências, o painel mostra bytes baixados, percentual da
-transferência atual, velocidade, estimativa restante quando calculável e
-arquivos verificados/reaproveitados. Arquivos em cache não contam como tráfego.
-Extração, verificação e execução do Forge usam um indicador de atividade;
-transferências sem tamanho conhecido não exibem percentual ou estimativa.
+During transfers, the panel shows downloaded bytes, the current transfer's
+percentage, speed, remaining time when it can be estimated, and verified/reused
+files. Cached files don't count as traffic. Extraction, verification and the Forge
+run use an activity indicator; transfers without a known size show no percentage
+or estimate.
 
-**Cancelar instalação** solicita parada e mostra **Cancelando…** até encerrar
-as tarefas. **Continuar instalação** e **Tentar novamente** consultam os
-manifestos novamente e reaproveitam arquivos completos verificados. Esta versão
-reinicia os arquivos parciais; não oferece pausa nem retomada por bytes.
-Cancelamento impede a abertura automática do jogo e preserva mundos existentes.
+**Cancelar instalação** (Cancel installation) requests a stop and shows
+**Cancelando…** (Cancelling…) until tasks finish. **Continuar instalação** (Continue
+installation) and **Tentar novamente** (Try again) read the manifests again and
+reuse complete, verified files. This version restarts partial files; it offers
+neither pause nor byte-level resume. Cancelling prevents the game from opening
+automatically and preserves existing worlds.
 
-Falhas aparecem no próprio painel com orientação de recuperação. **Abrir log**
-acessa `logs/installation.log` da instância salva; falhas do Forge também
-indicam `logs/forge-installer.log`. Os logs da preparação não incluem identidade
-Microsoft, tokens ou URLs com credenciais. Fechar durante a preparação solicita
-cancelamento e aguarda a limpeza antes de destruir a janela.
+Failures appear in the panel itself with recovery guidance. **Abrir log** (Open log)
+opens `logs/installation.log` of the saved instance; Forge failures also point to
+`logs/forge-installer.log`. Preparation logs never include Microsoft identity,
+tokens or URLs with credentials. Closing the window during preparation requests
+cancellation and waits for cleanup before destroying the window.
 
-![Prévia ilustrativa do acompanhamento da instalação](docs/images/instalacao.png)
+![Illustrative preview of installation tracking](docs/images/installation.png)
 
-Prévia com valores sintéticos, gerada pelo renderer GDI+ de produção.
+Preview with synthetic values, rendered by the production GDI+ renderer.
 
-## O que ainda é simulado ou futuro
+## Still simulated or planned
 
-- Notícias exibidas na tela principal.
+- News shown on the main screen.
 
-## Tecnologias
+## Technology
 
-- C++20, CMake e Win32 API;
-- GDI+ para a interface;
-- WinHTTP para downloads;
-- Windows CNG (`bcrypt`) para hashes e UUID local;
-- Eclipse Temurin 17 como runtime portátil.
+- C++20, CMake and the Win32 API;
+- GDI+ for the interface;
+- WinHTTP for downloads;
+- Windows CNG (`bcrypt`) for hashes and local UUIDs;
+- Eclipse Temurin 17 as the portable runtime.
 
-Não existe acoplamento ao NGINX. Qualquer servidor HTTP capaz de publicar o
-manifesto e os arquivos pode ser utilizado.
+There is no coupling to NGINX. Any HTTP server able to serve the manifest and the
+files can be used.
 
-## Como compilar
+## Building
 
-No Visual Studio, abra a pasta, selecione um preset de `CMakePresets.json` e
-compile o alvo `EternalLauncher`. Em um Developer PowerShell:
+In Visual Studio, open the folder, pick a preset from `CMakePresets.json` and build
+the `EternalLauncher` target. In a Developer PowerShell:
 
 ```powershell
 cmake --preset x64-debug
@@ -193,63 +217,63 @@ ctest --test-dir out/build/x64-debug --output-on-failure
 ./out/build/x64-debug/EternalLauncher.exe
 ```
 
-Também existem os presets `x64-release`, `x86-debug` e `x86-release`.
+The `x64-release`, `x86-debug` and `x86-release` presets are also available.
 
-Para iniciar pela IDE, selecione **x64 Debug** ou **x64 Release** e o alvo
-**EternalLauncher.exe**. PowerShell 7 é necessário para gerar releases e executar
-os testes de integração do AutoUpdate; sua ausência não impede compilar ou
-executar o launcher pelo Visual Studio.
+To start from the IDE, select **x64 Debug** or **x64 Release** and the
+**EternalLauncher.exe** target. PowerShell 7 is required to build releases and run
+the AutoUpdate integration tests; without it you can still build and run the
+launcher from Visual Studio.
 
-## Organização
+## Project layout
 
 ```text
-assets/                       Marca, paisagem, ícone e fonte incorporados
-docs/                         Documentação e capturas
+assets/                       Embedded brand, landscape, icon and font
+docs/                         Documentation and screenshots
 src/
-├── app/                      Ciclo de vida da aplicação
-├── components/               Componentes visuais
-├── config/                   Versões, URLs e memória
-├── constants/                IDs e dimensões compartilhadas
-├── mocks/                    Conteúdo ainda simulado
-├── pages/                    Composição e interação das telas
-├── services/                 HTTP, instalação e inicialização
-├── styles/                   Paleta e tipografia
-├── types/                    Estados compartilhados
-└── utils/                    JSON, hashes, arquivos e desenho
-tests/                        Testes automatizados e diagnósticos locais
+├── app/                      Application lifecycle
+├── components/               Visual components
+├── config/                   Versions, URLs and memory
+├── constants/                Shared IDs and dimensions
+├── mocks/                    Content that is still simulated
+├── pages/                    Screen composition and interaction
+├── services/                 HTTP, installation and launch
+├── styles/                   Palette and typography
+├── types/                    Shared state
+└── utils/                    JSON, hashes, files and drawing
+tests/                        Automated tests and local diagnostics
 ```
 
-Documentação complementar:
+Further documentation:
 
-- [Arquitetura do projeto](docs/ARQUITETURA.md)
-- [Inicialização do Minecraft](docs/INICIALIZACAO_MINECRAFT.md)
-- [Servidor HTTP de arquivos](docs/SERVIDOR_HTTP.md)
-- [AutoUpdate e publicação pelo FileZilla](docs/AUTOUPDATE.md)
+- [Project architecture](docs/ARCHITECTURE.md)
+- [Minecraft launch](docs/MINECRAFT_LAUNCH.md)
+- [HTTP file server](docs/HTTP_SERVER.md)
+- [AutoUpdate and publishing with FileZilla](docs/AUTOUPDATE.md)
 
-## Configuração central
+## Central configuration
 
-Versão e codinome do launcher ficam em `CMakeLists.txt`, que gera os valores
-compartilhados pela interface e pelo executável. Memória, versões do jogo e
-servidor ficam em `src/config/LauncherConfig.h`. Para trocar
-o IP atual, altere `FileServerBaseUrl` e recompile. O launcher obtém Minecraft
-dos serviços oficiais e usa esse servidor apenas para o manifesto, mods,
-configurações e outros arquivos privados.
+The launcher's version and codename live in `CMakeLists.txt`, which generates the
+values shared by the interface and the executable. Memory, game versions and the
+server live in `src/config/LauncherConfig.h`. To change the current address, edit
+`FileServerBaseUrl` and rebuild. The launcher gets Minecraft from the official
+services and uses this server only for the manifest, mods, configs and other
+private files.
 
-O launcher não configura o servidor Minecraft automaticamente. Adicione o IP
-manualmente na tela Multiplayer do jogo. Essa lista pertence à instalação
-isolada em `%APPDATA%\.eternal-launcher\minecraft`.
+The launcher does not add the Minecraft server automatically. Add the IP manually
+on the game's Multiplayer screen. That list belongs to the isolated installation at
+`%APPDATA%\.eternal-launcher\minecraft`.
 
-Para distribuir mods, basta enviar os `.jar` via SFTP para
-`/srv/eternal-launcher/files/mods/`. Configurações podem ser enviadas para
-`/srv/eternal-launcher/files/config/`, preservando o caminho esperado pelo
-Minecraft. O serviço no servidor atualiza o manifesto automaticamente; ao
-clicar em **Jogar**, o launcher busca a lista mais recente.
+To distribute mods, upload the `.jar` files over SFTP to
+`/srv/eternal-launcher/files/mods/`. Configs can be uploaded to
+`/srv/eternal-launcher/files/config/`, keeping the path Minecraft expects. A
+service on the server updates the manifest automatically; when you click **Jogar**,
+the launcher fetches the latest list.
 
-O nickname válido é salvo automaticamente ao clicar em **Jogar** ou fechar o
-launcher. Na próxima abertura ele reaparece no campo. O valor fica em
-`%APPDATA%\.eternal-launcher\nickname.txt`; isso não é uma conta ou autenticação.
+A valid nickname is saved automatically when you click **Jogar** or close the
+launcher, and it shows up in the field the next time. It is stored in
+`%APPDATA%\.eternal-launcher\nickname.txt`; this is not an account or authentication.
 
-## TODOs principais
+## Roadmap
 
-- Mover a URL HTTP para configurações persistidas.
-- Estender a remoção de arquivos obsoletos para outros tipos além dos mods.
+- Move the HTTP URL into persisted settings.
+- Extend obsolete-file removal to file types beyond mods.

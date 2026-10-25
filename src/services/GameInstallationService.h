@@ -6,8 +6,8 @@
 
 #include <filesystem>
 
-// Orquestra Mojang, Forge e o manifesto privado, mantendo cada integração em
-// um serviço menor e testável.
+// Orchestrates Mojang, Forge and the private manifest, keeping each integration in
+// a smaller, testable service.
 class GameInstallationService final : public IGameInstallationService
 {
 public:

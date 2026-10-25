@@ -4,8 +4,8 @@
 
 #include <string>
 
-// Implementação HTTP do serviço de arquivos baseada no WinHTTP do Windows.
-// A classe conhece o protocolo, mas não depende do software usado no servidor.
+// HTTP implementation of the file service based on Windows WinHTTP.
+// The class knows the protocol but doesn't depend on the server software.
 class HttpFileService final : public IFileServerService
 {
 public:

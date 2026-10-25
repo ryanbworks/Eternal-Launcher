@@ -2,16 +2,16 @@
 
 #include <filesystem>
 
-// Fronteira reservada para uma política futura de atualização incremental.
-// A instalação atual já valida downloads, mas não remove arquivos obsoletos.
+// Boundary reserved for a future incremental update policy.
+// The current installation already validates downloads but doesn't remove obsolete files.
 class IUpdateService
 {
 public:
     virtual ~IUpdateService() = default;
 
-    // TODO: detectar arquivos gerenciados que foram removidos do manifesto.
+    // TODO: detect managed files that were removed from the manifest.
     virtual bool needsUpdate(const std::filesystem::path& installationPath) = 0;
 
-    // TODO: aplicar remoções com backup/rollback antes de limpar os obsoletos.
+    // TODO: apply removals with backup/rollback before cleaning up obsolete files.
     virtual void updateFiles(const std::filesystem::path& installationPath) = 0;
 };

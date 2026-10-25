@@ -6,8 +6,8 @@
 #include <filesystem>
 #include <windows.h>
 
-// Valida a instância preparada e cria o processo Java com o perfil Forge.
-// Downloads e instalação permanecem isolados nos serviços próprios.
+// Validates the prepared instance and creates the Java process with the Forge profile.
+// Downloads and installation stay isolated in their own services.
 class MinecraftLauncherService final : public IMinecraftLauncherService
 {
 public:

@@ -87,7 +87,7 @@ namespace
             return L"00000000000030008000000000000000";
         }
 
-        // UUID v3 compatível com o formato OfflinePlayer utilizado por servidores offline.
+        // UUID v3 compatible with the OfflinePlayer format used by offline servers.
         digest[6] = static_cast<unsigned char>((digest[6] & 0x0F) | 0x30);
         digest[8] = static_cast<unsigned char>((digest[8] & 0x3F) | 0x80);
 
@@ -287,8 +287,8 @@ std::wstring MinecraftLaunchCommandBuilder::buildClasspath(
         std::string line;
         while (std::getline(manifest, line))
         {
-            // O arquivo é gravado em modo texto no Windows; em leitura binária,
-            // o retorno de carro do CRLF precisa ser removido do caminho Java.
+            // The file is written in text mode on Windows; when read as binary,
+            // the CRLF carriage return must be stripped from the Java path.
             if (!line.empty() && line.back() == '\r') line.pop_back();
             if (line.empty()) continue;
             if (!classpath.empty()) classpath += PathSeparator;
@@ -297,7 +297,7 @@ std::wstring MinecraftLaunchCommandBuilder::buildClasspath(
         if (!classpath.empty()) return classpath;
     }
 
-    // A validação impede a inicialização sem esse manifesto. Retornar vazio é
-    // mais seguro que incluir JARs auxiliares deixados pelo instalador Forge.
+    // Validation prevents launching without this manifest. Returning empty is
+    // safer than including helper JARs left behind by the Forge installer.
     return {};
 }

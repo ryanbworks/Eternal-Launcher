@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Atualiza o manifesto HTTP a partir dos mods enviados por SFTP."""
+"""Refresh the HTTP manifest from the mods uploaded over SFTP."""
 
 import argparse
 import hashlib
@@ -16,12 +16,12 @@ def read_json(path: Path, default: dict) -> dict:
         return default
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
-        raise ValueError(f"JSON inválido em {path}")
+        raise ValueError(f"Invalid JSON in {path}")
     return value
 
 
 def write_json_atomic(path: Path, value: dict) -> None:
-    # A troca atômica impede que o launcher leia JSON pela metade.
+    # The atomic swap keeps the launcher from reading half-written JSON.
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_text(
         json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -42,12 +42,12 @@ def refresh(files_root: Path, cache_path: Path) -> int:
     manifest_path = files_root / "manifest.json"
     mods_root = files_root / "mods"
     if not mods_root.is_dir():
-        raise FileNotFoundError(f"Pasta de mods ausente: {mods_root}")
+        raise FileNotFoundError(f"Mods folder missing: {mods_root}")
 
     manifest = read_json(manifest_path, {"schemaVersion": 1, "files": []})
     previous_files = manifest.get("files")
     if not isinstance(previous_files, list):
-        raise ValueError("O campo files do manifesto precisa ser uma lista")
+        raise ValueError("The manifest's files field must be a list")
     cache = read_json(cache_path, {})
     previous_mods = {
         entry["path"]: entry
@@ -70,12 +70,12 @@ def refresh(files_root: Path, cache_path: Path) -> int:
     for path in sorted(mods_root.iterdir(), key=lambda item: item.name.lower()):
         if path.is_symlink() or not path.is_file() or path.suffix.lower() != ".jar":
             continue
-        # Linux aceita caracteres que não podem ser salvos no Windows. Ignorar
-        # somente esses nomes evita bloquear todos os outros mods do grupo.
+        # Linux accepts characters that Windows cannot store. Skipping only those
+        # names avoids blocking every other mod in the group.
         if (any(ord(character) < 32 or character in '<>:"/\\|?*'
                 for character in path.name)
                 or path.name.rstrip(" .") != path.name):
-            print(f"Mod ignorado por nome incompatível com Windows: {path.name}")
+            print(f"Skipping mod with a name Windows cannot store: {path.name}")
             continue
 
         relative = f"mods/{path.name}"
@@ -87,13 +87,13 @@ def refresh(files_root: Path, cache_path: Path) -> int:
                 and isinstance(old_cache.get("sha256"), str)):
             digest = old_cache.get("sha256")
         elif now_ns - stat.st_mtime_ns < QUIET_SECONDS * 1_000_000_000:
-            # Um upload ainda em andamento não entra no manifesto.
+            # An upload still in progress stays out of the manifest.
             if old_entry:
                 mods.append(old_entry)
             continue
         else:
             digest = sha256(path)
-            # Se o upload mudar durante o hash, esperamos a próxima verificação.
+            # If the upload changes while hashing, wait for the next check.
             after = path.stat()
             if after.st_size != stat.st_size or after.st_mtime_ns != stat.st_mtime_ns:
                 if old_entry:
@@ -122,4 +122,4 @@ if __name__ == "__main__":
                         default=Path("/srv/eternal-launcher/mods-cache.json"))
     arguments = parser.parse_args()
     count = refresh(arguments.files_root, arguments.cache)
-    print(f"Manifesto atualizado: {count} mod(s).")
+    print(f"Manifest updated: {count} mod(s).")

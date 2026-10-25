@@ -328,8 +328,8 @@ namespace
             }
         }
 
-        // Os manifestos atuais da Mojang armazenam os DLLs em subdiretórios
-        // dentro dos JARs nativos. A JVM, porém, recebe a raiz em java.library.path.
+        // Current Mojang manifests store the DLLs in subdirectories
+        // inside the native JARs. The JVM, however, receives the root in java.library.path.
         for (const auto& library : nestedLibraries)
         {
             std::error_code error;

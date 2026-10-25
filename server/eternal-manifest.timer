@@ -1,5 +1,5 @@
 [Unit]
-Description=Verifica novos mods para o Eternal Launcher
+Description=Check for new Eternal Launcher mods
 
 [Timer]
 OnBootSec=10s

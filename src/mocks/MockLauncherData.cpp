@@ -9,15 +9,15 @@ LauncherViewState MockLauncherData::createInitialState()
     state.primaryActionLabel = L"AGUARDE...";
     state.playEnabled = false;
 
-    // Estes valores são placeholders somente até as verificações assíncronas
-    // substituírem os três cartões por resultados reais.
+    // These values are placeholders only until the asynchronous checks
+    // replace the three cards with real results.
     state.statusCards = {
         {L"INSTALAÇÃO", L"Verificando...", L"Java, Minecraft e Forge", StatusTone::Information},
         {L"ARQUIVOS", L"Aguardando", L"Manifesto privado ainda não lido", StatusTone::Warning},
         {L"SERVIDOR HTTP", L"Conectando...", L"Buscando manifesto real", StatusTone::Information},
     };
 
-    // MOCK: conteúdo editorial temporário para validar o cartão de notícias.
+    // MOCK: temporary editorial content to validate the news card.
     state.featuredNews = {
         L"AVISO DO SERVIDOR",
         L"O mundo está esperando por você",

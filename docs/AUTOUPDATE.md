@@ -1,29 +1,33 @@
 # AutoUpdate — v1.0.0-Aurora
 
-A Aurora é a primeira versão com atualização do próprio executável. Quem usa
-v0.1.1-Vagalume precisa baixar a Aurora uma vez e substituir o executável antigo.
-Preferências, nickname, autenticação e Minecraft continuam na instância existente.
-A distribuição é um único executável portátil Windows x64, com RAM máxima padrão
-de 4096 MiB. O nome Aurora é separado da comparação numérica de versões.
+Aurora is the first version that updates its own executable. Users of
+v0.1.1-Vagalume need to download Aurora once and replace the old executable.
+Preferences, nickname, authentication and Minecraft stay in the existing instance.
+The distribution is a single portable Windows x64 executable with a default maximum
+RAM of 4096 MiB. The Aurora name is separate from the numeric version comparison.
 
-## Fluxo no Windows
+> Releases are now published by the **Publish launcher** GitHub Actions workflow;
+> see [server/GITHUB_ACTIONS.md](../server/GITHUB_ACTIONS.md). The local tools below
+> remain available as an alternative.
 
-Na abertura normal, antes de habilitar as ações, o launcher consulta
-`https://eternalfast.aplot.cloud/launcher/latest.json`. Se houver versão superior,
-mostra um aviso nativo do Windows com a nova versão. **OK** confirma o download
-e a instalação; **Cancelar** libera a versão atual e a próxima abertura tentará
-novamente. Depois da confirmação, mostra progresso, valida o arquivo, fecha
-normalmente e reabre no mesmo caminho. Os downloads do Minecraft continuam
-vinculados ao botão Jogar.
+## Flow on Windows
 
-Falhas liberam o fluxo normal da versão instalada, deixam um aviso e o link
-**Baixar launcher**. A próxima abertura tenta novamente. O AutoUpdate não é
-executado durante o jogo, nos testes de interface nem em `--render-preview`.
-Uma falha no servidor de mods ainda segue o tratamento próprio da instalação.
+On a normal start, before enabling any action, the launcher reads
+`https://eternalfast.aplot.cloud/launcher/latest.json`. If a newer version exists,
+it shows a native Windows prompt with the new version. **OK** confirms the download
+and installation; **Cancelar** (Cancel) keeps the current version and the next
+start will try again. After confirmation, it shows progress, validates the file,
+closes normally and reopens from the same path. Minecraft downloads remain tied to
+the Play button.
 
-O manifesto tem `schemaVersion: 1`, `payload` e `signature`. Os dois últimos
-campos usam Base64. A assinatura RSA-PSS/SHA-256 (RSA 3072, salt de 32 bytes)
-protege os bytes UTF-8 exatos do payload, sem reserialização. Seu conteúdo é:
+Failures release the installed version's normal flow and leave a notice with the
+**Baixar launcher** (Download launcher) link. The next start tries again. AutoUpdate
+does not run during gameplay, in interface tests or in `--render-preview`.
+A mod server failure still follows the installation's own handling.
+
+The manifest has `schemaVersion: 1`, `payload` and `signature`. The last two fields
+are Base64. The RSA-PSS/SHA-256 signature (RSA 3072, 32-byte salt) covers the exact
+UTF-8 bytes of the payload, with no re-serialization. Its content is:
 
 ```json
 {
@@ -32,82 +36,83 @@ protege os bytes UTF-8 exatos do payload, sem reserialização. Seu conteúdo é
   "architecture": "x64",
   "path": "/launcher/releases/1.0.0/EternalLauncher.exe",
   "size": 123456,
-  "sha256": "<64 caracteres hexadecimais minúsculos>"
+  "sha256": "<64 lowercase hex characters>"
 }
 ```
 
-O tamanho acima é ilustrativo; a ferramenta de release calcula os valores reais.
-Somente versões numéricas `major.minor.patch` maiores são aplicadas. Cada número
-fica entre 0 e 65535; zeros à esquerda e sufixos não são aceitos. A arquitetura
-precisa corresponder ao processo. O caminho é derivado da versão e restrito ao
-domínio HTTPS compilado. Redirecionamentos são recusados. Manifestos têm limite
-de 64 KiB; executáveis, de 256 MiB. A consulta tem orçamento total de 10 segundos,
-e o download, 30 segundos por leitura sem progresso. O fechamento cancela o I/O.
+The size above is illustrative; the release tool computes the real values.
+Only higher numeric `major.minor.patch` versions are applied. Each number is
+between 0 and 65535; leading zeros and suffixes are rejected. The architecture
+must match the process. The path is derived from the version and restricted to
+the compiled HTTPS domain. Redirects are refused. Manifests are limited to 64 KiB
+and executables to 256 MiB. The query has a total budget of 10 seconds, and the
+download 30 seconds per read without progress. Closing the window cancels the I/O.
 
-## Troca e recuperação
+## Swap and recovery
 
-Uma pasta `<nome-do-executável>.update` ao lado do launcher guarda o manifesto,
-o download, a cópia auxiliar e o registro da transação. Isso permite manter o
-backup e o executável no mesmo volume. A cópia auxiliar verifica a identidade
-do processo original, aguarda sua saída, revalida o download e usa `ReplaceFileW`
-para substituir o executável com backup.
+A `<executable-name>.update` folder next to the launcher holds the manifest, the
+download, the helper copy and the transaction record. This keeps the backup and
+the executable on the same volume. The helper copy checks the original process's
+identity, waits for it to exit, revalidates the download and uses `ReplaceFileW`
+to replace the executable with a backup.
 
-A nova versão confirma que criou sua janela em até 30 segundos. Sem confirmação,
-somente o processo iniciado pelo auxiliar é encerrado, o backup é restaurado e
-a versão anterior reabre. Um registro durável permite finalizar ou limpar uma
-transação interrompida na próxima inicialização. A limpeza remove somente os
-arquivos conhecidos, sem percorrer outras pastas.
+The new version confirms it created its window within 30 seconds. Without that
+confirmation, only the process started by the helper is terminated, the backup is
+restored and the previous version reopens. A durable record allows an interrupted
+transaction to be finished or cleaned up on the next start. Cleanup removes only
+the known files, never walking other folders.
 
-Mutexes por caminho de executável impedem duas instâncias de atualizarem a mesma
-cópia. Não há elevação automática: uma pasta sem permissão de escrita gera aviso
-e permite o download manual. Se um bloqueio externo impedir também o rollback,
-o auxiliar informa onde encontrar `previous.exe` para recuperação manual.
+Per-executable-path mutexes prevent two instances from updating the same copy.
+There is no automatic elevation: a folder without write permission produces a
+notice and allows the manual download. If an external lock also blocks the
+rollback, the helper says where to find `previous.exe` for manual recovery.
 
-## Gerar uma release
+## Building a release
 
-### Assistente de dois cliques
+### Two-click wizard
 
-Abra `PrepararAtualizacao.cmd` na raiz do projeto. Informe um número novo, como
-`1.0.1`, e mantenha `Aurora` como nome se quiser. O assistente atualiza o CMake,
-compila, executa os testes, assina o JSON e confere o pacote. Ele procura o
-PowerShell 7 instalado, inclusive o runtime local do Codex quando disponível.
-Se não encontrar, informa a dependência; não instala programas automaticamente.
+Open `PrepareUpdate.cmd` at the project root. Enter a new number, such as `1.0.1`,
+and keep `Aurora` as the name if you like. The wizard updates CMake, builds, runs
+the tests, signs the JSON and checks the package. It looks for an installed
+PowerShell 7, including the local Codex runtime when available. If it can't find
+one, it reports the dependency; it never installs programs automatically.
 
-Ao terminar, abre `out/releases/1.0.1/FILEZILLA/`. No FileZilla:
+When it finishes, it opens `out/releases/1.0.1/FILEZILLA/`. In FileZilla:
 
-1. Abra `/srv/eternal-launcher/files` no servidor e envie a pasta `launcher`
-   contida em `FILEZILLA`. Aguarde todos os envios terminarem sem falhas.
-2. Volte à janela do assistente e pressione Enter. Ele baixa o executável pelo
-   HTTPS público e confere assinatura do manifesto local, tamanho e SHA-256.
-3. Após a confirmação, renomeie no servidor `launcher/latest.json.upload` para
-   `launcher/latest.json`, substituindo o manifesto antigo.
-4. Pressione Enter novamente no assistente para conferir a versão publicada.
+1. Open `/srv/eternal-launcher/files` on the server and upload the `launcher`
+   folder inside `FILEZILLA`. Wait for every transfer to finish without errors.
+2. Go back to the wizard window and press Enter. It downloads the executable over
+   public HTTPS and checks the local manifest's signature, size and SHA-256.
+3. After the confirmation, rename `launcher/latest.json.upload` to
+   `launcher/latest.json` on the server, replacing the old manifest.
+4. Press Enter again in the wizard to check the published version.
 
-O arquivo `.upload` ainda não anuncia uma atualização. A renomeação final é o
-momento em que a versão fica disponível aos jogadores, na próxima abertura do
-launcher. Não edite o JSON e não envie a chave privada. O nome da versão pode
-continuar igual; o número precisa aumentar. Pacotes locais existentes são
-preservados, e as pastas das releases anteriores devem continuar no servidor.
+The `.upload` file does not announce an update yet. The final rename is the moment
+the version becomes available to players, on the launcher's next start. Don't edit
+the JSON and never upload the private key. The version name may stay the same; the
+number must increase. Existing local packages are preserved, and previous release
+folders must stay on the server.
 
-O pacote também contém `COMO-ENVIAR.txt`, com os passos e os comandos para retomar
-a conferência se fechar o assistente. `-Preview -Version 1.0.1` permite conferir
-as entradas sem alterar arquivos. O exemplo não cria nem publica a versão 1.0.1.
+The package also contains `HOW-TO-UPLOAD.txt`, with the steps and the commands to
+resume verification if you close the wizard. `-Preview -Version 1.0.1` lets you
+check the inputs without changing files. The example neither creates nor publishes
+version 1.0.1.
 
-### Uso direto pelo PowerShell
+### Running PowerShell directly
 
-Requisitos: Windows, Visual Studio com ferramentas C++ x64 e PowerShell 7.
-O repositório usa CMake/Ninja disponibilizados pelo Visual Studio.
-Esses são os requisitos da ferramenta de publicação. Para compilar e executar
-o launcher na IDE, PowerShell 7 é opcional: sem ele, apenas a suíte de integração
-do AutoUpdate deixa de ser registrada. A ferramenta de release passa seu próprio
-`pwsh.exe` ao CMake e exige essa suíte com `ETERNAL_REQUIRE_UPDATE_TESTS=ON`,
-impedindo a publicação sem a validação completa.
+Requirements: Windows, Visual Studio with the x64 C++ tools and PowerShell 7.
+The repository uses the CMake/Ninja shipped with Visual Studio.
+These are the publishing tool's requirements. To build and run the launcher from
+the IDE, PowerShell 7 is optional: without it, only the AutoUpdate integration
+suite is not registered. The release tool passes its own `pwsh.exe` to CMake and
+requires that suite with `ETERNAL_REQUIRE_UPDATE_TESTS=ON`, preventing publication
+without full validation.
 
-1. Atualize a versão e o codinome em `CMakeLists.txt`.
-2. Execute `pwsh -File tools/Release.ps1` na raiz do projeto.
-3. Verifique o pacote com `pwsh -File tools/VerifyRelease.ps1 -PackageDirectory out/releases/1.0.0`.
+1. Update the version and codename in `CMakeLists.txt`.
+2. Run `pwsh -File tools/Release.ps1` at the project root.
+3. Check the package with `pwsh -File tools/VerifyRelease.ps1 -PackageDirectory out/releases/1.0.0`.
 
-A ferramenta compila Release, roda todos os testes e gera:
+The tool builds Release, runs every test and generates:
 
 ```text
 out/releases/1.0.0/
@@ -117,47 +122,47 @@ out/releases/1.0.0/
     releases/1.0.0/EternalLauncher.exe
 ```
 
-A chave privada está em `%LOCALAPPDATA%\EternalLauncher\Signing\release-key.dpapi`,
-criptografada com DPAPI para a conta Windows atual. Somente a chave pública entra
-no código. O comando `-InitializeKeyOnly` inicializa uma chave uma única vez e
-recusa substituir uma chave pública diferente. Releases futuras devem usar a
-mesma chave: preserve o perfil Windows e seu backup protegido. A perda da chave
-exigirá redistribuir manualmente um launcher com outra chave de confiança.
+The private key lives at `%LOCALAPPDATA%\EternalLauncher\Signing\release-key.dpapi`,
+encrypted with DPAPI for the current Windows account. Only the public key is in the
+code. `-InitializeKeyOnly` initializes a key exactly once and refuses to replace a
+different public key. Future releases must use the same key: preserve the Windows
+profile and its protected backup. Losing the key would require manually
+redistributing a launcher with a different trusted key.
 
-`-SkipBuild` serve apenas para reempacotar uma compilação já validada. Os testes
-usam uma chave própria deliberadamente pública em `tests/update-trust`; essa
-chave não assina releases e não é aceita pelo launcher distribuído.
+`-SkipBuild` is only for repackaging an already validated build. The tests use
+their own deliberately public key in `tests/update-trust`; that key never signs
+releases and is not accepted by the distributed launcher.
 
-## Publicar por FileZilla/SFTP
+## Publishing with FileZilla/SFTP
 
-Conexão SFTP: host `10.0.0.51`, porta `22`. Use as credenciais de publicação fora
-do repositório. O destino é `/srv/eternal-launcher/files`.
+SFTP connection: host `10.0.0.51`, port `22`. Keep the publishing credentials
+outside the repository. The destination is `/srv/eternal-launcher/files`.
 
-1. Crie `launcher/releases/1.0.0/` e envie o executável como
+1. Create `launcher/releases/1.0.0/` and upload the executable as
    `EternalLauncher.exe.upload`.
-2. Confira o SHA-256 remoto com `sha256sum` e o arquivo local `SHA256SUMS.txt`.
-3. Renomeie para `EternalLauncher.exe`. Não substitua arquivos de uma versão já
-   publicada por conteúdo diferente: gere um novo número de versão.
-4. Envie `launcher/latest.json` como `launcher/latest.json.upload` e renomeie para
-   `latest.json` somente após concluir e verificar o executável. A renomeação
-   publica o anúncio completo de uma só vez.
-5. Execute `pwsh -File tools/VerifyRelease.ps1 -Public` para conferir pelo HTTPS
-   público a assinatura, o SHA-256, o tamanho e o cabeçalho `no-store`.
+2. Check the remote SHA-256 with `sha256sum` against the local `SHA256SUMS.txt`.
+3. Rename it to `EternalLauncher.exe`. Never replace files of a published version
+   with different content: build a new version number instead.
+4. Upload `launcher/latest.json` as `launcher/latest.json.upload` and rename it to
+   `latest.json` only after the executable is complete and verified. The rename
+   publishes the whole announcement at once.
+5. Run `pwsh -File tools/VerifyRelease.ps1 -Public` to check the signature,
+   SHA-256, size and the `no-store` header over public HTTPS.
 
-O NGINX precisa servir `/launcher/latest.json` como JSON com
-`Cache-Control: no-store`. A configuração em `infrastructure/nginx` inclui essa
-regra e bloqueia arquivos `.upload`/`.tmp` dentro de `launcher/`. Valide com
-`nginx -t` antes da recarga. A pasta de mods e seu timer seguem independentes.
+NGINX must serve `/launcher/latest.json` as JSON with `Cache-Control: no-store`.
+The configuration in `infrastructure/nginx` includes that rule and blocks
+`.upload`/`.tmp` files inside `launcher/`. Validate with `nginx -t` before
+reloading. The mods folder and its timer remain independent.
 
-## Validação
+## Validation
 
-`LauncherAutoUpdateTests` assina fixtures com a chave de testes e executa trocas
-reais em pastas isoladas: sucesso, rollback por encerramento e por timeout,
-arquivo bloqueado, pasta sem permissão, cancelamento, corrupção, versões iguais
-ou antigas, concorrência e recuperação após interrupções. Também verifica
-assinaturas, esquema, limites, arquitetura e caminhos inválidos.
+`LauncherAutoUpdateTests` signs fixtures with the test key and performs real swaps
+in isolated folders: success, rollback on exit and on timeout, locked file, folder
+without permission, cancellation, corruption, equal or older versions, concurrency
+and recovery after interruptions. It also checks signatures, schema, limits,
+architecture and invalid paths.
 
-`LauncherUpdateProbe.exe` é uma ferramenta de smoke test que não é distribuída.
-`--cancel` verifica cancelamento real do WinHTTP; sem argumentos, consulta e
-valida a release publicada; `--download <arquivo>` também baixa e verifica o PE.
-As simulações nunca publicam versões de teste no servidor.
+`LauncherUpdateProbe.exe` is a smoke-test tool that is not distributed.
+`--cancel` checks real WinHTTP cancellation; with no arguments, it reads and
+validates the published release; `--download <file>` also downloads and checks the PE.
+The simulations never publish test versions to the server.

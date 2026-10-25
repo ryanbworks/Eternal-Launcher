@@ -46,7 +46,7 @@ int LauncherApplication::run(int showCommand)
             return 1;
         }
     }
-    // O token mantém o GDI+ ativo durante toda a vida da interface.
+    // The token keeps GDI+ alive for the whole lifetime of the interface.
     Gdiplus::GdiplusStartupInput startupInput;
     ULONG_PTR gdiplusToken = 0;
     if (Gdiplus::GdiplusStartup(&gdiplusToken, &startupInput, nullptr) != Gdiplus::Ok)

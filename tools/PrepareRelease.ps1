@@ -20,7 +20,7 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
         "$env:USERPROFILE/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/powershell/pwsh.exe"
     )
     $powerShellPath = $candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
-    if (!$powerShellPath) { throw 'Instale o PowerShell 7 neste computador para gerar releases. Jogadores nao precisam dele.' }
+    if (!$powerShellPath) { throw 'Install PowerShell 7 on this computer to build releases. Players do not need it.' }
     $forward = @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
     foreach ($name in @('Version', 'Codename')) {
         if ($PSBoundParameters.ContainsKey($name)) { $forward += @("-$name", $PSBoundParameters[$name]) }
@@ -45,9 +45,9 @@ if ($CheckSigningKey) {
         [byte[]]$expectedPublicKey = [regex]::Matches($publicHeader, '0x([0-9a-fA-F]{2})') |
             ForEach-Object { [Convert]::ToByte($_.Groups[1].Value, 16) }
         if ([Convert]::ToBase64String($actualPublicKey) -cne [Convert]::ToBase64String($expectedPublicKey)) {
-            throw 'A chave privada encontrada nao corresponde a chave publica da Aurora.'
+            throw 'The private key found does not match the Aurora public key.'
         }
-        Write-Host "Chave validada para $([Security.Principal.WindowsIdentity]::GetCurrent().Name): $keyPath"
+        Write-Host "Key validated for $([Security.Principal.WindowsIdentity]::GetCurrent().Name): $keyPath"
     } finally { $releaseKey.Dispose() }
     return
 }
@@ -57,32 +57,32 @@ $versionPattern = 'project\(EternalLauncher VERSION ([0-9]+\.[0-9]+\.[0-9]+)'
 $namePattern = 'set\(ETERNAL_CODENAME "([A-Za-z0-9]+)"\)'
 $currentVersion = [regex]::Match($cmakeText, $versionPattern).Groups[1].Value
 $currentName = [regex]::Match($cmakeText, $namePattern).Groups[1].Value
-if (!$currentVersion -or !$currentName) { throw 'Versao ou nome nao encontrado no CMakeLists.txt.' }
-Write-Host "Eternal Launcher - preparar atualizacao (atual: $currentVersion-$currentName)"
-Write-Host 'O assistente gera o pacote local. O envio sera feito por voce no FileZilla.'
+if (!$currentVersion -or !$currentName) { throw 'Version or name not found in CMakeLists.txt.' }
+Write-Host "Eternal Launcher - prepare update (current: $currentVersion-$currentName)"
+Write-Host 'The wizard builds the local package. You upload it yourself with FileZilla.'
 if (!$Version) {
-    if ($Preview) { throw 'Informe -Version ao usar -Preview.' }
+    if ($Preview) { throw 'Pass -Version when using -Preview.' }
     $parts = $currentVersion.Split('.')
     $suggested = if ([int]$parts[2] -lt 65535) { "$($parts[0]).$($parts[1]).$([int]$parts[2]+1)" } else { '' }
-    $Version = Read-Host "Nova versao numerica [$suggested]"
+    $Version = Read-Host "New numeric version [$suggested]"
     if (!$Version) { $Version = $suggested }
 }
 if ($Version -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' -or
     @($Version.Split('.') | Where-Object { [decimal]$_ -gt 65535 }).Count -gt 0) {
-    throw 'Use uma versao como 1.0.1, com cada numero entre 0 e 65535.'
+    throw 'Use a version such as 1.0.1, with each number between 0 and 65535.'
 }
-if ([version]$Version -lt [version]$currentVersion) { throw 'A versao nova nao pode ser menor que a atual.' }
+if ([version]$Version -lt [version]$currentVersion) { throw 'The new version cannot be lower than the current one.' }
 if (!$Codename) {
-    if (!$Preview) { $Codename = Read-Host "Nome da versao [$currentName]" }
+    if (!$Preview) { $Codename = Read-Host "Version name [$currentName]" }
     if (!$Codename) { $Codename = $currentName }
 }
-if ($Codename -cnotmatch '^[A-Za-z0-9]+$') { throw 'Use um nome com letras e numeros, sem espacos ou acentos.' }
+if ($Codename -cnotmatch '^[A-Za-z0-9]+$') { throw 'Use a name with letters and digits only, without spaces or accents.' }
 $package = Join-Path $projectRoot "out/releases/$Version"
 if (Test-Path -LiteralPath $package) {
-    throw "Ja existe um pacote $Version em $package. Escolha um numero novo para preservar a release existente."
+    throw "A $Version package already exists at $package. Choose a new number to preserve the existing release."
 }
-Write-Host "Pacote: $Version-$Codename"
-Write-Host "Destino local: $package"
+Write-Host "Package: $Version-$Codename"
+Write-Host "Local destination: $package"
 $keyPath = Get-EternalSigningKeyPath
 $releaseKey = Get-EternalSigningKey
 try {
@@ -91,14 +91,14 @@ try {
     [byte[]]$expectedPublicKey = [regex]::Matches($publicHeader, '0x([0-9a-fA-F]{2})') |
         ForEach-Object { [Convert]::ToByte($_.Groups[1].Value, 16) }
     if ([Convert]::ToBase64String($actualPublicKey) -cne [Convert]::ToBase64String($expectedPublicKey)) {
-        throw 'A chave privada encontrada nao corresponde a chave publica da Aurora. A versao nao foi alterada.'
+        throw 'The private key found does not match the Aurora public key. The version was not changed.'
     }
 } finally {
     $releaseKey.Dispose()
 }
-Write-Host "Chave de AutoUpdate validada: $keyPath"
+Write-Host "AutoUpdate key validated: $keyPath"
 if ($Preview) {
-    Write-Host 'PREVIEW: nenhum arquivo alterado, nenhuma compilacao ou publicacao executada.'
+    Write-Host 'PREVIEW: no files changed, nothing built or published.'
     return
 }
 
@@ -115,32 +115,32 @@ $remoteFolder = Join-Path $fileZilla "launcher/releases/$Version"
 Copy-Item -LiteralPath (Join-Path $package "launcher/releases/$Version/EternalLauncher.exe") -Destination $remoteFolder
 Copy-Item -LiteralPath (Join-Path $package 'launcher/latest.json') -Destination (Join-Path $fileZilla 'launcher/latest.json.upload')
 $guide = @"
-ATUALIZACAO $Version-$Codename
+UPDATE $Version-$Codename
 
-1. No FileZilla, conecte por SFTP e abra /srv/eternal-launcher/files.
-2. Envie a pasta launcher que esta dentro de FILEZILLA para esse destino.
-   Aguarde a fila terminar sem falhas. O manifesto ainda sera latest.json.upload.
-3. Volte ao assistente e pressione Enter. Ele confere o executavel pelo HTTPS.
-4. Depois da confirmacao, no servidor renomeie launcher/latest.json.upload para
-   launcher/latest.json, substituindo o manifesto antigo.
-5. Volte ao assistente e pressione Enter para conferir a publicacao final.
+1. In FileZilla, connect over SFTP and open /srv/eternal-launcher/files.
+2. Upload the launcher folder inside FILEZILLA to that destination.
+   Wait for the queue to finish without errors. The manifest is still latest.json.upload.
+3. Go back to the wizard and press Enter. It verifies the executable over HTTPS.
+4. After the confirmation, rename launcher/latest.json.upload on the server to
+   launcher/latest.json, replacing the old manifest.
+5. Go back to the wizard and press Enter to verify the final publication.
 
-Nao envie a pasta inteira deste pacote: somente FILEZILLA/launcher.
-Nao edite o JSON: ele contem a assinatura do executavel desta versao.
-Nao apague releases anteriores. A chave privada fica neste computador.
+Do not upload this whole package folder: only FILEZILLA/launcher.
+Do not edit the JSON: it holds this version's executable signature.
+Do not delete previous releases. The private key stays on this computer.
 
-Se fechou o assistente, confira antes de renomear, no PowerShell 7, na raiz do projeto:
+If you closed the wizard, verify before renaming, in PowerShell 7 at the project root:
   ./tools/VerifyRelease.ps1 -PackageDirectory ./out/releases/$Version -Uploaded
-Depois de renomear:
+After renaming:
   ./tools/VerifyRelease.ps1 -Public -ExpectedVersion $Version
 "@
-[IO.File]::WriteAllText((Join-Path $package 'COMO-ENVIAR.txt'), $guide)
+[IO.File]::WriteAllText((Join-Path $package 'HOW-TO-UPLOAD.txt'), $guide)
 Write-Host $guide
 if ($NoUploadGuide) { return }
 Start-Process -FilePath explorer.exe -ArgumentList ('"{0}"' -f $fileZilla)
-[void](Read-Host 'Depois de concluir o envio no FileZilla, pressione Enter para conferir')
+[void](Read-Host 'After finishing the upload in FileZilla, press Enter to verify')
 & (Join-Path $PSScriptRoot 'VerifyRelease.ps1') -PackageDirectory $package -Uploaded | Format-List
-Write-Host 'Executavel conferido. Agora renomeie latest.json.upload para latest.json no servidor.'
-[void](Read-Host 'Depois de renomear, pressione Enter para conferir a publicacao')
+Write-Host 'Executable verified. Now rename latest.json.upload to latest.json on the server.'
+[void](Read-Host 'After renaming, press Enter to verify the publication')
 & (Join-Path $PSScriptRoot 'VerifyRelease.ps1') -Public -ExpectedVersion $Version | Format-List
-Write-Host "Publicado e conferido: $Version-$Codename. Os jogadores atualizarao na proxima abertura."
+Write-Host "Published and verified: $Version-$Codename. Players will update on their next launch."

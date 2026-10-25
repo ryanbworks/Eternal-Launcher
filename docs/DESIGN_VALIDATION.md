@@ -1,113 +1,112 @@
-# Validação do redesign
+# Redesign validation
 
-Direção confirmada pelo proprietário: launcher C++ nativo para o servidor privado, tema escuro futurista com violeta, implementação direta no código.
+Direction confirmed by the owner: native C++ launcher for the private server, a
+futuristic dark theme with violet, implemented directly in code.
 
-## Acompanhamento da instalação — 2026-10-04
+## Installation tracking — 2026-10-04
 
-Release MSVC `/W4` sem avisos em `out/build/installation`; as seis suítes CTest
-passaram, incluindo AutoUpdate e os novos testes de instalação. O host nativo
-visível confirmou Tab e Enter dos controles de acompanhamento em tamanhos normal
-e compacto. As capturas usam dados sintéticos; não foi executada instalação
-completa pelos serviços públicos nem Minecraft/Forge real. Veja o
-[registro de implementação e validação](ACOMPANHAMENTO_INSTALACAO.md) e o parecer
-em `.impeccable/review/installation/review.md`.
+MSVC Release `/W4` with no warnings in `out/build/installation`; all six CTest suites
+passed, including AutoUpdate and the new installation tests. The visible native
+host confirmed Tab and Enter on the tracking controls at normal and compact sizes.
+The captures use synthetic data; no full installation from the public services and
+no real Minecraft/Forge run was performed. See the
+[implementation and validation record](INSTALLATION_TRACKING.md) and the review in
+`.impeccable/review/installation/review.md`.
 
-## Implementação
+## Implementation
 
-- Layout de paisagem à esquerda e console contínuo de acesso à direita.
-- Marca vetorial E/portal, ícone multirresolução, arte e fonte incorporadas no EXE.
-- Botões Win32 personalizados, campo EDIT nativo e foco visível.
-- Ordem de teclado: Nickname local → Original → nickname → Jogar → Configurações; Original oculta o campo.
-- Transições de hover próximas de 180 ms e interpolação do progresso. A preferência de animação da área cliente do Windows desativa o movimento; o timer para quando não há transição ou operação indeterminada.
-- Janela redimensionável e renderização escalada pelo tamanho/DPI. Composição lógica de 1180 × 730.
-- Estados próprios para primeira instalação, autenticação, falha de autenticação e nickname inválido. Erros usam classificação compartilhada no painel de ação/atividade.
-- Serviços de instalação, manifesto, Java, Microsoft, downloads, sincronização e inicialização preservados.
+- Landscape layout on the left and a continuous access console on the right.
+- Vector E/portal mark, multi-resolution icon, artwork and font embedded in the EXE.
+- Custom Win32 buttons, a native EDIT field and visible focus.
+- Keyboard order: Nickname local → Original → nickname → Play → Settings; Original hides the field.
+- Hover transitions of about 180 ms and progress interpolation. The Windows client-area animation preference disables motion; the timer stops when there is no transition or indeterminate operation.
+- Resizable window with rendering scaled by size/DPI. Logical composition of 1180 × 730.
+- Dedicated states for first installation, authentication, authentication failure and invalid nickname. Errors use a shared classification in the action/activity panel.
+- Installation, manifest, Java, Microsoft, download, sync and launch services preserved.
 
-## Evidências
+## Evidence
 
-Compilação Release MSVC /W4 sem avisos. CTest: MinecraftLauncherServiceTests, 1/1 aprovado.
+MSVC Release /W4 build with no warnings. CTest: MinecraftLauncherServiceTests, 1/1 passed.
 
-Dez renderizações determinísticas do renderizador final, incluindo dimensões 1180 × 730 e 944 × 584, sem cortes observados. As cenas usam dados ilustrativos.
+Ten deterministic renders from the final renderer, including 1180 × 730 and 944 × 584, with no clipping observed. The scenes use illustrative data.
 
-Na primeira versão compilada, Computer Use verificou janela real, acesso Original por clique, ocultação do campo, Tab e Shift+Tab entre os controles e retorno ao modo local por Enter. O usuário interrompeu o controle com Esc; não houve mais automação da janela. A ordem de Tab corrigida na versão final foi revisada no código, sem novo teste da janela real.
+On the first compiled version, Computer Use checked the real window, Original access by click, hiding the field, Tab and Shift+Tab between controls and returning to local mode with Enter. The user stopped the control with Esc; there was no further window automation. The Tab order fixed in the final version was reviewed in code, without a new real-window test.
 
-Não foram executados login Microsoft, instalação de arquivos ou inicialização de Minecraft nesta tarefa. Transições completas de DPI, preferência de movimento reduzido e cadência das animações não foram exercitadas ao vivo. A tela de configurações foi implementada na extensão registrada abaixo. Notícias são explicitamente rotuladas como demonstração.
+Microsoft login, file installation and launching Minecraft were not run in this task. Full DPI transitions, the reduced-motion preference and animation cadence were not exercised live. The settings screen was implemented in the extension recorded below. News is explicitly labeled as a demo.
 
-A revisão independente inicial e o parecer das correções estão em `.impeccable/review/`. O sistema visual está documentado em `DESIGN.md` e `.impeccable/design.json`.
+The initial independent review and the fix review are in `.impeccable/review/`. The visual system is documented in `DESIGN.md` and `.impeccable/design.json`.
 
-## Extensão: configurações do Minecraft
+## Extension: Minecraft settings
 
-Tela funcional no sistema visual existente, com RAM inicial/máxima, resolução,
-tela cheia, Java automático/personalizado, pasta exclusiva do jogo, minimização
-ao jogar e atalhos da instância salva. Só Salvar persiste o formulário; reset é
-um rascunho. Instalação, login e jogo em execução bloqueiam alterações.
+A functional screen in the existing visual system, with initial/maximum RAM,
+resolution, fullscreen, automatic/custom Java, a dedicated game folder, minimize
+while playing and shortcuts to the saved instance. Only Save persists the form;
+reset is a draft. Installation, login and a running game lock changes.
 
-Release MSVC /W4 sem avisos em `out/build/settings`. CTest: **3/3 aprovados**.
-`MinecraftLauncherServiceTests` mantém as regressões existentes;
-`LauncherSettingsTests` verifica JSON UTF-8, defaults e arquivo inválido preservado,
-salvamento inválido preservando dados, RAM/resolução/tela cheia no comando,
-Java 17 e proteção de pastas. `SettingsPageTests` usa um host Win32 oculto e
-controles EDIT/BUTTON reais para verificar edição, opções, bloqueios, validação,
-restauração e descarte de rascunhos ao reabrir.
+MSVC Release /W4 with no warnings in `out/build/settings`. CTest: **3/3 passed**.
+`MinecraftLauncherServiceTests` keeps the existing regressions;
+`LauncherSettingsTests` checks UTF-8 JSON, defaults and a preserved invalid file,
+invalid saves preserving data, RAM/resolution/fullscreen in the command, Java 17 and
+folder protection. `SettingsPageTests` uses a hidden Win32 host and real EDIT/BUTTON
+controls to check editing, options, locks, validation, restore and draft disposal
+on reopening.
 
-Capturas em `.impeccable/review/settings/`: normal 1180 × 730, compacto 944 × 584,
-erro com RAM inicial 8192 e máxima 4096 MiB, além da tela principal preservada.
-São renderizações determinísticas do código de produção, com campos nativos
-representados por texto desenhado. Não comprovam foco/Tab ao vivo, seleção/caret,
-seletor de arquivos/pastas, DPI ou comportamento real do Minecraft.
+Captures in `.impeccable/review/settings/`: normal 1180 × 730, compact 944 × 584,
+an error with initial RAM 8192 and maximum 4096 MiB, plus the preserved main screen.
+They are deterministic renders of the production code, with native fields shown as
+drawn text. They don't prove live focus/Tab, selection/caret, the file/folder
+picker, DPI or real Minecraft behavior.
 
-Não houve controle do desktop após a interrupção anterior via Esc. Nenhum login,
-download, instalação ou início de jogo foi executado nesta extensão. A opção de
-minimizar/restaurar foi inspecionada no código, sem exercício com Minecraft real.
-O parecer independente e seu veredito sobre as correções estão na mesma pasta de revisão.
+There was no desktop control after the earlier Esc interruption. No login, download,
+installation or game start was run in this extension. The minimize/restore option
+was inspected in code, without exercising it with the real Minecraft. The independent
+review and its verdict on the fixes are in the same review folder.
 
-## Correção: flashes claros ao passar o mouse
+## Fix: light flashes on hover
 
-O teste `WindowPaintingTests` reproduziu o apagamento do fundo dos botões das
-duas telas com cor `#F0F0F0` antes da correção. O procedimento padrão de BUTTON
-era executado antes do desenho personalizado. As prévias estáticas anteriores
-não mostravam essa etapa do ciclo de pintura.
+The `WindowPaintingTests` test reproduced the button background being erased with
+`#F0F0F0` on both screens before the fix. The default BUTTON procedure ran before
+the custom drawing. The earlier static previews didn't show that step of the paint
+cycle.
 
-Os botões agora preservam seus pixels no `WM_ERASEBKGND`; o brush de fallback
-é escuro. A janela inclui os controles nativos na apresentação com
-`WS_EX_COMPOSITED`. Hover/foco invalidam o canvas e os botões personalizados,
-sem pedir repintura dos campos EDIT a cada movimento. Mudanças na tela de
-configurações notificam o mesmo controlador de pintura da tela principal.
-Um frame marcado como desatualizado é renderizado e finalizado antes de qualquer
-cópia para os controles, inclusive quando `WM_DRAWITEM` precede `WM_PAINT`.
+Buttons now keep their pixels on `WM_ERASEBKGND`; the fallback brush is dark. The
+window includes the native controls in its presentation with `WS_EX_COMPOSITED`.
+Hover/focus invalidate the canvas and the custom buttons, without asking the EDIT
+fields to repaint on every movement. Changes on the settings screen notify the same
+paint controller as the main screen. A frame marked as stale is rendered and
+finished before any copy to the controls, even when `WM_DRAWITEM` comes before
+`WM_PAINT`.
 
-Release MSVC /W4 sem avisos em `out/build/paint-fix`; CTest **4/4 aprovado**.
-O teste de regressão usa a WindowProc de produção, controles Win32 reais num
-host oculto e um HDC em memória. Confirma fundo escuro nas duas telas,
-quadros atualizados ao entrar no hover antes de WM_PAINT e cobertura dos cantos
-em 24 alternâncias de hover. O resultado anterior tinha quatro falhas; o novo
-resultado tem zero. Nenhuma janela do usuário foi controlada.
+MSVC Release /W4 with no warnings in `out/build/paint-fix`; CTest **4/4 passed**.
+The regression test uses the production WindowProc, real Win32 controls in a hidden
+host and an in-memory HDC. It confirms a dark background on both screens, up-to-date
+frames on hover entry before WM_PAINT and corner coverage across 24 hover toggles.
+The previous result had four failures; the new one has zero. No user window was
+controlled.
 
-Comparação pixel a pixel das prévias principal, compacta, configurações,
-configurações compactas e erro: todas iguais às capturas aprovadas antes desta
-correção. O layout e a paleta foram preservados. Esses testes verificam o caminho
-nativo de pintura; não medem a cadência de apresentação na tela física.
+Pixel-by-pixel comparison of the main, compact, settings, compact settings and error
+previews: all identical to the captures approved before this fix. Layout and palette
+were preserved. These tests check the native paint path; they don't measure the
+presentation cadence on the physical screen.
 
-## Extensão: barra de RAM e minimização padrão
+## Extension: RAM slider and default minimize
 
-A RAM máxima recebe um TRACKBAR nativo com passos de 512 MiB (0,5 GB),
-leitura em GB com vírgula decimal e atalhos de 4, 6 e 8 GB. Os campos MiB
-preservam entradas inteiras precisas. A faixa inicial de 0,5–16 GB cresce
-para valores maiores; reduzir pela barra ou por um atalho também reduz uma
-RAM inicial que ultrapasse a nova máxima. A opção de minimizar vem ativada
-nos padrões e na restauração; uma preferência explicitamente salva como
-desativada permanece respeitada.
+Maximum RAM gets a native TRACKBAR with 512 MiB (0.5 GB) steps, a GB readout with a
+decimal comma and 4, 6 and 8 GB shortcuts. The MiB fields keep precise integer
+entries. The initial 0.5–16 GB range grows for larger values; lowering it with the
+slider or a shortcut also lowers an initial RAM that exceeds the new maximum. The
+minimize option is on in the defaults and after restoring; a preference explicitly
+saved as off is still respected.
 
-Release MSVC /W4 sem avisos em `out/build/ram-slider`; CTest **4/4 aprovado**.
-O host oculto usa os controles nativos e o controlador da tela de produção.
-Verifica 1/1,5/2/4,5/6,5 GB, argumentos JVM exatos, setas/Page Down,
-atalhos, edição precisa, faixa ampliada, bloqueios, restauração e pintura
-escura. Os testes de preferências verificam minimização ativada sem arquivo
-ou sem a propriedade, persistência de uma escolha desativada e restauração
-da opção na tela.
+MSVC Release /W4 with no warnings in `out/build/ram-slider`; CTest **4/4 passed**.
+The hidden host uses the native controls and the production screen controller. It
+checks 1/1.5/2/4.5/6.5 GB, exact JVM arguments, arrows/Page Down, shortcuts, precise
+editing, the extended range, locks, restore and dark painting. The preference tests
+check minimize on with no file or without the property, persistence of an off choice
+and restoring the option on screen.
 
-Capturas finais em `.impeccable/review/ram-slider/`: normal 1180 × 730,
-compacto 944 × 584, seleção 6,5 GB/6656 MiB e erro de limites de RAM.
-Todas mostram a minimização padrão marcada. São renderizações determinísticas
-GDI+ com dados ilustrativos; não comprovam arraste físico, cadência na tela
-ou início do Minecraft. A revisão independente está na mesma pasta.
+Final captures in `.impeccable/review/ram-slider/`: normal 1180 × 730, compact
+944 × 584, a 6.5 GB/6656 MiB selection and a RAM limits error. All show the default
+minimize option checked. They are deterministic GDI+ renders with illustrative data;
+they don't prove physical dragging, on-screen cadence or starting Minecraft. The
+independent review is in the same folder.

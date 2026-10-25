@@ -10,8 +10,8 @@ struct PortableJavaInstallResult
     std::wstring message;
 };
 
-// Extrai e ativa um pacote Java já validado. A troca por rename preserva o
-// runtime anterior caso a preparação do novo pacote falhe.
+// Extracts and activates an already validated Java package. Swapping by rename keeps
+// the previous runtime if preparing the new package fails.
 class PortableJavaInstaller
 {
 public:

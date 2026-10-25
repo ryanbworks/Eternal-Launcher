@@ -98,7 +98,7 @@ bool MainPage::create(int showCommand, bool checkLauncherUpdate, std::wstring up
     // Include native children in the final buffered presentation, not just the GDI+ canvas.
     constexpr DWORD extendedStyle = WS_EX_COMPOSITED;
 
-    // Centraliza na área útil do monitor onde está o cursor, sem cobrir a barra de tarefas.
+    // Center on the work area of the monitor under the cursor, without covering the taskbar.
     POINT cursor{};
     GetCursorPos(&cursor);
     MONITORINFO monitorInfo{sizeof(MONITORINFO)};
@@ -354,7 +354,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
     }
     case LauncherConstants::FileServerResultMessage:
     {
-        // A posse do resultado passa para a thread da interface neste ponto.
+        // Ownership of the result moves to the UI thread at this point.
         std::unique_ptr<FileServerManifestResponse> response(
             reinterpret_cast<FileServerManifestResponse*>(lParam));
         if (response != nullptr)
@@ -438,7 +438,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             else if(pending.message==LauncherConstants::MicrosoftDeviceCodeMessage) delete reinterpret_cast<MicrosoftDeviceCode*>(pending.lParam);
             else if(pending.message==LauncherConstants::MicrosoftAuthResultMessage) delete reinterpret_cast<MicrosoftAuthResult*>(pending.lParam);
         }
-        // Salva também quando o usuário fecha sem clicar em Jogar.
+        // Also save when the user closes without clicking Play.
         std::array<wchar_t, 32> nickname{};
         GetWindowText(nicknameInput_, nickname.data(), static_cast<int>(nickname.size()));
         if (NicknameStore::isValid(nickname.data()))
@@ -603,7 +603,7 @@ void MainPage::render(Gdiplus::Graphics& g, bool preview, bool restingSettings)
 
 void MainPage::enableDarkTitleBar() const
 {
-    // Integra a moldura nativa ao tema escuro quando a versão do Windows oferece suporte.
+    // Blend the native frame into the dark theme when the Windows version supports it.
     constexpr DWORD useImmersiveDarkMode = 20;
     BOOL enabled = TRUE;
     DwmSetWindowAttribute(window_, useImmersiveDarkMode, &enabled, sizeof(enabled));
@@ -823,8 +823,8 @@ void MainPage::saveSettings()
 
 void MainPage::checkFileServerAsync()
 {
-    // A chamada HTTP nunca é executada na thread da janela, preservando a
-    // resposta do campo de nickname, do desenho e dos demais controles.
+    // The HTTP call never runs on the window thread, keeping the
+    // nickname field, drawing and other controls responsive.
     if (fileServerThread_.joinable()) fileServerThread_.join();
     fileServerThread_ = std::jthread([this](std::stop_token stopToken)
     {
@@ -839,8 +839,8 @@ void MainPage::checkFileServerAsync()
                 window_, LauncherConstants::FileServerResultMessage, 0,
                 reinterpret_cast<LPARAM>(transferredResponse)))
         {
-            // Se a janela tiver sido encerrada durante a requisição, ninguém
-            // receberá a mensagem; por isso o resultado deve ser liberado aqui.
+            // If the window was closed during the request, nobody will
+            // receive the message, so the result must be freed here.
             delete transferredResponse;
         }
     });
@@ -932,13 +932,13 @@ void MainPage::applyFileServerResult(const FileServerManifestResponse& response)
         if (refreshBeforePlay_)
         {
             refreshBeforePlay_ = false;
-            // Só o clique em Jogar inicia downloads e a preparação do Minecraft.
+            // Only clicking Play starts downloads and Minecraft preparation.
             beginPlay();
             return;
         }
 
-        // Abrir a tela apenas consulta o estado local e o servidor. Downloads e
-        // sincronização ficam reservados ao clique explícito em Jogar.
+        // Opening the screen only checks the local state and the server. Downloads and
+        // sync are reserved for an explicit Play click.
         viewState_.operation = installation.success
             ? LauncherOperation::ReadyToPlay
             : LauncherOperation::NeedsInstallation;

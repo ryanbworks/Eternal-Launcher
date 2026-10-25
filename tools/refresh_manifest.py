@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Atualiza o manifesto HTTP a partir dos mods e configurações enviados por SFTP."""
+"""Refresh the HTTP manifest from the mods and configs uploaded over SFTP."""
 
 import argparse
 import hashlib
@@ -17,12 +17,12 @@ def read_json(path: Path, default: dict) -> dict:
         return default
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
-        raise ValueError(f"JSON inválido em {path}")
+        raise ValueError(f"Invalid JSON in {path}")
     return value
 
 
 def write_json_atomic(path: Path, value: dict) -> None:
-    # A troca atômica impede que o launcher leia JSON pela metade.
+    # The atomic swap keeps the launcher from reading half-written JSON.
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_text(
         json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -40,7 +40,7 @@ def sha256(path: Path) -> str:
 
 
 def windows_safe_relative(relative: str) -> bool:
-    """Aceita somente caminhos relativos que podem ser criados no Windows."""
+    """Accept only relative paths that can be created on Windows."""
     for part in Path(relative).parts:
         if (part in ("", ".", "..")
                 or any(ord(character) < 32 or character in '<>:"/\\|?*'
@@ -62,7 +62,7 @@ def files_to_publish(files_root: Path):
             if windows_safe_relative(relative):
                 yield relative, path
             else:
-                print(f"Mod ignorado por nome incompatível com Windows: {path.name}")
+                print(f"Skipping mod with a name Windows cannot store: {path.name}")
 
     config_root = files_root / "config"
     if config_root.is_dir():
@@ -73,18 +73,18 @@ def files_to_publish(files_root: Path):
             if windows_safe_relative(relative):
                 yield relative, path
             else:
-                print(f"Configuração ignorada por caminho incompatível com Windows: {relative}")
+                print(f"Skipping config with a path Windows cannot store: {relative}")
 
 
 def refresh(files_root: Path, cache_path: Path) -> int:
     manifest_path = files_root / "manifest.json"
     if not (files_root / "mods").is_dir():
-        raise FileNotFoundError(f"Pasta de mods ausente: {files_root / 'mods'}")
+        raise FileNotFoundError(f"Mods folder missing: {files_root / 'mods'}")
 
     manifest = read_json(manifest_path, {"schemaVersion": 1, "files": []})
     previous_files = manifest.get("files")
     if not isinstance(previous_files, list):
-        raise ValueError("O campo files do manifesto precisa ser uma lista")
+        raise ValueError("The manifest's files field must be a list")
 
     managed_prefixes = tuple(f"{root}/" for root in MANAGED_ROOTS)
     previous_entries = {
@@ -116,13 +116,13 @@ def refresh(files_root: Path, cache_path: Path) -> int:
                 and isinstance(old_cache.get("sha256"), str)):
             digest = old_cache["sha256"]
         elif now_ns - stat.st_mtime_ns < QUIET_SECONDS * 1_000_000_000:
-            # Um upload ainda em andamento não entra no manifesto.
+            # An upload still in progress stays out of the manifest.
             if old_entry:
                 published.append(old_entry)
             continue
         else:
             digest = sha256(path)
-            # Se o upload mudar durante o hash, esperamos a próxima verificação.
+            # If the upload changes while hashing, wait for the next check.
             after = path.stat()
             if after.st_size != stat.st_size or after.st_mtime_ns != stat.st_mtime_ns:
                 if old_entry:
@@ -150,4 +150,4 @@ if __name__ == "__main__":
                         default=Path("/srv/eternal-launcher/mods-cache.json"))
     arguments = parser.parse_args()
     count = refresh(arguments.files_root, arguments.cache)
-    print(f"Manifesto atualizado: {count} arquivo(s) gerenciado(s).")
+    print(f"Manifest updated: {count} managed file(s).")

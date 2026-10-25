@@ -46,7 +46,7 @@ PortableJavaInstallResult PortableJavaInstaller::install(
     const auto backup = dataDirectory / L"runtime-backup";
     std::error_code ignored;
 
-    // Os nomes são fixos e filhos diretos da pasta privada do launcher.
+    // The names are fixed and are direct children of the launcher's private folder.
     std::filesystem::remove_all(staging, ignored);
     std::filesystem::create_directories(staging);
     if (!ArchiveExtractor::extract(archive, staging, stopToken))

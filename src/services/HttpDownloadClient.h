@@ -21,8 +21,8 @@ struct HttpDownloadResult
 using HttpDownloadProgressCallback =
     std::function<void(std::uint64_t received, std::uint64_t total)>;
 
-// Cliente HTTP pequeno e genérico usado para obter metadados e arquivos
-// binários. Ele não conhece Java, Minecraft nem o servidor NGINX do projeto.
+// Small, generic HTTP client used to fetch metadata and binary
+// files. It knows nothing about Java, Minecraft or the project's NGINX server.
 class HttpDownloadClient
 {
 public:

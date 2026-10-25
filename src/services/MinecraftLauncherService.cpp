@@ -122,8 +122,8 @@ MinecraftLaunchResult MinecraftLauncherService::validateInstallation() const
     const auto libraries = gamePath / L"libraries";
     const auto natives = gamePath / L"natives";
 
-    // Esta lista detecta instalações interrompidas antes da montagem do comando.
-    // A correção é delegada ao GameInstallationService pela interface.
+    // This list detects interrupted installations before the command is built.
+    // Repair is delegated to GameInstallationService through the interface.
     const std::array<std::filesystem::path, 19> requiredPaths = {
         profile,
         clientJar,
@@ -219,7 +219,7 @@ MinecraftLaunchResult MinecraftLauncherService::launch(const MinecraftIdentity& 
     const auto gamePath = gameDirectory();
     const auto javaPath = findJavaExecutable();
 
-    // O comando recebe a identidade selecionada antes de iniciar o Java.
+    // The command receives the selected identity before Java starts.
     MinecraftLaunchCommandBuilder commandBuilder;
     if (identity.online() && (identity.uuid.size() != 32 || identity.clientId.empty()))
     {
@@ -240,8 +240,8 @@ MinecraftLaunchResult MinecraftLauncherService::launch(const MinecraftIdentity& 
         OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (logHandle != INVALID_HANDLE_VALUE && inputHandle != INVALID_HANDLE_VALUE)
     {
-        // O Java permanece sem janela, mas stdout/stderr ficam disponíveis para
-        // diagnóstico quando Forge ou algum mod encerra durante a inicialização.
+        // Java stays windowless, but stdout/stderr remain available for
+        // diagnostics when Forge or a mod exits during startup.
         SetHandleInformation(logHandle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
         SetHandleInformation(inputHandle, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
         startupInfo.dwFlags |= STARTF_USESTDHANDLES;

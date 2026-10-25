@@ -3,7 +3,7 @@ function Get-EternalSigningKeyPath {
     $localAppData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
     if ([string]::IsNullOrWhiteSpace($localAppData)) { $localAppData = $env:LOCALAPPDATA }
     if ([string]::IsNullOrWhiteSpace($localAppData)) {
-        throw 'O Windows nao informou a pasta LocalAppData da conta atual.'
+        throw 'Windows did not report the LocalAppData folder for the current account.'
     }
     $primary = Join-Path $localAppData 'EternalLauncher/Signing/release-key.dpapi'
     $candidates = [System.Collections.Generic.List[string]]::new()
@@ -41,7 +41,7 @@ function Get-EternalSigningKey {
         $missing = $true
     } catch {
         $rsa.Dispose()
-        throw "A chave foi localizada no caminho '$keyFile', mas nao pode ser lida pela conta '$identity'. Detalhe: $($_.Exception.Message)"
+        throw "The key was found at '$keyFile', but the account '$identity' cannot read it. Detail: $($_.Exception.Message)"
     }
     if (!$missing) {
         try {
@@ -50,7 +50,7 @@ function Get-EternalSigningKey {
             finally { if ($private) { [Array]::Clear($private, 0, $private.Length) } }
         } catch {
             $rsa.Dispose()
-            throw "A chave existe, mas a conta '$identity' nao conseguiu abri-la com o DPAPI. Caminho: $keyFile. Use a mesma conta Windows que publicou a Aurora. Detalhe: $($_.Exception.Message)"
+            throw "The key exists, but the account '$identity' could not open it with DPAPI. Path: $keyFile. Use the same Windows account that published Aurora. Detail: $($_.Exception.Message)"
         }
     } elseif ($Initialize) {
         [IO.Directory]::CreateDirectory($keyFolder) | Out-Null
@@ -63,8 +63,8 @@ function Get-EternalSigningKey {
         $rsa.Dispose()
         $directory = if ([IO.Directory]::Exists($keyFolder)) {
             (Get-ChildItem -LiteralPath $keyFolder -Force -ErrorAction SilentlyContinue | ForEach-Object Name) -join ', '
-        } else { 'pasta Signing ausente' }
-        throw "Chave de release realmente ausente para a conta '$identity'. Caminho procurado: $keyFile. Conteudo da pasta: $directory. Use a mesma conta Windows que publicou a Aurora; nao gere outra chave."
+        } else { 'Signing folder missing' }
+        throw "Release key is missing for the account '$identity'. Path searched: $keyFile. Folder contents: $directory. Use the same Windows account that published Aurora; do not generate another key."
     }
     return $rsa
 }
