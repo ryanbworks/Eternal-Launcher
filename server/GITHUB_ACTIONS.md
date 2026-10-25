@@ -9,7 +9,8 @@ usa o Proxmox como subnet router para alcançar `10.0.0.13:22` pelo Tailscale.
 - Proxmox: `10.0.0.10`, Tailscale `100.102.117.89`.
 - Rede anunciada e aprovada: `10.0.0.0/24`.
 - Encaminhamento IPv4 persistente: `/etc/sysctl.d/99-eternal-tailscale.conf`.
-- O executor Linux usa `--accept-routes`; o Proxmox conserva o SNAT padrão.
+- A Action já habilita `--accept-routes` no executor Linux; não repetir essa
+  opção em `args`. O Proxmox conserva o SNAT padrão.
 - Liberar no firewall do Proxmox/container o encaminhamento necessário para
   `10.0.0.13:22`, caso alguma regra existente o bloqueie.
 
