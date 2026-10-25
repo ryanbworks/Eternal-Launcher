@@ -92,7 +92,7 @@ jobs:
           oauth-client-id: ${{ vars.TS_CLIENT_ID }}
           audience: ${{ vars.TS_AUDIENCE }}
           tags: tag:eternal-ci
-          args: --accept-routes --accept-dns=false
+          args: --accept-dns=false
       - name: Publicar pelo SFTP da rede local
         env:
           SFTP_PRIVATE_KEY: ${{ secrets.SFTP_PRIVATE_KEY }}
