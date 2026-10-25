@@ -1,0 +1,59 @@
+name: Build
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  launcher:
+    name: Launcher (Windows x64)
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build and run the tests
+        shell: pwsh
+        run: |
+          $cmake = Get-Content CMakeLists.txt -Raw
+          $version = [regex]::Match($cmake, 'project\(EternalLauncher VERSION ([0-9.]+)').Groups[1].Value
+          $codename = [regex]::Match($cmake, 'set\(ETERNAL_CODENAME "([A-Za-z0-9]+)"\)').Groups[1].Value
+          Write-Output "Code version: $version-$codename"
+          ./tests/TestCiSigning.ps1
+          ./tools/BuildCiRelease.ps1 -Version $version -Codename $codename
+      - name: Keep test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-logs
+          path: out/build/ci/Testing/Temporary/
+          if-no-files-found: ignore
+
+  tools:
+    name: Server tools
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install dependencies
+        run: python3 -m pip install -r tools/ci-requirements.txt
+      - name: Test the publisher and the manifest
+        run: |
+          python3 -m unittest discover -s tests -p test_publish_release.py -v
+          python3 -m unittest discover -s server -p test_refresh_manifest.py -v
