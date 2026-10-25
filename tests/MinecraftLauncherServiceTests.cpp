@@ -124,19 +124,23 @@ int main(int argumentCount, char* arguments[])
     std::filesystem::create_directories(modsDirectory);
     std::ofstream(modsDirectory / L"atual.jar").put('a');
     std::ofstream(modsDirectory / L"removido.jar").put('b');
+    std::ofstream(modsDirectory / L"[1.20.1] Usuário.jar").put('u');
     std::ofstream(modsDirectory / L"download.jar.part").put('c');
+    removeObsoleteMods(modsDirectory, {modsDirectory / L"atual.jar", modsDirectory / L"removido.jar"});
     removeObsoleteMods(modsDirectory, {modsDirectory / L"atual.jar"});
     if (!std::filesystem::exists(modsDirectory / L"atual.jar") ||
         std::filesystem::exists(modsDirectory / L"removido.jar") ||
+        !std::filesystem::exists(modsDirectory / L"[1.20.1] Usuário.jar") ||
         !std::filesystem::exists(modsDirectory / L"download.jar.part"))
     {
         std::wcerr << L"Limpeza de mods não respeitou o manifesto.\n";
         return 18;
     }
     removeObsoleteMods(modsDirectory, {});
-    if (std::filesystem::exists(modsDirectory / L"atual.jar"))
+    if (std::filesystem::exists(modsDirectory / L"atual.jar") ||
+        !std::filesystem::exists(modsDirectory / L"[1.20.1] Usuário.jar"))
     {
-        std::wcerr << L"Manifesto sem mods não removeu o JAR local.\n";
+        std::wcerr << L"Manifesto sem mods não removeu o JAR gerenciado ou apagou o mod do usuário.\n";
         return 19;
     }
     std::filesystem::remove_all(modsDirectory.parent_path());
