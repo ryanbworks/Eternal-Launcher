@@ -152,6 +152,20 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual(self.latest.read_bytes(), self.old)
         self.assertTrue((self.remote / ".ci-publish-lock").is_dir())
 
+    def test_https_download_sends_custom_user_agent(self):
+        with patch.object(publisher, "urlopen", return_value=HttpResponse(b"")) as opener:
+            publisher.https_download("https://example.test/", "/launcher/latest.json")
+        request = opener.call_args.args[0]
+        self.assertEqual(request.full_url, "https://example.test/launcher/latest.json")
+        self.assertEqual(request.get_header("User-agent"), publisher.USER_AGENT)
+        self.assertNotIn("urllib", request.get_header("User-agent").lower())
+
+    def test_https_error_reports_status(self):
+        error = publisher.HTTPError("https://example.test/x", 403, "Forbidden", {"CF-RAY": "abc"}, None)
+        with patch.object(publisher, "urlopen", side_effect=error):
+            with self.assertRaisesRegex(RuntimeError, "HTTP 403 Forbidden \\(CF-RAY abc\\)"):
+                publisher.https_download("https://example.test", "/x")
+
     def test_retry_does_not_overwrite_existing_different_release(self):
         destination = self.remote / "releases/1.0.12/EternalLauncher.exe"
         destination.parent.mkdir(parents=True)
