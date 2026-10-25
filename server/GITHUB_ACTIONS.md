@@ -45,10 +45,16 @@ não remove permissões concedidas por outras regras.
 Em **Trust credentials**, criar uma credencial **OpenID Connect**:
 
 - Issuer: GitHub Actions (`https://token.actions.githubusercontent.com`).
-- Subject: `repo:ryanbworks/Eternal-Launcher:environment:production`.
+- Subject: `repo:ryanbworks@213251617/Eternal-Launcher@1391560141:environment:production`.
 - Custom claim `ref`: `refs/heads/master`.
 - Escopo: `auth_keys` com permissão de escrita e tag `tag:eternal-ci`.
 - Copiar Client ID e Audience para as variáveis do ambiente GitHub abaixo.
+
+O token emitido pelo GitHub para este repositório inclui os IDs da conta e do
+repositório no Subject. O formato sem esses IDs não corresponde ao token atual.
+Se houver erro 403, o detalhe da credencial mostra o Subject recebido; conferir
+os IDs com a API do GitHub antes de ajustar, preservando o ambiente `production`
+e a restrição da branch `master`.
 
 A identidade temporária do Actions é removida ao encerrar a execução. Esse
 acesso usa o OpenSSH/SFTP do container; não depende de habilitar Tailscale SSH.
