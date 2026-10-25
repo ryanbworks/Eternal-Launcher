@@ -1,0 +1,112 @@
+name: Publicar launcher
+run-name: Eternal ${{ inputs.version }}-${{ inputs.codename }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Versão numérica (exemplo 1.0.12)
+        required: true
+        type: string
+      codename:
+        description: Nome da versão (somente letras e números)
+        required: true
+        default: Aura
+        type: string
+      check_only:
+        description: Somente compilar e verificar acesso, sem publicar
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: eternal-production-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/master'
+    runs-on: windows-2022
+    environment: production
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Compilar e testar sem chave de produção
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_CODENAME: ${{ inputs.codename }}
+        run: |
+          ./tests/TestCiSigning.ps1
+          ./tools/BuildCiRelease.ps1 -Version $env:RELEASE_VERSION -Codename $env:RELEASE_CODENAME
+      - name: Assinar pacote com a chave existente
+        shell: pwsh
+        env:
+          ETERNAL_SIGNING_KEY_PKCS8: ${{ secrets.ETERNAL_SIGNING_KEY_PKCS8 }}
+        run: ./tools/Release.ps1 -SkipBuild -BuildDirectory out/build/ci -CiSigningKey
+      - name: Conferir pacote assinado
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: ./tools/VerifyRelease.ps1 -PackageDirectory "out/releases/$env:RELEASE_VERSION" -ExpectedVersion $env:RELEASE_VERSION
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: launcher-package
+          path: out/releases/${{ inputs.version }}/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Guardar logs dos testes em caso de falha
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-logs
+          path: out/build/ci/Testing/Temporary/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: launcher-package
+          path: out/package
+      - name: Instalar cliente de publicação
+        run: python3 -m pip install -r tools/ci-requirements.txt
+      - name: Verificar testes do publicador
+        run: python3 -m unittest discover -s tests -p test_publish_release.py -v
+      - name: Conectar ao Tailscale
+        uses: tailscale/github-action@99a8333667fff04fdd6cffb46dfd409f8329a7bf # v4
+        with:
+          oauth-client-id: ${{ vars.TS_CLIENT_ID }}
+          audience: ${{ vars.TS_AUDIENCE }}
+          tags: tag:eternal-ci
+          args: --accept-routes --accept-dns=false
+      - name: Publicar pelo SFTP da rede local
+        env:
+          SFTP_PRIVATE_KEY: ${{ secrets.SFTP_PRIVATE_KEY }}
+          SFTP_KNOWN_HOSTS: ${{ secrets.SFTP_KNOWN_HOSTS }}
+          CHECK_ONLY: ${{ inputs.check_only }}
+        run: |
+          args=()
+          if [ "$CHECK_ONLY" = "true" ]; then args+=(--check-only); fi
+          python3 tools/publish_release.py --package out/package "${args[@]}"
+      - name: Registrar resultado
+        if: success()
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_CODENAME: ${{ inputs.codename }}
+          CHECK_ONLY: ${{ inputs.check_only }}
+        run: |
+          printf 'Versão: **%s-%s**\n\nSomente verificação: **%s**\n' "$RELEASE_VERSION" "$RELEASE_CODENAME" "$CHECK_ONLY" >> "$GITHUB_STEP_SUMMARY"
