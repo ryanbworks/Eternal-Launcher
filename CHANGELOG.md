@@ -23,6 +23,11 @@ and versions use [SemVer](https://semver.org/) plus a codename.
 - **Help page.** Repair the installation without starting the game, open the
   installation, Forge and game logs, and copy support information (with the
   Windows account name hidden).
+- **Animations everywhere.** Pages rise and fade in with staggered cards, the
+  navigation selection and the settings tab underline glide, switches slide, the
+  sign-in choice slides between its cards, the Play button breathes, shines and
+  ripples, status dots pulse while work is in progress and the avatar blinks. All of
+  it follows the Windows "Show animations" preference.
 - **Settings in tabs.** General (memory with a recommendation for this PC, window),
   Advanced (exact memory, Java, instance folder) and About.
 

@@ -27,9 +27,33 @@ namespace
         Gdiplus::SolidBrush brush(color);
         g.FillEllipse(&brush, x, y, size, size);
     }
+
+    float easeOut(float t) { t = std::clamp(t, 0.0F, 1.0F); return 1 - (1 - t) * (1 - t) * (1 - t); }
+    float easeInOut(float t) { t = std::clamp(t, 0.0F, 1.0F); return t < .5F ? 4 * t * t * t : 1 - std::pow(-2 * t + 2, 3.0F) / 2; }
+
+    // Expanding ring that fades out around a status dot: "something is happening here".
+    void pulseRing(Gdiplus::Graphics& g, float cx, float cy, const Gdiplus::Color& color, float time, float period = 1.8F)
+    {
+        const float t = std::fmod(time, period) / period;
+        const float radius = 4 + 9 * easeOut(t);
+        Gdiplus::Pen pen(Gdiplus::Color(static_cast<BYTE>(130 * (1 - t)), color.GetR(), color.GetG(), color.GetB()), 1.5F);
+        g.DrawEllipse(&pen, cx - radius, cy - radius, 2 * radius, 2 * radius);
+    }
+
+    // Vertical band of light, transparent at the edges, used for sweeps and sheens.
+    void lightBand(Gdiplus::Graphics& g, float centerX, float top, float height, float width, BYTE alpha)
+    {
+        if (alpha == 0) return;
+        Gdiplus::LinearGradientBrush brush(Gdiplus::PointF(centerX - width / 2, 0), Gdiplus::PointF(centerX + width / 2, 0),
+            Gdiplus::Color(0, 255, 255, 255), Gdiplus::Color(0, 255, 255, 255));
+        const Gdiplus::Color colors[] = {Gdiplus::Color(0, 255, 255, 255), Gdiplus::Color(alpha, 255, 255, 255), Gdiplus::Color(0, 255, 255, 255)};
+        const Gdiplus::REAL positions[] = {0, .5F, 1};
+        brush.SetInterpolationColors(colors, positions, 3);
+        g.FillRectangle(&brush, centerX - width / 2, top, width, height);
+    }
 }
 
-void HomeView::drawAvatar(Gdiplus::Graphics& g, const Gdiplus::RectF& b, const Gdiplus::Color& status)
+void HomeView::drawAvatar(Gdiplus::Graphics& g, const Gdiplus::RectF& b, const Gdiplus::Color& status, bool blink)
 {
     // Generic pixel head: hood, face, eyes and mouth on an 8 x 8 grid.
     fillRoundedRectangle(g, b, 18, Gdiplus::Color(255, 47, 40, 80));
@@ -49,10 +73,17 @@ void HomeView::drawAvatar(Gdiplus::Graphics& g, const Gdiplus::RectF& b, const G
     block(7, 3, 1, 5, Gdiplus::Color(255, 59, 47, 99));
     block(1, 3, 6, 5, Gdiplus::Color(255, 201, 154, 118));
     block(1, 2, 6, 1, Theme::Accent);
-    block(2, 4, 1, 1, Theme::TextPrimary);
-    block(5, 4, 1, 1, Theme::TextPrimary);
-    block(3, 4, 1, 1, Gdiplus::Color(255, 109, 76, 209));
-    block(4, 4, 1, 1, Gdiplus::Color(255, 109, 76, 209));
+    if (blink) {
+        // Eyelids: a skin-toned row with a darker lash line.
+        block(2, 4, 4, 1, Gdiplus::Color(255, 201, 154, 118));
+        Gdiplus::SolidBrush lash(Gdiplus::Color(255, 138, 90, 67));
+        g.FillRectangle(&lash, face.X + 2 * cell, face.Y + 4.6F * cell, 4 * cell, cell * .3F);
+    } else {
+        block(2, 4, 1, 1, Theme::TextPrimary);
+        block(5, 4, 1, 1, Theme::TextPrimary);
+        block(3, 4, 1, 1, Gdiplus::Color(255, 109, 76, 209));
+        block(4, 4, 1, 1, Gdiplus::Color(255, 109, 76, 209));
+    }
     block(3, 6, 2, 1, Gdiplus::Color(255, 138, 90, 67));
     g.Restore(saved);
     Gdiplus::SolidBrush ring(Theme::Surface);
@@ -67,7 +98,11 @@ void HomeView::draw(Gdiplus::Graphics& g, const HomeModel& model, const HeroComp
     const auto& state = *model.player.state;
     if (drawLeftColumn) {
         hero.draw(g, Layout::Hero, model.reveal, model.energy, model.phase, model.drift, model.chips);
-        if (model.toast) {
+        if (model.toast && model.toastReveal > .01F) {
+            // The toast drops in from the top edge of the landscape.
+            const auto saved = g.Save();
+            g.SetClip(Layout::Hero, Gdiplus::CombineModeIntersect);
+            g.TranslateTransform(0, -(Layout::Toast.GetBottom() - Layout::Hero.Y) * (1 - easeOut(model.toastReveal)));
             const auto& t = Layout::Toast;
             fillRoundedRectangle(g, t, 12, Gdiplus::Color(214, 13, 14, 20));
             drawRoundedRectangle(g, {t.X + .5F, t.Y + .5F, t.Width - 1, t.Height - 1}, 12, Theme::GlassOutline);
@@ -78,15 +113,18 @@ void HomeView::draw(Gdiplus::Graphics& g, const HomeModel& model, const HeroComp
                 Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
             Buttons::draw(g, Layout::ToastButton, L"Ver novidades", visuals(LauncherConstants::ToastNewsButtonId),
                 Buttons::Style::Link, std::nullopt, false, 12.5F);
+            g.Restore(saved);
         }
-        drawTiles(g, state, model.serverMods, model.userMods);
-        drawNews(g, state, hero, visuals);
+        drawTiles(g, model);
+        drawNews(g, model, hero, visuals);
     }
     drawPlayerCard(g, model.player, visuals);
 }
 
-void HomeView::drawTiles(Gdiplus::Graphics& g, const LauncherViewState& state, int serverMods, int userMods) const
+void HomeView::drawTiles(Gdiplus::Graphics& g, const HomeModel& model) const
 {
+    const auto& state = *model.player.state;
+    const int serverMods = model.serverMods, userMods = model.userMods;
     if (state.statusCards.size() < 3) return;
     struct Tile { const wchar_t* label; StatusCardData data; };
     auto mods = state.statusCards[1];
@@ -96,10 +134,13 @@ void HomeView::drawTiles(Gdiplus::Graphics& g, const LauncherViewState& state, i
     }
     const Tile tiles[] = {{L"Servidor", state.statusCards[2]}, {L"Mods", mods}, {L"Instalação", state.statusCards[0]}};
     for (int i = 0; i < 3; ++i) {
-        const auto b = Layout::tile(i);
+        auto b = Layout::tile(i);
+        b.Y += std::round(18 * (1 - easeOut((model.entrance - .1F - .08F * static_cast<float>(i)) / .5F)));
         fillRoundedRectangle(g, b, Theme::CardRadius, Theme::Surface);
         drawRoundedRectangle(g, {b.X + .5F, b.Y + .5F, b.Width - 1, b.Height - 1}, Theme::CardRadius, Theme::Divider);
         dot(g, b.X + 18, b.Y + 21, colorForTone(tiles[i].data.tone));
+        if (model.player.motion && tiles[i].data.tone == StatusTone::Information)
+            pulseRing(g, b.X + 22, b.Y + 25, colorForTone(tiles[i].data.tone), model.player.time + static_cast<float>(i) * .3F);
         drawText(g, tiles[i].label, {b.X + 32, b.Y + 14, b.Width - 50, 20}, 12, Gdiplus::FontStyleRegular, Theme::TextMuted,
             Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
         drawText(g, tiles[i].data.value, {b.X + 18, b.Y + 36, b.Width - 36, 26}, 18, Gdiplus::FontStyleBold, Theme::TextPrimary);
@@ -107,22 +148,33 @@ void HomeView::drawTiles(Gdiplus::Graphics& g, const LauncherViewState& state, i
     }
 }
 
-void HomeView::drawNews(Gdiplus::Graphics& g, const LauncherViewState& state, const HeroComponent& hero,
+void HomeView::drawNews(Gdiplus::Graphics& g, const HomeModel& model, const HeroComponent& hero,
                         const ControlVisuals& visuals) const
 {
+    const auto& state = *model.player.state;
     drawDisplayText(g, L"Novidades", Layout::NewsHeading, 17, Theme::TextPrimary, Gdiplus::StringAlignmentNear,
         Gdiplus::StringAlignmentCenter);
     Buttons::draw(g, {Layout::NewsAll.X + 20, Layout::NewsAll.Y, Layout::NewsAll.Width - 20, Layout::NewsAll.Height}, L"Ver todas",
         visuals(LauncherConstants::NewsAllButtonId), Buttons::Style::Link, std::nullopt, false, 13);
     const float focus[][2] = {{.62F, .4F}, {.15F, .7F}, {.92F, .2F}};
     for (int i = 0; i < LauncherConstants::NewsCardCount; ++i) {
-        const auto b = Layout::newsCard(i);
+        auto b = Layout::newsCard(i);
+        b.Y += std::round(22 * (1 - easeOut((model.entrance - .25F - .08F * static_cast<float>(i)) / .5F)));
         if (static_cast<std::size_t>(i) >= state.news.size()) {
             drawRoundedRectangle(g, {b.X + .5F, b.Y + .5F, b.Width - 1, b.Height - 1}, Theme::CardRadius, Theme::Divider);
             continue;
         }
         const auto& item = state.news[static_cast<std::size_t>(i)];
         const auto visual = visuals(LauncherConstants::NewsCardFirstId + i);
+        // Hover lifts the card and casts a soft shadow under it.
+        if (visual.hover > .01F) {
+            for (int layer = 3; layer >= 1; --layer) {
+                const float spread = static_cast<float>(layer) * 3;
+                fillRoundedRectangle(g, {b.X - spread + 4, b.Y + 6 + spread, b.Width + 2 * spread - 8, b.Height - 4},
+                    Theme::CardRadius + spread, Gdiplus::Color(static_cast<BYTE>(22 * visual.hover), 0, 0, 0));
+            }
+        }
+        b.Y -= std::round(4 * visual.hover);
         fillRoundedRectangle(g, b, Theme::CardRadius, blend(Theme::Surface, Theme::SurfaceElevated, visual.hover * .6F));
         const auto saved = g.Save();
         auto clip = createRoundedPath(b, Theme::CardRadius);
@@ -146,7 +198,10 @@ void HomeView::drawPlayerCard(Gdiplus::Graphics& g, const PlayerCardModel& m, co
     fillRoundedRectangle(g, aside, Theme::PanelRadius, Theme::Surface);
     drawRoundedRectangle(g, {aside.X + .5F, aside.Y + .5F, aside.Width - 1, aside.Height - 1}, Theme::PanelRadius, Theme::Divider);
     const auto tone = statusColor(state, m.playing);
-    drawAvatar(g, Layout::Avatar, tone);
+    // Blinks for a moment every few seconds while the window is in front.
+    drawAvatar(g, Layout::Avatar, tone, m.ambient && std::fmod(m.time, 4.7F) < .14F);
+    if (m.motion && m.playing)
+        pulseRing(g, Layout::Avatar.GetRight() - 6, Layout::Avatar.GetBottom() - 6, tone, m.time, 2.2F);
 
     drawText(g, m.originalMode ? L"CONTA MICROSOFT" : L"JOGANDO COMO", Layout::NicknameKicker, 11, Gdiplus::FontStyleBold, Theme::TextMuted);
     if (m.originalMode) {
@@ -173,22 +228,33 @@ void HomeView::drawPlayerCard(Gdiplus::Graphics& g, const PlayerCardModel& m, co
     }
 
     drawText(g, L"Como entrar", Layout::ModeLabel, 12.5F, Gdiplus::FontStyleBold, Theme::TextSecondary);
-    const auto modeCard = [&](const Gdiplus::RectF& b, int id, bool selected, Icons::Icon icon, const wchar_t* title,
-                              const wchar_t* description) {
-        const auto v = visuals(id);
-        const auto fill = selected ? Theme::AccentTint : blend(Gdiplus::Color(0, 30, 31, 44), Theme::SurfaceElevated, v.hover);
-        fillRoundedRectangle(g, b, 14, fill);
-        drawRoundedRectangle(g, {b.X + .5F, b.Y + .5F, b.Width - 1, b.Height - 1}, 14,
-            selected ? Theme::Accent : blend(Theme::OutlineSubtle, Theme::Border, v.hover));
-        Icons::draw(g, icon, {b.X + 12, b.Y + 12, 18, 18}, selected ? Theme::AccentLight : Theme::TextMuted, 1.8F);
-        drawText(g, title, {b.X + 12, b.Y + 36, b.Width - 20, 18}, 13, Gdiplus::FontStyleBold,
+    // One selection travels between the two options instead of jumping.
+    const float travel = easeInOut(m.identitySelection);
+    const Gdiplus::RectF selection{Layout::OfflineMode.X + (Layout::OriginalMode.X - Layout::OfflineMode.X) * travel,
+        Layout::OfflineMode.Y, Layout::OfflineMode.Width, Layout::OfflineMode.Height};
+    const struct { const Gdiplus::RectF* bounds; int id; bool selected; Icons::Icon icon; const wchar_t* title; const wchar_t* description; } modes[] = {
+        {&Layout::OfflineMode, OfflineButtonId, !m.originalMode, Icons::Icon::User, L"Nickname", L"Sem login. Para o servidor do grupo."},
+        {&Layout::OriginalMode, OriginalButtonId, m.originalMode, Icons::Icon::Key, L"Conta original", L"Entrar com Microsoft e usar sua skin."}};
+    for (const auto& mode : modes) {
+        const auto& b = *mode.bounds;
+        const auto v = visuals(mode.id);
+        fillRoundedRectangle(g, b, 14, blend(Gdiplus::Color(0, 30, 31, 44), Theme::SurfaceElevated, v.hover));
+        drawRoundedRectangle(g, {b.X + .5F, b.Y + .5F, b.Width - 1, b.Height - 1}, 14, blend(Theme::OutlineSubtle, Theme::Border, v.hover));
+    }
+    fillRoundedRectangle(g, selection, 14, Theme::AccentTint);
+    drawRoundedRectangle(g, {selection.X + .5F, selection.Y + .5F, selection.Width - 1, selection.Height - 1}, 14, Theme::Accent);
+    for (const auto& mode : modes) {
+        const auto& b = *mode.bounds;
+        const auto v = visuals(mode.id);
+        // Content color follows how much of the selection currently covers this card.
+        const float cover = std::clamp(1 - std::abs(selection.X - b.X) / b.Width, 0.0F, 1.0F);
+        Icons::draw(g, mode.icon, {b.X + 12, b.Y + 12, 18, 18}, blend(Theme::TextMuted, Theme::AccentLight, cover), 1.8F);
+        drawText(g, mode.title, {b.X + 12, b.Y + 36, b.Width - 20, 18}, 13, Gdiplus::FontStyleBold,
             v.enabled ? Theme::TextPrimary : Theme::TextMuted);
-        drawText(g, description, {b.X + 12, b.Y + 56, b.Width - 18, 36}, 11.5F, Gdiplus::FontStyleRegular,
-            selected ? Theme::TextSecondary : Theme::TextMuted);
+        drawText(g, mode.description, {b.X + 12, b.Y + 56, b.Width - 18, 36}, 11.5F, Gdiplus::FontStyleRegular,
+            blend(Theme::TextMuted, Theme::TextSecondary, cover));
         if (v.focused) drawFocusRing(g, b, 14, Theme::AccentLight);
-    };
-    modeCard(Layout::OfflineMode, OfflineButtonId, !m.originalMode, Icons::Icon::User, L"Nickname", L"Sem login. Para o servidor do grupo.");
-    modeCard(Layout::OriginalMode, OriginalButtonId, m.originalMode, Icons::Icon::Key, L"Conta original", L"Entrar com Microsoft e usar sua skin.");
+    }
 
     const wchar_t* statLabels[] = {L"Última partida", L"Tempo jogado"};
     const std::wstring statValues[] = {m.lastPlayed, m.totalPlayed};
@@ -216,6 +282,8 @@ void HomeView::drawPlayerCard(Gdiplus::Graphics& g, const PlayerCardModel& m, co
     }
 
     dot(g, Layout::StatusLine.X, Layout::StatusLine.Y + 8, tone);
+    const bool working = !state.playEnabled && state.operation != LauncherOperation::UpdateAvailable;
+    if (m.motion && (m.playing || working)) pulseRing(g, Layout::StatusLine.X + 4, Layout::StatusLine.Y + 12, tone, m.time);
     drawText(g, m.playing ? L"Jogando agora" : state.headline, {Layout::StatusLine.X + 16, Layout::StatusLine.Y,
         Layout::StatusLine.Width - 16, Layout::StatusLine.Height}, 14, Gdiplus::FontStyleBold, Theme::TextPrimary,
         Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
@@ -226,23 +294,88 @@ void HomeView::drawPlayerCard(Gdiplus::Graphics& g, const PlayerCardModel& m, co
         Buttons::draw(g, Layout::UpdateLink, L"Baixar launcher", visuals(UpdateDownloadButtonId), Buttons::Style::Link,
             Icons::Icon::Download, false, 12.5F);
 
-    // Split play button: the main action plus a menu of quick actions.
+    drawPlayButton(g, m, visuals);
+
+    const struct { int id; const wchar_t* label; } quick[] = {
+        {QuickFolderButtonId, L"Pasta do jogo"}, {QuickRepairButtonId, L"Reparar"}, {QuickLogsButtonId, L"Logs"}};
+    for (int i = 0; i < 3; ++i)
+        Buttons::draw(g, Layout::quickAction(i), quick[i].label, visuals(quick[i].id), Buttons::Style::Ghost, std::nullopt, false, 12.5F);
+}
+
+void HomeView::drawPlayButton(Gdiplus::Graphics& g, const PlayerCardModel& m, const ControlVisuals& visuals)
+{
+    using namespace LauncherConstants;
+    const auto& state = *m.state;
     const auto playVisual = visuals(PlayButtonId);
     const auto menuVisual = visuals(PlayMenuButtonId);
     const bool enabled = state.playEnabled;
-    const auto playFill = enabled ? blend(Theme::Accent, Theme::AccentLight, playVisual.pressed ? 1.0F : playVisual.hover) :
+    const bool ready = enabled && (state.operation == LauncherOperation::ReadyToPlay || state.operation == LauncherOperation::NeedsInstallation);
+    const float hover = enabled ? std::max(playVisual.hover, playVisual.focused ? 1.0F : 0.0F) : 0.0F;
+
+    // A soft violet halo breathes around the split button while it waits for a click.
+    const Gdiplus::RectF group{Layout::Play.X, Layout::Play.Y, Layout::PlayMenu.GetRight() - Layout::Play.X, Layout::Play.Height};
+    if (ready && m.ambient) {
+        const float breath = .5F + .5F * std::sin(m.time * 6.2831853F / 2.8F);
+        for (int layer = 4; layer >= 1; --layer) {
+            // At most 13.5 logical pixels, so the glow never reaches the quick actions below.
+            const float grow = static_cast<float>(layer) * (2 + breath) + hover * 1.5F;
+            const auto alpha = static_cast<BYTE>((10 + 10 * breath + 12 * hover) / static_cast<float>(layer) * 1.6F);
+            fillRoundedRectangle(g, {group.X - grow, group.Y - grow, group.Width + 2 * grow, group.Height + 2 * grow},
+                14 + grow, Gdiplus::Color(alpha, 165, 130, 255));
+        }
+    }
+
+    // Pressing compresses the button inside its own hit area.
+    const float press = enabled ? std::clamp(m.playPress, 0.0F, 1.0F) : 0.0F;
+    const Gdiplus::RectF play{Layout::Play.X + press * 2, Layout::Play.Y + press * 2, Layout::Play.Width - press * 4, Layout::Play.Height - press * 4};
+    const auto playFill = enabled ? blend(Theme::Accent, Theme::AccentLight, playVisual.pressed ? 1.0F : hover * .7F) :
         Gdiplus::Color(255, 36, 35, 58);
-    fillRoundedRectangle(g, Layout::Play, 14, 6, 6, 14, playFill);
-    if (!enabled && m.progress >= 0) {
-        const float fraction = std::clamp(m.progress, 0.0F, 100.0F) / 100;
+    fillRoundedRectangle(g, play, 14, 6, 6, 14, playFill);
+    {
         const auto saved = g.Save();
-        auto clip = createRoundedPath(Layout::Play, 14, 6, 6, 14);
+        auto clip = createRoundedPath(play, 14, 6, 6, 14);
         g.SetClip(clip.get(), Gdiplus::CombineModeIntersect);
-        Gdiplus::SolidBrush fill(Gdiplus::Color(255, 58, 47, 107));
-        if (fraction > 0) g.FillRectangle(&fill, Layout::Play.X, Layout::Play.Y, Layout::Play.Width * fraction, Layout::Play.Height);
-        else {
-            const float x = Layout::Play.X + (std::fmod(m.phase, 1.0F) * 1.4F - .4F) * Layout::Play.Width;
-            g.FillRectangle(&fill, x, Layout::Play.Y, Layout::Play.Width * .4F, Layout::Play.Height);
+        if (!enabled && m.progress >= 0) {
+            const float fraction = std::clamp(m.progress, 0.0F, 100.0F) / 100;
+            Gdiplus::SolidBrush fill(Gdiplus::Color(255, 58, 47, 107));
+            if (fraction > 0) {
+                g.FillRectangle(&fill, play.X, play.Y, play.Width * fraction, play.Height);
+                // A glint rides along the filled part so long downloads still feel alive.
+                if (m.motion) lightBand(g, play.X + play.Width * fraction * std::fmod(m.time / 1.6F, 1.0F), play.Y, play.Height, 50, 40);
+            } else {
+                const float x = play.X + (std::fmod(m.phase, 1.0F) * 1.4F - .4F) * play.Width;
+                g.FillRectangle(&fill, x, play.Y, play.Width * .4F, play.Height);
+            }
+        }
+        if (enabled) {
+            // Light that follows the pointer across the surface.
+            if (hover > .01F) {
+                Gdiplus::GraphicsPath glow;
+                const float cx = play.X + play.Width * std::clamp(m.playLight, 0.0F, 1.0F);
+                glow.AddEllipse(cx - 70, play.Y - 40, 140.0F, play.Height + 80);
+                Gdiplus::PathGradientBrush light(&glow);
+                light.SetCenterColor(Gdiplus::Color(static_cast<BYTE>(70 * hover), 255, 255, 255));
+                Gdiplus::Color edge(0, 255, 255, 255);
+                int count = 1;
+                light.SetSurroundColors(&edge, &count);
+                g.FillPath(&light, &glow);
+            }
+            // One sweep when the pointer arrives; an occasional idle sheen otherwise.
+            if (m.playSweep < 1) {
+                const float t = easeInOut(m.playSweep);
+                lightBand(g, play.X - 50 + (play.Width + 100) * t, play.Y, play.Height, 70, static_cast<BYTE>(110 * std::sin(t * 3.14159265F)));
+            } else if (ready && m.ambient) {
+                const float cycle = std::fmod(m.time, 6.5F) / 1.2F;
+                if (cycle < 1) lightBand(g, play.X - 40 + (play.Width + 80) * easeInOut(cycle), play.Y, play.Height, 46,
+                    static_cast<BYTE>(70 * std::sin(cycle * 3.14159265F)));
+            }
+            // Click ripple from the center.
+            if (m.playPulse > 0) {
+                const float spread = 1 - m.playPulse;
+                const float radius = 12 + spread * play.Width * .7F;
+                Gdiplus::SolidBrush ripple(Gdiplus::Color(static_cast<BYTE>(90 * m.playPulse), 255, 255, 255));
+                g.FillEllipse(&ripple, play.X + play.Width / 2 - radius, play.Y + play.Height / 2 - radius, 2 * radius, 2 * radius);
+            }
         }
         g.Restore(saved);
     }
@@ -250,23 +383,26 @@ void HomeView::drawPlayerCard(Gdiplus::Graphics& g, const PlayerCardModel& m, co
     if (!enabled && m.progress > 0 && label.find(L'%') == std::wstring::npos)
         label += L" " + std::to_wstring(static_cast<int>(std::floor(m.progress))) + L"%";
     const auto ink = enabled ? Theme::AccentInk : Gdiplus::Color(255, 230, 225, 255);
-    const bool showPlayIcon = enabled && (state.operation == LauncherOperation::ReadyToPlay || state.operation == LauncherOperation::NeedsInstallation);
     const float labelWidth = measureText(g, label, 15, Gdiplus::FontStyleBold);
-    const float iconWidth = showPlayIcon ? 26.0F : 0.0F;
-    const float startX = Layout::Play.X + (Layout::Play.Width - labelWidth - iconWidth) / 2;
-    if (showPlayIcon) Icons::draw(g, Icons::Icon::Play, {startX, Layout::Play.Y + 21, 16, 16}, ink);
-    drawText(g, label, {startX + iconWidth, Layout::Play.Y, Layout::Play.GetRight() - startX - iconWidth, Layout::Play.Height}, 15, Gdiplus::FontStyleBold, ink,
+    const float iconWidth = ready ? 26.0F : 0.0F;
+    const float startX = play.X + (play.Width - labelWidth - iconWidth) / 2;
+    // The play icon leans forward on hover, leaving a faint trail.
+    if (ready) {
+        const float nudge = 4 * easeOut(hover);
+        if (nudge > .1F)
+            Icons::draw(g, Icons::Icon::Play, {startX + nudge * .4F, play.Y + play.Height / 2 - 8, 16, 16},
+                Gdiplus::Color(70, ink.GetR(), ink.GetG(), ink.GetB()));
+        Icons::draw(g, Icons::Icon::Play, {startX + nudge, play.Y + play.Height / 2 - 8, 16, 16}, ink);
+    }
+    drawText(g, label, {startX + iconWidth, play.Y, play.GetRight() - startX - iconWidth, play.Height}, 15, Gdiplus::FontStyleBold, ink,
         Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
     if (playVisual.focused) drawFocusRing(g, Layout::Play, 12, Theme::AccentInk);
-    const auto menuFill = menuVisual.enabled ? blend(Theme::Accent, Theme::AccentLight, menuVisual.pressed ? 1.0F : menuVisual.hover) :
+
+    const auto menuFill = menuVisual.enabled ? blend(Theme::Accent, Theme::AccentLight, menuVisual.pressed ? 1.0F : menuVisual.hover * .7F) :
         Gdiplus::Color(255, 36, 35, 58);
     fillRoundedRectangle(g, Layout::PlayMenu, 6, 14, 14, 6, menuFill);
-    Icons::draw(g, Icons::Icon::ChevronDown, {Layout::PlayMenu.X + 21, Layout::PlayMenu.Y + 20, 18, 18},
+    // The chevron dips a little on hover, hinting that a menu opens below.
+    Icons::draw(g, Icons::Icon::ChevronDown, {Layout::PlayMenu.X + 21, Layout::PlayMenu.Y + 20 + 2 * easeOut(menuVisual.hover), 18, 18},
         menuVisual.enabled ? Theme::AccentInk : Theme::TextMuted, 2);
     if (menuVisual.focused) drawFocusRing(g, Layout::PlayMenu, 12, Theme::AccentInk);
-
-    const struct { int id; const wchar_t* label; } quick[] = {
-        {QuickFolderButtonId, L"Pasta do jogo"}, {QuickRepairButtonId, L"Reparar"}, {QuickLogsButtonId, L"Logs"}};
-    for (int i = 0; i < 3; ++i)
-        Buttons::draw(g, Layout::quickAction(i), quick[i].label, visuals(quick[i].id), Buttons::Style::Ghost, std::nullopt, false, 12.5F);
 }

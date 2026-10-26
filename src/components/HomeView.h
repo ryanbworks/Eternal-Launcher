@@ -33,6 +33,15 @@ struct PlayerCardModel
     std::wstring versionSummary;
     std::wstring memorySummary;
     std::wstring modsSummary;
+    // Motion. `time` is a seconds clock for idle effects; `ambient` allows them (foreground,
+    // animations on); `motion` allows any interpolated effect.
+    float time = 0;
+    bool ambient = false;
+    bool motion = false;
+    float playSweep = 1;   // 0..1 light band crossing the button after hover/focus
+    float playPulse = 0;   // 1..0 ripple after a click
+    float playLight = .5F; // pointer position across the button, 0..1
+    float playPress = 0;   // 0..1 pressed compression
 };
 
 struct HomeModel
@@ -44,6 +53,8 @@ struct HomeModel
     std::wstring toastText;
     int serverMods = -1;
     int userMods = -1;
+    float entrance = 1;    // 0..1 staggered rise of tiles and news cards
+    float toastReveal = 1; // 0..1 slide of the update toast
 };
 
 class HeroComponent;
@@ -54,9 +65,11 @@ public:
     void draw(Gdiplus::Graphics& graphics, const HomeModel& model, const HeroComponent& hero,
               const ControlVisuals& visuals, bool drawLeftColumn) const;
     static void drawPlayerCard(Gdiplus::Graphics& graphics, const PlayerCardModel& model, const ControlVisuals& visuals);
-    static void drawAvatar(Gdiplus::Graphics& graphics, const Gdiplus::RectF& bounds, const Gdiplus::Color& status);
+    static void drawAvatar(Gdiplus::Graphics& graphics, const Gdiplus::RectF& bounds, const Gdiplus::Color& status,
+                           bool blink = false);
 private:
-    void drawTiles(Gdiplus::Graphics& graphics, const LauncherViewState& state, int serverMods, int userMods) const;
-    void drawNews(Gdiplus::Graphics& graphics, const LauncherViewState& state, const HeroComponent& hero,
+    static void drawPlayButton(Gdiplus::Graphics& graphics, const PlayerCardModel& model, const ControlVisuals& visuals);
+    void drawTiles(Gdiplus::Graphics& graphics, const HomeModel& model) const;
+    void drawNews(Gdiplus::Graphics& graphics, const HomeModel& model, const HeroComponent& hero,
                   const ControlVisuals& visuals) const;
 };

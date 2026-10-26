@@ -46,6 +46,8 @@ jobs:
             "preview exit: $($render.ExitCode)" | Add-Content "$report/status.txt"
             New-Item -ItemType Directory -Force 'out/test-build' | Out-Null
             Copy-Item $exe 'out/test-build/EternalLauncher.exe'
+            New-Item -ItemType Directory -Force "$report/build" | Out-Null
+            Copy-Item $exe "$report/build/EternalLauncher.exe"
           }
           $painting = Join-Path $build 'WindowPaintingTests.exe'
           if (Test-Path $painting) {

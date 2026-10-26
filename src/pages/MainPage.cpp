@@ -712,6 +712,13 @@ HomeModel MainPage::homeModel(bool preview) const
         player.progress = InstallationPanelComponent::overallPercent(installation_, preview ? -1 : installationFill_);
     else if (busy) player.progress = viewState_.progressVisible ? (preview ? static_cast<float>(viewState_.progressPercent) : displayedProgress_) : 0;
     player.phase = animationPhase_;
+    player.time = preview ? 1.2F : time_;
+    player.motion = preview || motionEnabled_;
+    player.ambient = preview || (motionEnabled_ && ambientMotion_ && window_ && GetForegroundWindow() == window_);
+    player.playSweep = preview ? 1.0F : playSweep_;
+    player.playPulse = preview ? 0.0F : playPulse_;
+    player.playLight = playLight_;
+    player.playPress = preview ? 0.0F : playPress_;
     player.updateWarning = updateWarning_;
     player.installationVisible = installation_.visible;
 
@@ -732,8 +739,10 @@ HomeModel MainPage::homeModel(bool preview) const
     model.energy = preview || !motionEnabled_ ? 0 : std::max({portalEnergy_, portalBurst_, .28F});
     model.phase = animationPhase_;
     model.drift = preview ? 0 : particlePhase_;
-    model.toast = toastVisible_ && !installation_.visible;
+    model.toastReveal = preview ? (toastVisible_ ? 1.0F : 0.0F) : toastReveal_;
+    model.toast = model.toastReveal > .01F && !installation_.visible;
     model.toastText = toastText_;
+    model.entrance = preview ? 1.0F : std::min(pageFade_, portalEntrance_);
     model.serverMods = serverMods;
     model.userMods = modsScanned_ ? static_cast<int>(mods_.user.size()) : -1;
     return model;
@@ -750,6 +759,7 @@ ModsModel MainPage::modsModel() const
     model.message = modsMessage_;
     model.messageError = modsMessageError_;
     model.locked = gameRunning() || installation_.running;
+    model.knobs = &modKnobs_;
     return model;
 }
 
@@ -765,7 +775,9 @@ void MainPage::render(Gdiplus::Graphics& g, float width, float height, bool prev
     // Content: uniformly scaled and centered, clipped to the area beside the chrome.
     auto saved = g.Save();
     g.SetClip(Gdiplus::RectF(SidebarWidth * s, TitleBarHeight * s, width, height), Gdiplus::CombineModeIntersect);
-    g.TranslateTransform(offsetX_, offsetY_);
+    // New pages rise into place while they fade in.
+    const float settle = preview ? 1.0F : 1 - std::pow(1 - std::clamp(pageFade_, 0.0F, 1.0F), 3.0F);
+    g.TranslateTransform(offsetX_, offsetY_ + std::round(16 * (1 - settle) * s));
     g.ScaleTransform(s, s);
     switch (page_) {
     case LauncherPage::Home:
@@ -775,7 +787,7 @@ void MainPage::render(Gdiplus::Graphics& g, float width, float height, bool prev
                 preview ? std::array<float, 6>{} : completionPulse_);
         break;
     case LauncherPage::News:
-        newsView_.draw(g, NewsModel{&viewState_.news, newsFirst_, newsLoading_, newsError_}, visuals);
+        newsView_.draw(g, NewsModel{&viewState_.news, newsFirst_, newsLoading_, newsError_, preview ? 1.0F : pageFade_}, visuals);
         break;
     case LauncherPage::Mods:
         modsView_.draw(g, modsModel(), visuals);
@@ -784,7 +796,7 @@ void MainPage::render(Gdiplus::Graphics& g, float width, float height, bool prev
         settingsPage_.draw(g, preview);
         break;
     case LauncherPage::Help:
-        helpView_.draw(g, HelpModel{helpMessage_, helpMessageError_, canRepair()}, visuals);
+        helpView_.draw(g, HelpModel{helpMessage_, helpMessageError_, canRepair(), preview ? 1.0F : pageFade_}, visuals);
         break;
     }
     if (!preview && pageFade_ < 1) {
@@ -800,7 +812,8 @@ void MainPage::render(Gdiplus::Graphics& g, float width, float height, bool prev
     // Chrome: anchored to the window edges, scaled only.
     saved = g.Save();
     g.ScaleTransform(s, s);
-    chrome_.draw(g, width / s, height / s, page_, window_ && IsZoomed(window_), windowActive_ || preview, visuals);
+    chrome_.draw(g, width / s, height / s, page_, window_ && IsZoomed(window_), windowActive_ || preview, visuals,
+        preview ? navigationTarget() : navIndicator_);
     g.Restore(saved);
 }
 
@@ -814,6 +827,10 @@ void MainPage::updateMotionPreference()
         animationPhase_ = 0.45F;
         portalEntrance_ = 1;
         pageFade_ = 1;
+        navIndicator_ = navigationTarget();
+        toastReveal_ = toastTarget();
+        playSweep_ = 1; playPulse_ = 0;
+        settingsPage_.settle();
     }
 }
 
@@ -850,6 +867,16 @@ void MainPage::redraw(bool animationFrame)
         transfer.activity == InstallationActivity::Downloading && transfer.percent.has_value();
     unsettled |= transferVisible && std::abs(installationFill_ - fillTarget) > .1F;
     for (const float pulse : completionPulse_) unsettled |= pulse > 0;
+    const bool pressed = findControl(PlayButtonId) && findControl(PlayButtonId)->window &&
+        (SendMessageW(findControl(PlayButtonId)->window, BM_GETSTATE, 0, 0) & BST_PUSHED) != 0;
+    unsettled |= std::abs(navIndicator_ - navigationTarget()) > .5F || std::abs(toastReveal_ - toastTarget()) > .01F;
+    unsettled |= playSweep_ < 1 || playPulse_ > 0 || std::abs(playPress_ - (pressed ? 1.0F : 0.0F)) > .01F ||
+        std::abs(playLight_ - playLightTarget_) > .005F;
+    for (const auto& mod : mods_.user) {
+        const auto knob = modKnobs_.find(mod.name);
+        unsettled |= knob != modKnobs_.end() && knob->second != (mod.enabled ? 1.0F : 0.0F);
+    }
+    if (page_ == LauncherPage::Settings) unsettled |= settingsPage_.advance(0);
     if (!motionEnabled_) {
         for (auto& control : controls_) control.hover = control.hovered ? 1.0F : 0.0F;
         displayedProgress_ = static_cast<float>(viewState_.progressPercent);
@@ -857,6 +884,10 @@ void MainPage::redraw(bool animationFrame)
         installationFill_ = fillTarget;
         portalEntrance_ = 1; portalEnergy_ = 0; portalBurst_ = 0; pageFade_ = 1;
         completionPulse_ = {};
+        navIndicator_ = navigationTarget(); toastReveal_ = toastTarget();
+        playSweep_ = 1; playPulse_ = 0; playPress_ = pressed ? 1.0F : 0.0F; playLight_ = playLightTarget_;
+        for (const auto& mod : mods_.user) modKnobs_[mod.name] = mod.enabled ? 1.0F : 0.0F;
+        settingsPage_.settle();
         unsettled = false;
     }
     const bool home = page_ == LauncherPage::Home;
@@ -912,7 +943,30 @@ void MainPage::animate()
     installationFill_ += (fillTarget - installationFill_) * (1 - std::exp(-dt / 70));
     if (std::abs(fillTarget - installationFill_) < .1F) installationFill_ = fillTarget;
     if (page_ == LauncherPage::Home && !installation_.visible) portalEntrance_ = std::min(1.0F, portalEntrance_ + dt / 750);
-    pageFade_ = std::min(1.0F, pageFade_ + dt / 200);
+    pageFade_ = std::min(1.0F, pageFade_ + dt / 300);
+    time_ = std::fmod(time_ + dt / 1000, 3600.0F);
+    const auto approach = [dt](float& value, float goal, float tau, float snap) {
+        value += (goal - value) * (1 - std::exp(-dt / tau));
+        if (std::abs(goal - value) < snap) value = goal;
+    };
+    approach(navIndicator_, navigationTarget(), 60, .5F);
+    approach(toastReveal_, toastTarget(), 90, .01F);
+    if (toastVisible_ && page_ == LauncherPage::Home && !installation_.visible && GetForegroundWindow() == window_) {
+        toastAge_ += dt;
+        if (toastAge_ > 12000) { toastVisible_ = false; syncControls(); }
+    }
+    playSweep_ = std::min(1.0F, playSweep_ + dt / 560);
+    playPulse_ = std::max(0.0F, playPulse_ - dt / 420);
+    const auto* play = findControl(PlayButtonId);
+    const bool pressed = play && play->window && (SendMessageW(play->window, BM_GETSTATE, 0, 0) & BST_PUSHED) != 0;
+    approach(playPress_, pressed ? 1.0F : 0.0F, 30, .01F);
+    approach(playLight_, playLightTarget_, 55, .005F);
+    for (const auto& mod : mods_.user) {
+        auto& knob = modKnobs_[mod.name];
+        const float goal = mod.enabled ? 1.0F : 0.0F;
+        knob = knob < goal ? std::min(goal, knob + dt / 200) : std::max(goal, knob - dt / 200);
+    }
+    if (page_ == LauncherPage::Settings) settingsPage_.advance(dt);
     animationPhase_ = std::fmod(animationPhase_ + dt / 1600, 1.0F);
     redraw(true);
 }
@@ -968,6 +1022,28 @@ bool MainPage::chromeControl(int id) const
 
 float MainPage::chromeWidth() const { return viewScale_ > 0 ? clientWidth_ / viewScale_ : static_cast<float>(WindowWidth); }
 float MainPage::chromeHeight() const { return viewScale_ > 0 ? clientHeight_ / viewScale_ : static_cast<float>(WindowHeight); }
+
+float MainPage::navigationTarget() const
+{
+    if (page_ == LauncherPage::Help) return Layout::sidebarHelp(chromeHeight()).Y;
+    return Layout::navButton(static_cast<int>(page_)).Y;
+}
+
+float MainPage::toastTarget() const
+{
+    return toastVisible_ && page_ == LauncherPage::Home && !installation_.visible ? 1.0F : 0.0F;
+}
+
+void MainPage::syncModKnobs()
+{
+    // New mods start at their state; known ones keep sliding toward it.
+    std::map<std::wstring, float> knobs;
+    for (const auto& mod : mods_.user) {
+        const auto found = modKnobs_.find(mod.name);
+        knobs[mod.name] = found != modKnobs_.end() ? found->second : (mod.enabled ? 1.0F : 0.0F);
+    }
+    modKnobs_ = std::move(knobs);
+}
 
 Gdiplus::PointF MainPage::toContent(int x, int y) const
 {
@@ -1145,6 +1221,7 @@ void MainPage::layoutControls()
         }
     }
     settingsPage_.layout(viewScale_, offsetX_, offsetY_);
+    navIndicator_ = navigationTarget();
 }
 
 void MainPage::syncControls()
@@ -1182,6 +1259,18 @@ LRESULT CALLBACK MainPage::controlProcedure(HWND control, UINT message, WPARAM w
     // WM_DRAWITEM covers the complete button, including its rounded corners.
     if (message == WM_ERASEBKGND) return 1;
     auto* entry = page->findControl(id);
+    if (id == PlayButtonId && IsWindowEnabled(control)) {
+        if (message == WM_MOUSEMOVE) {
+            RECT bounds{};
+            GetClientRect(control, &bounds);
+            const float light = bounds.right > 0 ? std::clamp(static_cast<float>(GET_X_LPARAM(lParam)) / static_cast<float>(bounds.right), 0.0F, 1.0F) : .5F;
+            if (std::abs(page->playLightTarget_ - light) > .005F) { page->playLightTarget_ = light; page->redraw(true); }
+            if (entry && !entry->hovered) page->playSweep_ = 0;
+        }
+        if (message == WM_LBUTTONDOWN || (message == WM_KEYDOWN && wParam == VK_SPACE && !(lParam & (1LL << 30))))
+            page->playPulse_ = 1;
+        if (message == WM_SETFOCUS) page->playSweep_ = 0;
+    }
     if (message == WM_MOUSEMOVE && entry && !entry->hovered && IsWindowEnabled(control)) {
         entry->hovered = true;
         TRACKMOUSEEVENT track{sizeof(TRACKMOUSEEVENT), TME_LEAVE, control, 0};
@@ -1423,6 +1512,7 @@ void MainPage::refreshMods()
 {
     mods_ = ModInventory::scan(gameDirectory() / L"mods", fileServerManifest_);
     modsScanned_ = true;
+    syncModKnobs();
     const auto model = modsModel();
     serverScroll_ = std::min(serverScroll_, ModsView::maximumServerScroll(model));
     userScroll_ = std::min(userScroll_, ModsView::maximumUserScroll(model));
@@ -2135,6 +2225,7 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
         mods_.user = {{L"journeymap-1.20.1-5.9.18-forge.jar", {}, 6'800'000, true},
                       {L"Xaeros_Minimap_24.2.0_Forge_1.20.jar", {}, 1'200'000, false}};
         modsScanned_ = true;
+        syncModKnobs();
         playtime_ = {4 * 3600 + 12 * 60, 3600, wallClock() - 26 * 3600};
         originalMode_ = false; updatingLauncher_ = false; updateWarning_.clear();
         installation_ = {};
@@ -2286,6 +2377,7 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
         if (variant == 5) { tab = SettingsPage::Tab::About; filename = L"settings-about.png"; }
         settingsPage_.open(settings, {});
         settingsPage_.setTab(tab);
+        settingsPage_.settle();
         if (variant == 3) {
             std::wstring validation;
             LauncherSettingsStore::validate(settings, validation, false);

@@ -76,8 +76,24 @@ void InstallationPanelComponent::draw(Gdiplus::Graphics& g, const InstallationTr
 
     const Gdiplus::RectF track{left, panel.Y + 104, width, 8};
     fillPill(g, track, Theme::SurfaceHover);
-    if (overall > 0) fillPill(g, {track.X, track.Y, std::max(8.0F, track.Width * overall / 100), track.Height},
-        failed ? Theme::Error : Theme::Accent);
+    if (overall > 0) {
+        const Gdiplus::RectF filled{track.X, track.Y, std::max(8.0F, track.Width * overall / 100), track.Height};
+        fillPill(g, filled, failed ? Theme::Error : Theme::Accent);
+        if (state.running && !state.cancelling) {
+            // A highlight travels along the filled part while work is in progress.
+            const auto saved = g.Save();
+            auto clip = createRoundedPath(filled, track.Height / 2);
+            g.SetClip(clip.get(), Gdiplus::CombineModeIntersect);
+            const float center = filled.X - 40 + (filled.Width + 80) * std::fmod(phase, 1.0F);
+            Gdiplus::LinearGradientBrush shine(Gdiplus::PointF(center - 40, 0), Gdiplus::PointF(center + 40, 0),
+                Gdiplus::Color(0, 255, 255, 255), Gdiplus::Color(0, 255, 255, 255));
+            const Gdiplus::Color colors[] = {Gdiplus::Color(0, 255, 255, 255), Gdiplus::Color(120, 255, 255, 255), Gdiplus::Color(0, 255, 255, 255)};
+            const Gdiplus::REAL positions[] = {0, .5F, 1};
+            shine.SetInterpolationColors(colors, positions, 3);
+            g.FillRectangle(&shine, center - 40, filled.Y, 80.0F, filled.Height);
+            g.Restore(saved);
+        }
+    }
 
     float y = panel.Y + 132;
     const bool transfer = state.running && !state.cancelling && progress.activity == InstallationActivity::Downloading;

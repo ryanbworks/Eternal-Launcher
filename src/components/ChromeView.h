@@ -11,6 +11,7 @@ enum class LauncherPage { Home, News, Mods, Settings, Help };
 class ChromeView
 {
 public:
+    // `indicatorY` is the top of the sliding selection behind the current page's icon.
     void draw(Gdiplus::Graphics& graphics, float width, float height, LauncherPage page, bool maximized,
-              bool active, const ControlVisuals& visuals) const;
+              bool active, const ControlVisuals& visuals, float indicatorY) const;
 };

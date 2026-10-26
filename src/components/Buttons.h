@@ -30,6 +30,7 @@ namespace Buttons
     void drawIcon(Gdiplus::Graphics& graphics, const Gdiplus::RectF& bounds, Icons::Icon icon,
                   const ControlVisual& visual, bool selected = false, float iconSize = 20.0F,
                   const Gdiplus::Color* hoverFill = nullptr);
-    void drawSwitch(Gdiplus::Graphics& graphics, const Gdiplus::RectF& bounds, bool on,
+    // `position` runs from 0 (off) to 1 (on) so the knob can slide between states.
+    void drawSwitch(Gdiplus::Graphics& graphics, const Gdiplus::RectF& bounds, float position,
                     const ControlVisual& visual);
 }

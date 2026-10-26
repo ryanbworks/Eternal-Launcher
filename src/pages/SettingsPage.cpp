@@ -161,6 +161,7 @@ void SettingsPage::populate(const LauncherSettings& s)
     SetWindowTextW(control(GamePath),s.gameDirectory.c_str());
     syncMemoryControls(s.maximumMemoryMegabytes);
     updatingMemory_=false;
+    settle();
     setLocked(locked_);
 }
 std::wstring SettingsPage::memoryLabel(int megabytes)
@@ -418,6 +419,26 @@ void SettingsPage::openFolder(const std::filesystem::path& path)
     if(reinterpret_cast<INT_PTR>(ShellExecuteW(parent_,L"open",path.c_str(),nullptr,nullptr,SW_SHOWNORMAL))<=32)
         setMessage(L"Não foi possível abrir a pasta no Explorador.",true);
 }
+bool SettingsPage::advance(float milliseconds)
+{
+    const float targets[]={draft_.fullscreen ? 1.0F : 0.0F,draft_.minimizeOnLaunch ? 1.0F : 0.0F};
+    bool moving=false;
+    for(std::size_t i=0;i<knobs_.size();++i) {
+        const float step=milliseconds/200;
+        knobs_[i]=knobs_[i]<targets[i] ? std::min(targets[i],knobs_[i]+step) : std::max(targets[i],knobs_[i]-step);
+        moving|=knobs_[i]!=targets[i];
+    }
+    const float tab=static_cast<float>(static_cast<int>(tab_));
+    tabIndicator_+=(tab-tabIndicator_)*(1-std::exp(-milliseconds/60));
+    if(std::abs(tab-tabIndicator_)<.01F) tabIndicator_=tab;
+    moving|=tabIndicator_!=tab;
+    return moving;
+}
+void SettingsPage::settle()
+{
+    knobs_={draft_.fullscreen ? 1.0F : 0.0F,draft_.minimizeOnLaunch ? 1.0F : 0.0F};
+    tabIndicator_=static_cast<float>(static_cast<int>(tab_));
+}
 int SettingsPage::focusedControlId() const
 {
     const auto focus=GetFocus();
@@ -506,7 +527,7 @@ void SettingsPage::draw(Gdiplus::Graphics& g,bool preview) const
     const auto label=[&](std::wstring_view text,float x,float y,float width=248) {
         drawText(g,text,{x,y,width,18},12.5F,Gdiplus::FontStyleBold,Theme::TextSecondary);
     };
-    const auto toggleRow=[&](int id,bool on,std::wstring_view title,std::wstring_view hint) {
+    const auto toggleRow=[&](int id,float on,std::wstring_view title,std::wstring_view hint) {
         const auto b=bounds(id);
         const auto v=visual(id);
         if(v.hover>0) fillRoundedRectangle(g,{b.X-8,b.Y,b.Width+16,b.Height},12,Theme::SurfaceSunken);
@@ -519,6 +540,16 @@ void SettingsPage::draw(Gdiplus::Graphics& g,bool preview) const
     Buttons::draw(g,bounds(TabGeneral),L"Geral",visual(TabGeneral),Buttons::Style::Tab,std::nullopt,tab_==Tab::General,14);
     Buttons::draw(g,bounds(TabAdvanced),L"Avançado",visual(TabAdvanced),Buttons::Style::Tab,std::nullopt,tab_==Tab::Advanced,14);
     Buttons::draw(g,bounds(TabAbout),L"Sobre",visual(TabAbout),Buttons::Style::Tab,std::nullopt,tab_==Tab::About,14);
+    {
+        // The underline glides between tabs and stretches to each tab's width.
+        const Gdiplus::RectF tabs[]={bounds(TabGeneral),bounds(TabAdvanced),bounds(TabAbout)};
+        const float position=std::clamp(tabIndicator_,0.0F,2.0F);
+        const int index=std::min(1,static_cast<int>(position));
+        const float t=position-static_cast<float>(index);
+        const auto& from=tabs[index];const auto& to=tabs[index+1];
+        const float x=from.X+(to.X-from.X)*t+8,width=from.Width+(to.Width-from.Width)*t-16;
+        fillPill(g,{x,202,width,3},Theme::Accent);
+    }
 
     if(tab_==Tab::General) {
         const auto total=LauncherSettingsStore::physicalMemoryMegabytes();
@@ -546,8 +577,8 @@ void SettingsPage::draw(Gdiplus::Graphics& g,bool preview) const
         card(g,WindowCard,L"Janela do jogo",L"Como o Minecraft abre e o que o launcher faz enquanto você joga.");
         label(L"Largura · pixels",712,316);label(L"Altura · pixels",984,316);
         edit(Width,L"1280");edit(Height,L"720");
-        toggleRow(Fullscreen,draft_.fullscreen,L"Abrir em tela cheia",L"Ignora a largura e a altura acima.");
-        toggleRow(Minimize,draft_.minimizeOnLaunch,L"Esconder na bandeja ao jogar",L"O ícone perto do relógio conta seu tempo de jogo.");
+        toggleRow(Fullscreen,knobs_[0],L"Abrir em tela cheia",L"Ignora a largura e a altura acima.");
+        toggleRow(Minimize,knobs_[1],L"Esconder na bandeja ao jogar",L"O ícone perto do relógio conta seu tempo de jogo.");
     } else if(tab_==Tab::Advanced) {
         card(g,ExactCard,L"Memória exata",L"Valores em MiB (1 GB = 1024 MiB). A RAM inicial não pode passar da máxima.");
         label(L"RAM inicial · MiB",124,324);label(L"RAM máxima · MiB",396,324);

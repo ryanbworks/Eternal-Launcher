@@ -24,6 +24,7 @@
 #include <array>
 #include <chrono>
 #include <filesystem>
+#include <map>
 #include <memory>
 #include <optional>
 #include <thread>
@@ -85,6 +86,9 @@ private:
     [[nodiscard]] Gdiplus::PointF toContent(int x, int y) const;
     float chromeWidth() const;
     float chromeHeight() const;
+    float navigationTarget() const;
+    float toastTarget() const;
+    void syncModKnobs();
 
     // Navigation.
     void showPage(LauncherPage page);
@@ -144,6 +148,16 @@ private:
 
     LauncherPage page_ = LauncherPage::Home;
     float pageFade_ = 1;
+    float time_ = 0;              // seconds; drives idle effects (breathing, blinking, sheens)
+    float navIndicator_ = 60;     // logical top of the sliding navigation selection
+    float toastReveal_ = 0;
+    float toastAge_ = 0;          // milliseconds the toast has been on screen
+    float playSweep_ = 1;
+    float playPulse_ = 0;
+    float playPress_ = 0;
+    float playLight_ = .5F;
+    float playLightTarget_ = .5F;
+    std::map<std::wstring, float> modKnobs_;
     bool windowActive_ = true;
     float identitySelection_ = 0;
     float portalEntrance_ = 1;
