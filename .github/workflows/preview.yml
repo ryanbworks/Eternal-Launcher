@@ -3,6 +3,8 @@ name: Redesign preview
 # Temporary workflow for the redesign branch: builds, runs the tests, renders the
 # interface previews and publishes logs + images to the `ci-report` branch.
 on:
+  push:
+    branches: [feature/redesign]
   workflow_dispatch:
 
 permissions:
