@@ -1,7 +1,10 @@
 #include "pages/SettingsPage.h"
+#include "components/Buttons.h"
+#include "config/LauncherConfig.h"
 #include "constants/LauncherConstants.h"
 #include "styles/Theme.h"
 #include "utils/DrawingUtils.h"
+#include "utils/Icons.h"
 #include <commctrl.h>
 #include <uxtheme.h>
 #include <commdlg.h>
@@ -18,11 +21,12 @@
 #include <optional>
 
 namespace {
-    const wchar_t* Labels[] = {L"Voltar",L"RAM inicial (MiB)",L"RAM máxima (MiB)",L"Largura (pixels)",L"Altura (pixels)",
-        L"Iniciar em tela cheia",L"Minimizar launcher ao jogar",L"Java automático",L"Java personalizado",
+    const wchar_t* Labels[] = {L"Geral",L"Avançado",L"Sobre",
+        L"RAM inicial (MiB)",L"RAM máxima (MiB)",L"Largura (pixels)",L"Altura (pixels)",
+        L"Abrir em tela cheia",L"Esconder na bandeja ao jogar",L"Java automático",L"Java personalizado",
         L"Executável Java 17",L"Escolher Java",L"Pasta da instância",L"Escolher pasta",
-        L"Abrir jogo",L"Abrir mods",L"Abrir logs",L"Restaurar padrões",L"Cancelar",L"Salvar preferências",
-        L"RAM máxima em passos de 0,5 GB",L"4 GB",L"6 GB",L"8 GB"};
+        L"Abrir jogo",L"Abrir mods",L"Abrir logs",L"Restaurar padrões",L"Descartar",L"Salvar",
+        L"RAM máxima em passos de 0,5 GB",L"4 GB",L"6 GB",L"8 GB",L"Ver changelog",L"Repositório no GitHub",L"Pasta de dados"};
     std::optional<int> memoryNumber(std::wstring_view text) {
         if (text.empty() || text.size()>5) return {};
         int value=0;
@@ -32,6 +36,20 @@ namespace {
         }
         return value;
     }
+    void card(Gdiplus::Graphics& g,const Gdiplus::RectF& b,std::wstring_view title,std::wstring_view subtitle) {
+        using namespace DrawingUtils;
+        fillRoundedRectangle(g,b,18,Theme::Surface);
+        drawRoundedRectangle(g,{b.X+.5F,b.Y+.5F,b.Width-1,b.Height-1},18,Theme::Divider);
+        drawText(g,title,{b.X+24,b.Y+22,b.Width-48,24},16,Gdiplus::FontStyleBold,Theme::TextPrimary);
+        drawText(g,subtitle,{b.X+24,b.Y+48,b.Width-48,36},12.5F,Gdiplus::FontStyleRegular,Theme::TextMuted);
+    }
+    const Gdiplus::RectF MemoryCard{100,228,568,252};
+    const Gdiplus::RectF WindowCard{688,228,568,288};
+    const Gdiplus::RectF ExactCard{100,228,568,184};
+    const Gdiplus::RectF FolderCard{100,428,568,272};
+    const Gdiplus::RectF JavaCard{688,228,568,472};
+    const Gdiplus::RectF AboutCard{100,228,568,472};
+    const Gdiplus::RectF CreditsCard{688,228,568,472};
 }
 SettingsPage::~SettingsPage()
 {
@@ -42,32 +60,57 @@ bool SettingsPage::isEdit(int id)
 {
     return id==MinRam || id==MaxRam || id==Width || id==Height || id==JavaPath || id==GamePath;
 }
+SettingsPage::Tab SettingsPage::tabOf(int id)
+{
+    switch(id) {
+    case MinRam:case MaxRam:case JavaAuto:case JavaCustom:case JavaPath:case JavaBrowse:
+    case GamePath:case GameBrowse:case OpenGame:case OpenMods:case OpenLogs:return Tab::Advanced;
+    case OpenChangelog:case OpenRepository:case OpenDataFolder:return Tab::About;
+    default:return Tab::General;
+    }
+}
+bool SettingsPage::isAlwaysVisible(int id)
+{
+    return id==TabGeneral || id==TabAdvanced || id==TabAbout || id==Restore || id==Cancel || id==Save;
+}
+int SettingsPage::recommendedMemory()
+{
+    const auto total=LauncherSettingsStore::physicalMemoryMegabytes();
+    if (total>=24576) return 8192;
+    if (total>=12288) return 6144;
+    return 4096;
+}
 Gdiplus::RectF SettingsPage::bounds(int id)
 {
     switch(id) {
-    case Back:return {36,112,96,36};
-    case MinRam:return {36,407,232,38};
-    case MaxRam:return {292,407,232,38};
-    case RamSlider:return {36,300,488,32};
-    case Ram4:return {36,348,152,30};
-    case Ram6:return {204,348,152,30};
-    case Ram8:return {372,348,152,30};
-    case Width:return {36,514,232,38};
-    case Height:return {292,514,232,38};
-    case Fullscreen:return {36,568,488,32};
-    case Minimize:return {36,608,488,32};
-    case JavaAuto:return {576,264,280,36};
-    case JavaCustom:return {860,264,284,36};
-    case JavaPath:return {576,320,478,42};
-    case JavaBrowse:return {1070,320,74,42};
-    case GamePath:return {576,468,478,42};
-    case GameBrowse:return {1070,468,74,42};
-    case OpenGame:return {576,584,176,40};
-    case OpenMods:return {772,584,176,40};
-    case OpenLogs:return {968,584,176,40};
-    case Restore:return {646,666,178,44};
-    case Cancel:return {840,666,116,44};
-    case Save:return {972,666,172,44};
+    case TabGeneral:return {100,160,92,44};
+    case TabAdvanced:return {196,160,112,44};
+    case TabAbout:return {312,160,84,44};
+    case RamSlider:return {124,338,520,32};
+    case Ram4:return {124,396,165,56};
+    case Ram6:return {301,396,165,56};
+    case Ram8:return {478,396,166,56};
+    case Width:return {712,338,248,42};
+    case Height:return {984,338,248,42};
+    case Fullscreen:return {712,396,520,48};
+    case Minimize:return {712,446,520,48};
+    case MinRam:return {124,346,248,42};
+    case MaxRam:return {396,346,248,42};
+    case GamePath:return {124,512,430,42};
+    case GameBrowse:return {566,512,78,42};
+    case OpenGame:return {124,628,165,44};
+    case OpenMods:return {301,628,165,44};
+    case OpenLogs:return {478,628,166,44};
+    case JavaAuto:return {712,316,254,48};
+    case JavaCustom:return {978,316,254,48};
+    case JavaPath:return {712,408,432,42};
+    case JavaBrowse:return {1154,408,78,42};
+    case OpenChangelog:return {124,452,190,44};
+    case OpenRepository:return {326,452,220,44};
+    case OpenDataFolder:return {124,508,190,44};
+    case Restore:return {872,726,164,46};
+    case Cancel:return {1044,726,104,46};
+    case Save:return {1156,726,100,46};
     default:return {};
     }
 }
@@ -76,12 +119,12 @@ bool SettingsPage::create(HWND parent,HINSTANCE instance)
     parent_=parent; instance_=instance;
     INITCOMMONCONTROLSEX common{sizeof(common),ICC_BAR_CLASSES};
     if (!InitCommonControlsEx(&common)) return false;
-    for (int id=Back;id<ControlEnd;++id) {
+    for (int id=TabGeneral;id<ControlEnd;++id) {
         const bool edit=isEdit(id);
         const bool slider=id==RamSlider;
         DWORD style=WS_CHILD | WS_TABSTOP | (edit ? ES_AUTOHSCROLL : slider ? TBS_HORZ|TBS_NOTICKS|TBS_FIXEDLENGTH : BS_OWNERDRAW);
         if (edit && id!=JavaPath && id!=GamePath) style |= ES_NUMBER;
-        controls_[id-Back]=CreateWindowExW(0,edit ? L"EDIT" : slider ? TRACKBAR_CLASSW : L"BUTTON",edit ? L"" : Labels[id-Back],
+        controls_[id-TabGeneral]=CreateWindowExW(0,edit ? L"EDIT" : slider ? TRACKBAR_CLASSW : L"BUTTON",edit ? L"" : Labels[id-TabGeneral],
             style,0,0,0,0,parent,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),instance,nullptr);
         if (!control(id)) return false;
         SetWindowSubclass(control(id),controlProcedure,static_cast<UINT_PTR>(id),reinterpret_cast<DWORD_PTR>(this));
@@ -93,9 +136,10 @@ bool SettingsPage::create(HWND parent,HINSTANCE instance)
     SetWindowTheme(control(RamSlider),L"",L"");
     SendMessage(control(RamSlider),TBM_SETLINESIZE,0,1);
     SendMessage(control(RamSlider),TBM_SETPAGESIZE,0,2);
-    const int tabOrder[]={Back,RamSlider,Ram4,Ram6,Ram8,MinRam,MaxRam,Width,Height,Fullscreen,Minimize,
-        JavaAuto,JavaCustom,JavaPath,JavaBrowse,GamePath,GameBrowse,OpenGame,OpenMods,OpenLogs,Restore,Cancel,Save};
-    HWND previous=HWND_TOP;
+    const int tabOrder[]={TabGeneral,TabAdvanced,TabAbout,RamSlider,Ram4,Ram6,Ram8,Width,Height,Fullscreen,Minimize,
+        MinRam,MaxRam,GamePath,GameBrowse,OpenGame,OpenMods,OpenLogs,JavaAuto,JavaCustom,JavaPath,JavaBrowse,
+        OpenChangelog,OpenRepository,OpenDataFolder,Restore,Cancel,Save};
+    HWND previous=HWND_BOTTOM;
     for (const auto id:tabOrder) {
         SetWindowPos(control(id),previous,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE);
         previous=control(id);
@@ -168,11 +212,29 @@ void SettingsPage::open(const LauncherSettings& settings,std::wstring_view warni
     saved_=settings; populate(settings);
     setMessage(std::wstring(warning),!warning.empty());
 }
+void SettingsPage::applyVisibility()
+{
+    for (int id=TabGeneral;id<ControlEnd;++id) {
+        if (!control(id)) continue;
+        const bool shown=visible_ && (isAlwaysVisible(id) || tabOf(id)==tab_);
+        ShowWindow(control(id),shown ? SW_SHOWNA : SW_HIDE);
+    }
+}
 void SettingsPage::show(bool visible)
 {
     visible_=visible;
-    for (const auto child:controls_) if(child) ShowWindow(child,visible ? SW_SHOW : SW_HIDE);
-    if (visible && control(Back)) SetFocus(control(Back));
+    applyVisibility();
+}
+void SettingsPage::setTab(Tab tab)
+{
+    if (tab_==tab) return;
+    tab_=tab;
+    const auto focus=GetFocus();
+    bool focusHidden=false;
+    for (int id=TabGeneral;id<ControlEnd;++id) if (focus==control(id) && !isAlwaysVisible(id) && tabOf(id)!=tab_) focusHidden=true;
+    applyVisibility();
+    if (focusHidden && visible_) SetFocus(control(tab_==Tab::General ? TabGeneral : tab_==Tab::Advanced ? TabAdvanced : TabAbout));
+    redraw();
 }
 void SettingsPage::layout(float scale,float ox,float oy)
 {
@@ -180,46 +242,32 @@ void SettingsPage::layout(float scale,float ox,float oy)
     const auto font=CreateFontW(-static_cast<int>(std::round(14*scale)),0,0,0,FW_NORMAL,
         FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY,DEFAULT_PITCH | FF_DONTCARE,Theme::FontFamily);
-    for(int id=Back;id<ControlEnd;++id) {
+    for(int id=TabGeneral;id<ControlEnd;++id) {
         if(!control(id)) continue;
         auto b=bounds(id);
         if(isEdit(id)) {b.X+=12; b.Y+=11; b.Width-=24; b.Height-=18;}
         const int x=static_cast<int>(std::floor(ox+b.X*scale)),y=static_cast<int>(std::floor(oy+b.Y*scale));
         const int r=static_cast<int>(std::ceil(ox+b.GetRight()*scale)),bottom=static_cast<int>(std::ceil(oy+b.GetBottom()*scale));
-        layoutBounds_[id-Back]={x,y,r,bottom};
         SetWindowPos(control(id),nullptr,x,y,r-x,bottom-y,SWP_NOZORDER|SWP_NOACTIVATE);
         if(font) SendMessage(control(id),WM_SETFONT,reinterpret_cast<WPARAM>(font),TRUE);
     }
     if(font) {if(font_) DeleteObject(font_);font_=font;}
     SendMessage(control(RamSlider),TBM_SETTHUMBLENGTH,static_cast<WPARAM>(std::round(20*scale)),0);
 }
-void SettingsPage::setTransitionOffset(int pixels)
-{
-    auto batch=BeginDeferWindowPos(static_cast<int>(controls_.size()));
-    for(std::size_t i=0;i<controls_.size();++i) {
-        if(!controls_[i]) continue;
-        const auto& b=layoutBounds_[i];
-        if(batch) batch=DeferWindowPos(batch,controls_[i],nullptr,b.left+pixels,b.top,0,0,
-            SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS);
-        if(!batch) break;
-    }
-    if(batch && EndDeferWindowPos(batch)) return;
-    for(std::size_t i=0;i<controls_.size();++i) if(controls_[i])
-        SetWindowPos(controls_[i],nullptr,layoutBounds_[i].left+pixels,layoutBounds_[i].top,0,0,
-            SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS);
-}
 void SettingsPage::setLocked(bool locked)
 {
     locked_=locked;
-    for(int id=Back;id<ControlEnd;++id) if(control(id)) {
-        const bool editable=id==Back || id==Cancel || id==OpenGame || id==OpenMods || id==OpenLogs || !locked;
+    for(int id=TabGeneral;id<ControlEnd;++id) if(control(id)) {
+        const bool alwaysAvailable=id==TabGeneral || id==TabAdvanced || id==TabAbout || id==Cancel ||
+            id==OpenGame || id==OpenMods || id==OpenLogs || id==OpenChangelog || id==OpenRepository || id==OpenDataFolder;
+        const bool editable=alwaysAvailable || !locked;
         const bool javaEditable=!(id==JavaPath || id==JavaBrowse) || !automaticJava_;
         const bool windowEditable=!(id==Width || id==Height) || !draft_.fullscreen;
         const bool enabled=editable && javaEditable && windowEditable;
         if ((IsWindowEnabled(control(id))!=FALSE)!=enabled) EnableWindow(control(id),enabled);
     }
     const auto label=[&](int id,bool selected) {
-        const std::wstring value=std::wstring(Labels[id-Back])+(selected ? L" (selecionado)" : L"");
+        const std::wstring value=std::wstring(Labels[id-TabGeneral])+(selected ? L" (selecionado)" : L"");
         std::array<wchar_t,128> existing{}; GetWindowTextW(control(id),existing.data(),static_cast<int>(existing.size()));
         if(value!=existing.data()) SetWindowTextW(control(id),value.c_str());
     };
@@ -229,6 +277,7 @@ void SettingsPage::setLocked(bool locked)
         label(Ram4,draft_.maximumMemoryMegabytes==4096);
         label(Ram6,draft_.maximumMemoryMegabytes==6144);
         label(Ram8,draft_.maximumMemoryMegabytes==8192);
+        label(TabGeneral,tab_==Tab::General);label(TabAdvanced,tab_==Tab::Advanced);label(TabAbout,tab_==Tab::About);
     }
 }
 std::wstring SettingsPage::text(int id) const
@@ -258,7 +307,7 @@ void SettingsPage::redraw() const
 }
 void SettingsPage::invalidateButtons() const
 {
-    for (int id=Back; id<ControlEnd; ++id)
+    for (int id=TabGeneral; id<ControlEnd; ++id)
         if (!isEdit(id) && control(id)) InvalidateRect(control(id), nullptr, FALSE);
 }
 bool SettingsPage::collect(LauncherSettings& settings)
@@ -268,7 +317,9 @@ bool SettingsPage::collect(LauncherSettings& settings)
     const auto number=[&](int id,int& result) {
         const auto value=text(id);
         if(value.empty() || value.size()>5 || !std::all_of(value.begin(),value.end(),[](wchar_t c) {return c>=L'0' && c<=L'9';})) {
-            setMessage(L"Preencha os campos numéricos com valores inteiros.",true);SetFocus(control(id));return false;
+            setMessage(L"Preencha os campos numéricos com valores inteiros.",true);
+            if(tabOf(id)!=tab_) setTab(tabOf(id));
+            SetFocus(control(id));return false;
         }
         result=std::stoi(value);return true;
     };
@@ -277,7 +328,8 @@ bool SettingsPage::collect(LauncherSettings& settings)
     settings.javaExecutable=automaticJava_ ? std::filesystem::path{} : std::filesystem::path(text(JavaPath));
     settings.gameDirectory=text(GamePath);
     if(!automaticJava_ && settings.javaExecutable.empty()) {
-        setMessage(L"Escolha o executável Java 17 ou ative Java automático.",true);SetFocus(control(JavaPath));return false;
+        setMessage(L"Escolha o executável Java 17 ou ative Java automático.",true);
+        setTab(Tab::Advanced);SetFocus(control(JavaPath));return false;
     }
     std::wstring error;
     if(!LauncherSettingsStore::validate(settings,error)) {setMessage(error,true);return false;}
@@ -293,7 +345,18 @@ void SettingsPage::handle(int id,int notification)
         return;
     }
     if(notification!=BN_CLICKED) { if(notification==EN_SETFOCUS || notification==EN_KILLFOCUS) redraw();return; }
-    if(locked_ && id!=OpenGame && id!=OpenMods && id!=OpenLogs) return;
+    switch(id) {
+    case TabGeneral:setTab(Tab::General);setLocked(locked_);return;
+    case TabAdvanced:setTab(Tab::Advanced);setLocked(locked_);return;
+    case TabAbout:setTab(Tab::About);setLocked(locked_);return;
+    case OpenChangelog:
+        ShellExecuteW(parent_,L"open",L"https://github.com/ryanbworks/Eternal-Launcher/blob/master/CHANGELOG.md",nullptr,nullptr,SW_SHOWNORMAL);return;
+    case OpenRepository:
+        ShellExecuteW(parent_,L"open",L"https://github.com/ryanbworks/Eternal-Launcher",nullptr,nullptr,SW_SHOWNORMAL);return;
+    case OpenDataFolder:openFolder(LauncherSettingsStore::dataDirectory());return;
+    default:break;
+    }
+    if(locked_ && id!=OpenGame && id!=OpenMods && id!=OpenLogs && id!=Cancel) return;
     switch(id) {
     case Ram4:selectMemory(4096);return;
     case Ram6:selectMemory(6144);return;
@@ -303,6 +366,7 @@ void SettingsPage::handle(int id,int notification)
     case JavaAuto:automaticJava_=true;break;
     case JavaCustom:automaticJava_=false;break;
     case Restore:populate(LauncherSettings{});setMessage(L"Padrões restaurados no formulário. Clique em Salvar para aplicar.");break;
+    case Cancel:populate(saved_);setMessage(L"Alterações descartadas.");break;
     case JavaBrowse:browseJava();break;
     case GameBrowse:browseFolder();break;
     case OpenGame:openFolder(LauncherSettingsStore::effectiveGameDirectory(saved_));break;
@@ -357,7 +421,7 @@ void SettingsPage::openFolder(const std::filesystem::path& path)
 int SettingsPage::focusedControlId() const
 {
     const auto focus=GetFocus();
-    for(int id=Back;id<ControlEnd;++id) if(focus==control(id)) return id;
+    for(int id=TabGeneral;id<ControlEnd;++id) if(focus==control(id)) return id;
     return 0;
 }
 LRESULT CALLBACK SettingsPage::controlProcedure(HWND child,UINT message,WPARAM wParam,LPARAM lParam,UINT_PTR id,DWORD_PTR data)
@@ -376,10 +440,10 @@ LRESULT CALLBACK SettingsPage::controlProcedure(HWND child,UINT message,WPARAM w
         if (begin) EndPaint(child,&paint);
         return 0;
     }
-    if(message==WM_MOUSEMOVE && !page->hover_[id-Back]) {
-        page->hover_[id-Back]=true;
+    if(message==WM_MOUSEMOVE && !page->hover_[id-TabGeneral]) {
+        page->hover_[id-TabGeneral]=true;
         TRACKMOUSEEVENT event{sizeof(TRACKMOUSEEVENT),TME_LEAVE,child,0};TrackMouseEvent(&event);page->redraw();
-    } else if(message==WM_MOUSELEAVE) {page->hover_[id-Back]=false;page->redraw();}
+    } else if(message==WM_MOUSELEAVE) {page->hover_[id-TabGeneral]=false;page->redraw();}
     else if(message==WM_SETCURSOR && !isEdit(static_cast<int>(id)) && IsWindowEnabled(child)) {
         SetCursor(LoadCursor(nullptr,IDC_HAND));return TRUE;
     } else if(message==WM_NCDESTROY) RemoveWindowSubclass(child,controlProcedure,id);
@@ -407,87 +471,128 @@ void SettingsPage::drawMemorySlider(Gdiplus::Graphics& g,const Gdiplus::RectF& b
     DrawingUtils::fillRoundedRectangle(g,{start,y-3,end-start,6},3,Theme::Border);
     DrawingUtils::fillRoundedRectangle(g,{start,y-3,std::max(1.0F,knob-start),6},3,
         locked_ ? Theme::TextMuted : Theme::Accent);
-    Gdiplus::SolidBrush thumb(locked_ ? Theme::TextMuted : hover_[RamSlider-Back] || focused ? Theme::AccentLight : Theme::Accent);
-    g.FillEllipse(&thumb,knob-9,y-9,18.0F,18.0F);
+    Gdiplus::SolidBrush thumb(locked_ ? Theme::TextMuted : hover_[RamSlider-TabGeneral] || focused ? Theme::AccentLight : Theme::Accent);
+    g.FillEllipse(&thumb,knob-10,y-10,20.0F,20.0F);
     if (focused) DrawingUtils::drawRoundedRectangle(g,{b.X+1,b.Y+1,b.Width-2,b.Height-2},8,Theme::AccentLight,2);
 }
 void SettingsPage::draw(Gdiplus::Graphics& g,bool preview) const
 {
     using namespace DrawingUtils;
-    drawText(g,L"Configurações",{148,109,600,40},28,Gdiplus::FontStyleBold,Theme::TextPrimary);
-    drawText(g,L"Deixe o Minecraft do seu jeito. As alterações entram no próximo Jogar.",{36,164,1040,26},13,Gdiplus::FontStyleRegular,Theme::TextSecondary);
-    Gdiplus::Pen divider(Theme::Border);
-    g.DrawLine(&divider,550.0F,208.0F,550.0F,624.0F);
-    drawText(g,L"Desempenho",{36,211,488,30},20,Gdiplus::FontStyleBold,Theme::TextPrimary);
-    const auto total=LauncherSettingsStore::physicalMemoryMegabytes();
-    drawText(g,total ? L"RAM instalada: "+std::to_wstring(total)+L" MiB. Reserve memória para o Windows." :
-        L"Defina a memória reservada para o Minecraft.",{36,246,488,23},12,Gdiplus::FontStyleRegular,Theme::TextSecondary);
-    drawText(g,L"RAM máxima · passos de 0,5 GB",{36,275,330,22},12,Gdiplus::FontStyleBold,Theme::TextSecondary);
-    drawText(g,memoryLabel(draft_.maximumMemoryMegabytes),{388,270,136,28},18,Gdiplus::FontStyleBold,
-        Theme::AccentLight,Gdiplus::StringAlignmentFar);
-    drawText(g,L"0,5 GB",{36,332,90,16},10,Gdiplus::FontStyleRegular,Theme::TextMuted);
-    drawText(g,memoryLabel(sliderMaximumSteps_*512),{434,332,90,16},10,Gdiplus::FontStyleRegular,
-        Theme::TextMuted,Gdiplus::StringAlignmentFar);
-    drawText(g,L"RAM inicial · MiB",{36,385,232,20},12,Gdiplus::FontStyleBold,Theme::TextSecondary);
-    drawText(g,L"RAM máxima · MiB (1 GB = 1024)",{292,385,232,20},11,Gdiplus::FontStyleBold,Theme::TextSecondary);
-    drawText(g,L"Janela do jogo",{36,460,488,28},20,Gdiplus::FontStyleBold,Theme::TextPrimary);
-    drawText(g,L"Largura · pixels",{36,491,232,20},12,Gdiplus::FontStyleBold,Theme::TextSecondary);
-    drawText(g,L"Altura · pixels",{292,491,232,20},12,Gdiplus::FontStyleBold,Theme::TextSecondary);
-    drawText(g,L"Java",{576,211,568,28},20,Gdiplus::FontStyleBold,Theme::TextPrimary);
-    drawText(g,L"Automático detecta o Java 17 e prepara o runtime quando necessário.",{576,246,568,20},12,Gdiplus::FontStyleRegular,Theme::TextSecondary);
-    drawText(g,L"Executável Java 17",{576,301,568,18},11,Gdiplus::FontStyleBold,Theme::TextSecondary);
-    drawText(g,automaticJava_ ? L"O launcher prepara o runtime automaticamente quando necessário." :
-        L"Use uma instalação Java 17; ela também será usada para preparar Forge.",
-        {576,375,568,35},12,Gdiplus::FontStyleRegular,Theme::TextMuted);
-    drawText(g,L"Arquivos do jogo",{576,421,568,28},20,Gdiplus::FontStyleBold,Theme::TextPrimary);
-    drawText(g,L"Pasta exclusiva da instância · vazio usa a pasta automática",{576,450,568,20},11,Gdiplus::FontStyleBold,Theme::TextSecondary);
-    drawText(g,L"Trocar a pasta prepara outra instância. Seus mundos permanecem\nna pasta anterior. Os atalhos abrem a instância já salva.",
-        {576,526,568,44},12,Gdiplus::FontStyleRegular,Theme::TextMuted);
-    g.DrawLine(&divider,36.0F,646.0F,1144.0F,646.0F);
-    const auto message=locked_ ? L"Alterações bloqueadas durante instalação, login ou execução do jogo." : std::wstring_view(message_);
-    drawText(g,message,{36,666,582,48},12,Gdiplus::FontStyleRegular,error_ && !locked_ ? Theme::Error : Theme::TextSecondary);
+    drawDisplayText(g,L"Configurações",{100,84,600,40},28,Theme::TextPrimary,Gdiplus::StringAlignmentNear,Gdiplus::StringAlignmentCenter);
+    drawText(g,L"Deixe o Minecraft do seu jeito. As alterações valem a partir do próximo Jogar.",{100,124,1000,22},14,
+        Gdiplus::FontStyleRegular,Theme::TextSecondary);
+    Gdiplus::Pen divider(Theme::Divider);
+    g.DrawLine(&divider,100.0F,204.0F,1256.0F,204.0F);
+    g.DrawLine(&divider,100.0F,712.0F,1256.0F,712.0F);
     const int focus=preview ? 0 : focusedControlId();
-    for(int id=Back;id<ControlEnd;++id) {
-        const auto b=bounds(id);
+    const auto visual=[&](int id) {
         const bool enabled=control(id) ? IsWindowEnabled(control(id))!=FALSE :
-            !locked_ && (!(id==JavaPath || id==JavaBrowse) || !automaticJava_);
-        if (id==RamSlider) { drawMemorySlider(g,b,focus==id); continue; }
-        if(isEdit(id)) {
-            fillRoundedRectangle(g,b,Theme::ControlRadius,Theme::SurfaceElevated);
-            drawRoundedRectangle(g,b,Theme::ControlRadius,focus==id ? Theme::AccentLight : Theme::Border,focus==id ? 2.0F : 1.0F);
-            if(preview) {
-                auto value=text(id);
-                if(value.empty()) value=id==GamePath ? L"Automática: %APPDATA%\\.eternal-launcher\\minecraft" : L"Java 17 gerenciado pelo Eternal";
-                drawText(g,value,{b.X+12,b.Y,b.Width-24,b.Height},14,Gdiplus::FontStyleRegular,
-                    enabled ? Theme::TextPrimary : Theme::TextMuted,Gdiplus::StringAlignmentNear,Gdiplus::StringAlignmentCenter);
-            }
-            continue;
+            !locked_ && (!(id==JavaPath || id==JavaBrowse) || !automaticJava_) && (!(id==Width || id==Height) || !draft_.fullscreen);
+        const bool pressed=!preview && control(id) && (SendMessage(control(id),BM_GETSTATE,0,0)&BST_PUSHED)!=0;
+        return ControlVisual{hover_[id-TabGeneral] && enabled && !preview ? 1.0F : 0.0F,focus==id,pressed,enabled};
+    };
+    const auto edit=[&](int id,std::wstring_view placeholder) {
+        const auto b=bounds(id);
+        const auto v=visual(id);
+        fillRoundedRectangle(g,b,Theme::ControlRadius,v.enabled ? Theme::SurfaceElevated : Theme::SurfaceSunken);
+        drawRoundedRectangle(g,b,Theme::ControlRadius,focus==id ? Theme::AccentLight : Theme::Border,focus==id ? 2.0F : 1.0F);
+        if(preview) {
+            auto value=text(id);
+            if(value.empty()) value=std::wstring(placeholder);
+            drawText(g,value,{b.X+12,b.Y,b.Width-24,b.Height},14,Gdiplus::FontStyleRegular,
+                v.enabled ? Theme::TextPrimary : Theme::TextMuted,Gdiplus::StringAlignmentNear,Gdiplus::StringAlignmentCenter);
         }
-        const bool checked=(id==Fullscreen && draft_.fullscreen) || (id==Minimize && draft_.minimizeOnLaunch);
-        const bool selected=(id==JavaAuto && automaticJava_) || (id==JavaCustom && !automaticJava_) ||
-            (id==Ram4 && draft_.maximumMemoryMegabytes==4096) || (id==Ram6 && draft_.maximumMemoryMegabytes==6144) ||
-            (id==Ram8 && draft_.maximumMemoryMegabytes==8192);
-        const bool hovered=hover_[id-Back] && enabled;
-        const bool pressed=control(id) && (SendMessage(control(id),BM_GETSTATE,0,0)&BST_PUSHED)!=0;
-        const bool primary=id==Save;
-        auto fill=primary ? (enabled ? Theme::Accent : Theme::SurfaceHover) :
-            selected || hovered || pressed ? Theme::SurfaceHover : Theme::Surface;
-        if(primary && (hovered || pressed)) fill=Theme::AccentLight;
-        fillRoundedRectangle(g,b,Theme::ControlRadius,fill);
-        const auto ink=primary && enabled ? Theme::AccentInk : enabled ? selected ? Theme::AccentLight : Theme::TextPrimary : Theme::TextMuted;
-        if(id==Fullscreen || id==Minimize) {
-            const Gdiplus::RectF box(b.X+12,b.Y+(b.Height-18)/2,18,18);
-            fillRoundedRectangle(g,box,4,checked ? Theme::Accent : Theme::Background);
-            if(checked) {
-                Gdiplus::Pen check(Theme::AccentInk,2);
-                g.DrawLine(&check,box.X+4,box.Y+9,box.X+8,box.Y+13);
-                g.DrawLine(&check,box.X+8,box.Y+13,box.X+14,box.Y+5);
-            } else drawRoundedRectangle(g,box,4,Theme::TextMuted);
-            drawText(g,Labels[id-Back],{b.X+42,b.Y,b.Width-54,b.Height},13,Gdiplus::FontStyleRegular,ink,
-                Gdiplus::StringAlignmentNear,Gdiplus::StringAlignmentCenter);
-        } else drawText(g,id==JavaBrowse || id==GameBrowse ? L"Escolher" : Labels[id-Back],b,
-            12.0F,Gdiplus::FontStyleBold,ink,Gdiplus::StringAlignmentCenter,Gdiplus::StringAlignmentCenter);
-        if(focus==id) drawRoundedRectangle(g,{b.X+2,b.Y+2,b.Width-4,b.Height-4},8,
-            primary ? Theme::AccentInk : Theme::AccentLight,2);
+    };
+    const auto label=[&](std::wstring_view text,float x,float y,float width=248) {
+        drawText(g,text,{x,y,width,18},12.5F,Gdiplus::FontStyleBold,Theme::TextSecondary);
+    };
+    const auto toggleRow=[&](int id,bool on,std::wstring_view title,std::wstring_view hint) {
+        const auto b=bounds(id);
+        const auto v=visual(id);
+        if(v.hover>0) fillRoundedRectangle(g,{b.X-8,b.Y,b.Width+16,b.Height},12,Theme::SurfaceSunken);
+        drawText(g,title,{b.X,b.Y+5,b.Width-70,20},14,Gdiplus::FontStyleRegular,v.enabled ? Theme::TextPrimary : Theme::TextMuted);
+        drawText(g,hint,{b.X,b.Y+26,b.Width-70,18},11.5F,Gdiplus::FontStyleRegular,Theme::TextMuted);
+        Buttons::drawSwitch(g,{b.GetRight()-44,b.Y+11,44,26},on,ControlVisual{v.hover,false,false,v.enabled});
+        if(v.focused) drawFocusRing(g,{b.X-8,b.Y,b.Width+16,b.Height},12,Theme::AccentLight);
+    };
+
+    Buttons::draw(g,bounds(TabGeneral),L"Geral",visual(TabGeneral),Buttons::Style::Tab,std::nullopt,tab_==Tab::General,14);
+    Buttons::draw(g,bounds(TabAdvanced),L"Avançado",visual(TabAdvanced),Buttons::Style::Tab,std::nullopt,tab_==Tab::Advanced,14);
+    Buttons::draw(g,bounds(TabAbout),L"Sobre",visual(TabAbout),Buttons::Style::Tab,std::nullopt,tab_==Tab::About,14);
+
+    if(tab_==Tab::General) {
+        const auto total=LauncherSettingsStore::physicalMemoryMegabytes();
+        card(g,MemoryCard,L"Memória do jogo",total ? L"Seu PC tem "+memoryLabel(static_cast<int>(total/512*512))+L". Deixe pelo menos 4 GB para o Windows." :
+            L"Quanto de memória o Minecraft pode usar.");
+        drawDisplayText(g,memoryLabel(draft_.maximumMemoryMegabytes),{MemoryCard.GetRight()-184,MemoryCard.Y+20,160,40},30,
+            Theme::AccentLight,Gdiplus::StringAlignmentFar);
+        label(L"RAM máxima",124,314);
+        drawMemorySlider(g,bounds(RamSlider),focus==RamSlider);
+        drawText(g,L"0,5 GB",{124,372,90,16},11,Gdiplus::FontStyleRegular,Theme::TextMuted);
+        drawText(g,memoryLabel(sliderMaximumSteps_*512),{554,372,90,16},11,Gdiplus::FontStyleRegular,Theme::TextMuted,Gdiplus::StringAlignmentFar);
+        const int recommended=recommendedMemory();
+        for(const int id:{Ram4,Ram6,Ram8}) {
+            const int value=id==Ram4 ? 4096 : id==Ram6 ? 6144 : 8192;
+            const auto b=bounds(id);
+            const auto v=visual(id);
+            const bool selected=draft_.maximumMemoryMegabytes==value;
+            Buttons::draw(g,b,L"",v,Buttons::Style::Chip,std::nullopt,selected);
+            const bool suggestion=value==recommended;
+            drawText(g,memoryLabel(value),{b.X,b.Y+(suggestion ? 8.0F : 0.0F),b.Width,suggestion ? 22.0F : b.Height},14,Gdiplus::FontStyleBold,
+                v.enabled ? Theme::TextPrimary : Theme::TextMuted,Gdiplus::StringAlignmentCenter,Gdiplus::StringAlignmentCenter);
+            if(suggestion) drawText(g,L"Recomendado",{b.X,b.Y+29,b.Width,18},11,Gdiplus::FontStyleBold,Theme::AccentLight,
+                Gdiplus::StringAlignmentCenter,Gdiplus::StringAlignmentCenter);
+        }
+        card(g,WindowCard,L"Janela do jogo",L"Como o Minecraft abre e o que o launcher faz enquanto você joga.");
+        label(L"Largura · pixels",712,316);label(L"Altura · pixels",984,316);
+        edit(Width,L"1280");edit(Height,L"720");
+        toggleRow(Fullscreen,draft_.fullscreen,L"Abrir em tela cheia",L"Ignora a largura e a altura acima.");
+        toggleRow(Minimize,draft_.minimizeOnLaunch,L"Esconder na bandeja ao jogar",L"O ícone perto do relógio conta seu tempo de jogo.");
+    } else if(tab_==Tab::Advanced) {
+        card(g,ExactCard,L"Memória exata",L"Valores em MiB (1 GB = 1024 MiB). A RAM inicial não pode passar da máxima.");
+        label(L"RAM inicial · MiB",124,324);label(L"RAM máxima · MiB",396,324);
+        edit(MinRam,L"512");edit(MaxRam,L"4096");
+        card(g,FolderCard,L"Pasta da instância",L"Vazio usa a pasta automática. Trocar a pasta prepara outra instância;\nseus mundos continuam na anterior.");
+        label(L"Pasta",124,490,400);
+        edit(GamePath,L"Automática: %APPDATA%\\.eternal-launcher\\minecraft");
+        Buttons::draw(g,bounds(GameBrowse),L"Escolher",visual(GameBrowse),Buttons::Style::Secondary,std::nullopt,false,12.5F);
+        label(L"Atalhos da instância salva",124,604,400);
+        Buttons::draw(g,bounds(OpenGame),L"Abrir jogo",visual(OpenGame),Buttons::Style::Ghost,Icons::Icon::Folder,false,12.5F);
+        Buttons::draw(g,bounds(OpenMods),L"Abrir mods",visual(OpenMods),Buttons::Style::Ghost,Icons::Icon::Folder,false,12.5F);
+        Buttons::draw(g,bounds(OpenLogs),L"Abrir logs",visual(OpenLogs),Buttons::Style::Ghost,Icons::Icon::Folder,false,12.5F);
+        card(g,JavaCard,L"Java",L"Automático detecta o Java 17 e prepara um runtime próprio quando necessário.");
+        Buttons::draw(g,bounds(JavaAuto),L"Java automático",visual(JavaAuto),Buttons::Style::Chip,std::nullopt,automaticJava_);
+        Buttons::draw(g,bounds(JavaCustom),L"Java personalizado",visual(JavaCustom),Buttons::Style::Chip,std::nullopt,!automaticJava_);
+        label(L"Executável Java 17",712,386,400);
+        edit(JavaPath,automaticJava_ ? L"Java 17 gerenciado pelo Eternal" : L"Escolha java.exe ou javaw.exe");
+        Buttons::draw(g,bounds(JavaBrowse),L"Escolher",visual(JavaBrowse),Buttons::Style::Secondary,std::nullopt,false,12.5F);
+        drawText(g,automaticJava_ ? L"O launcher prepara o runtime automaticamente quando necessário." :
+            L"Use uma instalação Java 17 com java.exe; ela também prepara o Forge.",{712,462,520,40},12.5F,
+            Gdiplus::FontStyleRegular,Theme::TextMuted);
+    } else {
+        card(g,AboutCard,L"",L"");
+        drawLogo(g,{124,252,44,44},Theme::Accent);
+        drawDisplayText(g,L"Eternal Launcher",{182,250,460,30},22,Theme::TextPrimary);
+        drawText(g,L"Versão "+std::wstring(LauncherConfig::LauncherVersion),{182,282,460,20},13,Gdiplus::FontStyleRegular,Theme::AccentLight);
+        drawText(g,L"Minecraft "+std::wstring(LauncherConfig::MinecraftVersion)+L" · Forge "+std::wstring(LauncherConfig::ForgeVersion),
+            {124,326,520,20},13.5F,Gdiplus::FontStyleRegular,Theme::TextSecondary);
+        drawText(g,L"Dados: "+LauncherSettingsStore::dataDirectory().wstring(),{124,352,520,40},12.5F,Gdiplus::FontStyleRegular,Theme::TextMuted);
+        drawText(g,L"Atualizações chegam sozinhas: o launcher confere a versão ao abrir e pergunta antes de baixar.",
+            {124,392,520,40},12.5F,Gdiplus::FontStyleRegular,Theme::TextMuted);
+        Buttons::draw(g,bounds(OpenChangelog),L"Ver changelog",visual(OpenChangelog),Buttons::Style::Ghost,Icons::Icon::External,false,12.5F);
+        Buttons::draw(g,bounds(OpenRepository),L"Repositório no GitHub",visual(OpenRepository),Buttons::Style::Ghost,Icons::Icon::External,false,12.5F);
+        Buttons::draw(g,bounds(OpenDataFolder),L"Pasta de dados",visual(OpenDataFolder),Buttons::Style::Ghost,Icons::Icon::Folder,false,12.5F);
+        card(g,CreditsCard,L"Créditos",L"Feito para o grupo Eternal.");
+        drawText(g,L"Desenvolvimento: Ryan (ryanbworks)\nCorreções: Gabriel Henrique (GabrielHen-dev)\n\n"
+            L"Fonte Sora — SIL Open Font License\nJava: Eclipse Temurin 17 (Adoptium)\nMinecraft Forge 47.4.10\n\n"
+            L"Minecraft é uma marca da Mojang Studios. Este launcher não é afiliado à Mojang ou à Microsoft.",
+            {712,312,520,300},13,Gdiplus::FontStyleRegular,Theme::TextSecondary);
     }
+
+    const auto message=locked_ ? L"Alterações bloqueadas durante instalação, login ou execução do jogo." : std::wstring_view(message_);
+    drawText(g,message,{100,726,740,46},12.5F,Gdiplus::FontStyleRegular,error_ && !locked_ ? Theme::Danger : Theme::TextSecondary,
+        Gdiplus::StringAlignmentNear,Gdiplus::StringAlignmentCenter);
+    Buttons::draw(g,bounds(Restore),L"Restaurar padrões",visual(Restore),Buttons::Style::Ghost,std::nullopt,false,13);
+    Buttons::draw(g,bounds(Cancel),L"Descartar",visual(Cancel),Buttons::Style::Ghost,std::nullopt,false,13);
+    Buttons::draw(g,bounds(Save),L"Salvar",visual(Save),Buttons::Style::Primary,std::nullopt,false,13);
 }

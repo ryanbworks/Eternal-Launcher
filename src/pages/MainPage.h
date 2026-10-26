@@ -1,29 +1,33 @@
 #pragma once
 
-#include "pages/SettingsPage.h"
-#include "components/HeaderComponent.h"
+#include "app/TrayIcon.h"
+#include "components/Buttons.h"
+#include "components/ChromeView.h"
+#include "components/ContentViews.h"
 #include "components/HeroComponent.h"
-#include "components/NewsPanelComponent.h"
-#include "components/PlayPanelComponent.h"
-#include "components/PlayerProfileComponent.h"
-#include "components/ProgressComponent.h"
-#include "components/StatusPanelComponent.h"
+#include "components/HomeView.h"
 #include "components/InstallationPanelComponent.h"
-#include "services/InstallationCoordinator.h"
+#include "pages/SettingsPage.h"
 #include "services/IFileServerService.h"
-#include "services/IJavaRuntimeService.h"
 #include "services/IGameInstallationService.h"
+#include "services/IJavaRuntimeService.h"
 #include "services/IMinecraftLauncherService.h"
-#include "services/MicrosoftAuthService.h"
+#include "services/InstallationCoordinator.h"
 #include "services/LauncherUpdateService.h"
+#include "services/MicrosoftAuthService.h"
+#include "services/ModInventory.h"
+#include "services/PlaytimeStore.h"
 #include "types/LauncherState.h"
 
 #include <windows.h>
 
-#include <memory>
-#include <thread>
 #include <array>
+#include <chrono>
 #include <filesystem>
+#include <memory>
+#include <optional>
+#include <thread>
+#include <vector>
 
 class MainPage
 {
@@ -37,92 +41,134 @@ public:
 
 private:
     friend class WindowPaintingTest;
+
+    // One owner-drawn native button. Its pixels come from the pre-rendered frame.
+    struct Control
+    {
+        int id = 0;
+        HWND window = nullptr;
+        bool chrome = false;
+        bool hovered = false;
+        float hover = 0;
+    };
+
     static LRESULT CALLBACK windowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
-    LRESULT handleMessage(UINT message, WPARAM wParam, LPARAM lParam);
-    void paint();
-    bool prepareFrame();
-    void render(Gdiplus::Graphics& graphics, bool preview = false, bool restingSettings = false);
-    bool renderSettingsTransition(Gdiplus::Graphics& graphics);
-    void createActionControls();
-    void layoutControls();
-    void syncControls();
-    void redraw(bool animationFrame = false);
-    void animate();
-    float pageOffset() const;
-    void positionPageControls();
-    void updateMotionPreference();
     static LRESULT CALLBACK controlProcedure(HWND window, UINT message, WPARAM wParam,
                                              LPARAM lParam, UINT_PTR id, DWORD_PTR data);
-    void enableDarkTitleBar() const;
+    LRESULT handleMessage(UINT message, WPARAM wParam, LPARAM lParam);
+    LRESULT hitTest(LPARAM lParam) const;
+    void handleCommand(int id, int notification);
+
+    // Drawing.
+    void paint();
+    bool prepareFrame();
+    void render(Gdiplus::Graphics& graphics, float width, float height, bool preview = false);
+    ControlVisual visual(int id, bool preview) const;
+    HomeModel homeModel(bool preview) const;
+    ModsModel modsModel() const;
+    void redraw(bool animationFrame = false);
+    void animate();
+    void updateMotionPreference();
+
+    // Controls.
+    void createControls();
     void createNicknameInput();
-    void layoutNicknameInput() const;
+    void layoutControls();
+    void syncControls();
+    Control* findControl(int id);
+    const Control* findControl(int id) const;
+    Gdiplus::RectF controlBounds(int id) const;
+    bool controlVisible(int id) const;
+    bool controlEnabled(int id) const;
+    std::wstring controlLabel(int id) const;
+    bool chromeControl(int id) const;
+    [[nodiscard]] Gdiplus::PointF toContent(int x, int y) const;
+    float chromeWidth() const;
+    float chromeHeight() const;
+
+    // Navigation.
+    void showPage(LauncherPage page);
+    void scrollContent(int delta, Gdiplus::PointF point);
+    void handleModsClick(Gdiplus::PointF point);
+    void showPlayMenu();
+
+    // Play flow.
     void handlePrimaryAction();
-    void beginPlay();
+    void beginPlay(bool repairOnly = false);
+    void startRepair();
     void startMicrosoftSignIn();
     void pollGameProcess();
-    void showSettings();
-    void hideSettings();
     void saveSettings();
     void checkFileServerAsync();
+    void fetchNewsAsync();
     void checkLauncherUpdateAsync(bool confirmed = false);
     void applyLauncherUpdateProgress(const LauncherUpdateProgress& progress);
     void applyFileServerResult(const FileServerManifestResponse& response);
     void cancelInstallation();
     void consumeInstallationProgress();
-    void openInstallationLog();
     void launchPreparedMinecraft(const InstallationResult& result);
     void updateInstallationState(const MinecraftLaunchResult& installation);
+    bool gameRunning() const;
+    bool canRepair() const;
+    std::wstring nicknameText() const;
+
+    // Play time and the notification-area icon.
+    void startPlaySession();
+    void flushPlaytime();
+    void finishPlaySession();
+    void updateTrayTooltip();
+    void hideToTray(bool closedByUser);
+    void restoreFromTray();
+    void showTrayMenu(POINT anchor);
+    void shutdown();
+
+    // Files, folders and support.
+    std::filesystem::path gameDirectory() const;
+    void refreshMods();
+    void addMod();
+    bool openPath(const std::filesystem::path& path, bool createDirectory = false);
+    void openLog(const std::filesystem::path& file);
+    void copySupportInformation();
+    void setHelpMessage(std::wstring message, bool error = false);
+    void checkVersionToast();
 
     HINSTANCE instance_;
     HWND window_ = nullptr;
     HWND nicknameInput_ = nullptr;
-    HWND updateDownloadButton_ = nullptr;
-    HWND cancelInstallationButton_ = nullptr;
-    HWND installationLogButton_ = nullptr;
     HFONT inputFont_ = nullptr;
     HBRUSH backgroundBrush_ = nullptr;
+    HBRUSH surfaceBrush_ = nullptr;
     HBRUSH inputBrush_ = nullptr;
-    std::array<HWND, 4> actions_{};
-    std::array<float, 4> hover_{};
-    std::array<bool, 4> hovered_{};
-    std::array<bool,2> installationHovered_{};
-    std::array<float,2> installationHover_{};
+    HBRUSH sunkenBrush_ = nullptr;
+    std::vector<Control> controls_;
+
+    LauncherPage page_ = LauncherPage::Home;
+    float pageFade_ = 1;
+    bool windowActive_ = true;
     float identitySelection_ = 0;
     float portalEntrance_ = 1;
     bool portalHovered_ = false;
     float portalEnergy_ = 0;
     float portalBurst_ = 0;
-    float playPress_ = 0;
-    float playPulse_ = 0;
-    float playSweep_ = 1;
-    float playLight_ = .5F;
-    float playLightTarget_ = .5F;
-    float pageTravel_ = 1;
-    int positionedScene_ = -1;
-    int positionedOffset_ = 0;
-    std::array<RECT,7> mainControlBounds_{};
     float particlePhase_ = 0;
     bool ambientMotion_ = true;
-    std::array<float,6> completionPulse_{};
-    std::array<InstallationStepState,6> previousSteps_{};
+    std::array<float, 6> completionPulse_{};
+    std::array<InstallationStepState, 6> previousSteps_{};
     std::uint64_t pulseAttempt_ = 0;
     float installationFill_ = 0;
     std::uint64_t fillAttempt_ = 0;
     std::uint64_t fillTransfer_ = 0;
     InstallationStage fillStage_ = InstallationStage::Java;
-    std::unique_ptr<Gdiplus::Bitmap> leftTransition_;
-    Gdiplus::RectF transitionBounds_;
-    float transitionTime_ = 1;
-    int previousScene_ = 0;
     float displayedProgress_ = 0;
     float animationPhase_ = 0;
     float viewScale_ = 1;
     float offsetX_ = 0;
     float offsetY_ = 0;
+    float clientWidth_ = 0;
+    float clientHeight_ = 0;
     bool motionEnabled_ = true;
     bool animationTimer_ = false;
     std::unique_ptr<Gdiplus::Bitmap> frame_;
-    std::unique_ptr<Gdiplus::Bitmap> settingsTransitionFrame_;
     bool frameDirty_ = true;
     std::chrono::steady_clock::time_point previousFrame_{};
     LauncherViewState viewState_;
@@ -130,20 +176,49 @@ private:
     std::wstring settingsWarning_;
     LauncherSettings settings_;
     SettingsPage settingsPage_;
-    bool settingsVisible_ = false;
-    bool minimizedForGame_ = false;
     bool closing_ = false;
+    bool repairOnly_ = false;
 
-    HeaderComponent header_;
+    ChromeView chrome_;
     HeroComponent hero_;
-    StatusPanelComponent statusPanel_;
-    NewsPanelComponent newsPanel_;
-    PlayerProfileComponent playerProfile_;
-    PlayPanelComponent playPanel_;
-    ProgressComponent progress_;
+    HomeView home_;
+    NewsView newsView_;
+    ModsView modsView_;
+    HelpView helpView_;
     InstallationPanelComponent installationPanel_;
     InstallationTrackingState installation_;
     InstallationMailbox installationMailbox_;
+
+    // News.
+    std::size_t newsFirst_ = 0;
+    bool newsLoading_ = false;
+    bool newsRequested_ = false;
+    std::wstring newsError_;
+    bool toastVisible_ = false;
+    std::wstring toastText_;
+
+    // Mods.
+    ModInventorySnapshot mods_;
+    bool modsScanned_ = false;
+    float serverScroll_ = 0;
+    float userScroll_ = 0;
+    int modsHoverRow_ = -1;
+    int modsHoverAction_ = -1;
+    std::wstring modsMessage_;
+    bool modsMessageError_ = false;
+
+    // Help.
+    std::wstring helpMessage_;
+    bool helpMessageError_ = false;
+
+    // Play time and tray.
+    PlaySession playSession_;
+    PlaytimeRecord playtime_;
+    TrayIcon trayIcon_;
+    bool hiddenToTray_ = false;
+    bool exitAfterGame_ = false;
+    bool forceExit_ = false;
+    bool trayNoticeShown_ = false;
 
     // The service is accessed through the generic interface to keep the page
     // independent of WinHTTP and of the web server used in the infrastructure.
@@ -161,6 +236,7 @@ private:
     bool refreshBeforePlay_ = false;
     bool updatingLauncher_ = false;
     std::wstring updateWarning_;
+    std::jthread newsThread_;
     // Last member: destruction joins before any state captured by the worker is destroyed.
     std::jthread launcherUpdateThread_;
     // Last: all captured services, tracking state and HWND outlive this worker.

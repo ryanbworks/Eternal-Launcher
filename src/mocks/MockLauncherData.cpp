@@ -17,13 +17,5 @@ LauncherViewState MockLauncherData::createInitialState()
         {L"SERVIDOR HTTP", L"Conectando...", L"Buscando manifesto real", StatusTone::Information},
     };
 
-    // MOCK: temporary editorial content to validate the news card.
-    state.featuredNews = {
-        L"AVISO DO SERVIDOR",
-        L"O mundo está esperando por você",
-        L"Fresquin",
-        L"Hoje"
-    };
-
     return state;
 }

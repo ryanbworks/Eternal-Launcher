@@ -1,13 +1,15 @@
 #include "pages/MainPage.h"
 
+#include "components/Layout.h"
 #include "config/LauncherConfig.h"
 #include "config/NicknameStore.h"
 #include "constants/LauncherConstants.h"
 #include "mocks/MockLauncherData.h"
-#include "services/HttpFileService.h"
 #include "services/GameInstallationService.h"
+#include "services/HttpFileService.h"
 #include "services/JavaRuntimeService.h"
 #include "services/MinecraftLauncherService.h"
+#include "services/NewsFeed.h"
 #include "styles/Theme.h"
 #include "utils/DrawingUtils.h"
 
@@ -16,31 +18,119 @@
 #include <uxtheme.h>
 #include <windowsx.h>
 #include <commctrl.h>
+#include <commdlg.h>
 #include <shellapi.h>
-#include <cmath>
 
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <cstring>
+#include <ctime>
+#include <deque>
+#include <fstream>
+#include <sstream>
 #include <string>
 
 namespace
 {
-    const Gdiplus::RectF HeroBounds(36, 112, 744, 360);
-    const Gdiplus::RectF StatusBounds(36, 496, 744, 128);
-    const Gdiplus::RectF NewsBounds(36, 640, 744, 64);
-    const Gdiplus::RectF ProfileBounds(832, 136, 288, 232);
-    const Gdiplus::RectF PlayBounds(832, 393, 288, 182);
-    const Gdiplus::RectF ProgressBounds(832, 593, 288, 112);
-    constexpr std::array<int, 4> ActionIds = {
-        LauncherConstants::OfflineButtonId, LauncherConstants::OriginalButtonId,
-        LauncherConstants::PlayButtonId, LauncherConstants::SettingsButtonId};
+    using namespace LauncherConstants;
 
+    // Creation order is also the keyboard tab order.
+    struct ControlSpec { int id; bool chrome; bool tabStop; const wchar_t* label; };
+    constexpr ControlSpec ControlSpecs[] = {
+        {NavHomeId, true, true, L"Início"},
+        {NavNewsId, true, true, L"Notícias"},
+        {NavModsId, true, true, L"Mods"},
+        {NavSettingsId, true, true, L"Configurações"},
+        {NavHelpId, true, true, L"Ajuda"},
+        {NicknameInputId, false, true, nullptr},
+        {EditNicknameButtonId, false, true, L"Editar nickname"},
+        {OfflineButtonId, false, true, L"Nickname"},
+        {OriginalButtonId, false, true, L"Conta original"},
+        {UpdateDownloadButtonId, false, true, L"Baixar launcher"},
+        {PlayButtonId, false, true, L"Jogar"},
+        {PlayMenuButtonId, false, true, L"Mais ações"},
+        {QuickFolderButtonId, false, true, L"Pasta do jogo"},
+        {QuickRepairButtonId, false, true, L"Reparar"},
+        {QuickLogsButtonId, false, true, L"Logs"},
+        {ToastNewsButtonId, false, true, L"Ver novidades"},
+        {NewsCardFirstId, false, true, L"Notícia 1"},
+        {NewsCardFirstId + 1, false, true, L"Notícia 2"},
+        {NewsCardFirstId + 2, false, true, L"Notícia 3"},
+        {NewsAllButtonId, false, true, L"Ver todas as notícias"},
+        {InstallationLogButtonId, false, true, L"Abrir log"},
+        {CancelInstallationButtonId, false, true, L"Cancelar instalação"},
+        {NewsLinkFirstId, false, true, L"Abrir notícia 1"},
+        {NewsLinkFirstId + 1, false, true, L"Abrir notícia 2"},
+        {NewsLinkFirstId + 2, false, true, L"Abrir notícia 3"},
+        {NewsLinkFirstId + 3, false, true, L"Abrir notícia 4"},
+        {ModsRefreshButtonId, false, true, L"Atualizar lista"},
+        {ModsFolderButtonId, false, true, L"Abrir pasta"},
+        {ModsAddButtonId, false, true, L"Adicionar mod"},
+        {HelpRepairButtonId, false, true, L"Reparar instalação"},
+        {HelpInstallLogButtonId, false, true, L"Log da instalação"},
+        {HelpForgeLogButtonId, false, true, L"Log do Forge"},
+        {HelpGameLogButtonId, false, true, L"Log do jogo"},
+        {HelpLogsFolderButtonId, false, true, L"Pasta de logs"},
+        {HelpCopySupportButtonId, false, true, L"Copiar informações"},
+        {HelpReportIssueButtonId, false, true, L"Relatar no GitHub"},
+        {HelpDataFolderButtonId, false, true, L"Abrir pasta de dados"},
+        {MinimizeButtonId, true, false, L"Minimizar"},
+        {MaximizeButtonId, true, false, L"Maximizar"},
+        {CloseButtonId, true, false, L"Fechar"},
+    };
+
+    constexpr wchar_t IssueUrl[] = L"https://github.com/ryanbworks/Eternal-Launcher/issues/new";
+
+    std::int64_t wallClock() { return static_cast<std::int64_t>(std::time(nullptr)); }
+
+    bool inRange(int id, int first, int count) { return id >= first && id < first + count; }
+
+    std::wstring utf8ToWide(std::string_view text)
+    {
+        if (text.empty()) return {};
+        const int length = MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
+        std::wstring result(static_cast<std::size_t>(std::max(length, 0)), L'\0');
+        if (length > 0) MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), result.data(), length);
+        return result;
+    }
+
+    std::wstring registryText(const wchar_t* name)
+    {
+        std::array<wchar_t, 128> buffer{};
+        DWORD size = static_cast<DWORD>(buffer.size() * sizeof(wchar_t));
+        if (RegGetValueW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", name, RRF_RT_REG_SZ,
+                nullptr, buffer.data(), &size) != ERROR_SUCCESS) return {};
+        return buffer.data();
+    }
+
+    // Hides the Windows account name when the player shares support information.
+    std::wstring anonymizePath(std::wstring path)
+    {
+        std::array<wchar_t, MAX_PATH> profile{};
+        const DWORD length = GetEnvironmentVariableW(L"USERPROFILE", profile.data(), static_cast<DWORD>(profile.size()));
+        if (length == 0 || length >= profile.size()) return path;
+        const std::wstring prefix(profile.data(), length);
+        if (path.size() >= prefix.size() && CompareStringOrdinal(path.c_str(), static_cast<int>(prefix.size()),
+                prefix.c_str(), static_cast<int>(prefix.size()), TRUE) == CSTR_EQUAL)
+            path = L"%USERPROFILE%" + path.substr(prefix.size());
+        return path;
+    }
+
+    int frameThickness(HWND window, bool vertical)
+    {
+        const UINT dpi = window ? GetDpiForWindow(window) : 96;
+        return GetSystemMetricsForDpi(vertical ? SM_CYFRAME : SM_CXFRAME, dpi) +
+               GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+    }
 }
 
 MainPage::MainPage(HINSTANCE instance)
     : instance_(instance),
       backgroundBrush_(CreateSolidBrush(RGB(13, 14, 20))),
+      surfaceBrush_(CreateSolidBrush(RGB(22, 23, 33))),
       inputBrush_(CreateSolidBrush(RGB(30, 31, 44))),
+      sunkenBrush_(CreateSolidBrush(RGB(27, 28, 40))),
       viewState_(MockLauncherData::createInitialState()),
       settings_(LauncherSettingsStore::load(LauncherSettingsStore::dataDirectory(), &settingsWarning_)),
       fileServerService_(std::make_unique<HttpFileService>(
@@ -49,6 +139,8 @@ MainPage::MainPage(HINSTANCE instance)
       gameInstallationService_(std::make_unique<GameInstallationService>(settings_)),
       minecraftLauncherService_(std::make_unique<MinecraftLauncherService>(settings_))
 {
+    viewState_.news = {NewsFeed::releaseNotes()};
+    playtime_ = PlaytimeStore::load(LauncherSettingsStore::dataDirectory());
 }
 
 MainPage::~MainPage()
@@ -56,23 +148,16 @@ MainPage::~MainPage()
     installationThread_.request_stop();
     fileServerThread_.request_stop();
     microsoftAuthThread_.request_stop();
-    if(installationThread_.joinable()) installationThread_.join();
-    if(fileServerThread_.joinable()) fileServerThread_.join();
-    if(microsoftAuthThread_.joinable()) microsoftAuthThread_.join();
+    newsThread_.request_stop();
+    if (installationThread_.joinable()) installationThread_.join();
+    if (fileServerThread_.joinable()) fileServerThread_.join();
+    if (microsoftAuthThread_.joinable()) microsoftAuthThread_.join();
+    if (newsThread_.joinable()) newsThread_.join();
     launcherUpdateThread_.request_stop();
     if (launcherUpdateThread_.joinable()) launcherUpdateThread_.join();
-    if (inputFont_ != nullptr)
-    {
-        DeleteObject(inputFont_);
-    }
-    if (inputBrush_ != nullptr)
-    {
-        DeleteObject(inputBrush_);
-    }
-    if (backgroundBrush_ != nullptr)
-    {
-        DeleteObject(backgroundBrush_);
-    }
+    for (auto* brush : {backgroundBrush_, surfaceBrush_, inputBrush_, sunkenBrush_})
+        if (brush) DeleteObject(brush);
+    if (inputFont_) DeleteObject(inputFont_);
 }
 
 bool MainPage::create(int showCommand, bool checkLauncherUpdate, std::wstring updateWarning)
@@ -82,18 +167,16 @@ bool MainPage::create(int showCommand, bool checkLauncherUpdate, std::wstring up
     windowClass.cbSize = sizeof(WNDCLASSEX);
     windowClass.hInstance = instance_;
     windowClass.lpfnWndProc = MainPage::windowProcedure;
-    windowClass.lpszClassName = LauncherConstants::WindowClassName;
+    windowClass.lpszClassName = WindowClassName;
     windowClass.hCursor = LoadCursor(nullptr, IDC_ARROW);
     windowClass.hbrBackground = backgroundBrush_;
     windowClass.style = CS_HREDRAW | CS_VREDRAW;
     windowClass.hIcon = LoadIcon(instance_, MAKEINTRESOURCE(101));
     windowClass.hIconSm = windowClass.hIcon;
+    if (RegisterClassEx(&windowClass) == 0) return false;
 
-    if (RegisterClassEx(&windowClass) == 0)
-    {
-        return false;
-    }
-
+    // The caption is drawn by the launcher; WS_OVERLAPPEDWINDOW keeps snapping,
+    // the shadow and the minimize/maximize animations.
     constexpr DWORD windowStyle = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
     // Include native children in the final buffered presentation, not just the GDI+ canvas.
     constexpr DWORD extendedStyle = WS_EX_COMPOSITED;
@@ -107,47 +190,38 @@ bool MainPage::create(int showCommand, bool checkLauncherUpdate, std::wstring up
     const RECT& workArea = monitorInfo.rcWork;
     const UINT dpi = GetDpiForSystem();
     const float scale = std::min({static_cast<float>(dpi) / 96.0F,
-        static_cast<float>(workArea.right - workArea.left - 48) / LauncherConstants::WindowWidth,
-        static_cast<float>(workArea.bottom - workArea.top - 96) / LauncherConstants::WindowHeight});
-    RECT desiredRect{0, 0, static_cast<LONG>(LauncherConstants::WindowWidth * scale),
-                           static_cast<LONG>(LauncherConstants::WindowHeight * scale)};
-    AdjustWindowRectExForDpi(&desiredRect, windowStyle, FALSE, extendedStyle, dpi);
-    const int width = desiredRect.right - desiredRect.left;
-    const int height = desiredRect.bottom - desiredRect.top;
-    const int x = std::max(workArea.left,
-        workArea.left + ((workArea.right - workArea.left) - width) / 2);
-    const int y = std::max(workArea.top,
-        workArea.top + ((workArea.bottom - workArea.top) - height) / 2);
+        static_cast<float>(workArea.right - workArea.left - 48) / WindowWidth,
+        static_cast<float>(workArea.bottom - workArea.top - 48) / WindowHeight});
+    const int width = static_cast<int>(WindowWidth * scale);
+    const int height = static_cast<int>(WindowHeight * scale);
+    const int x = std::max(workArea.left, workArea.left + ((workArea.right - workArea.left) - width) / 2);
+    const int y = std::max(workArea.top, workArea.top + ((workArea.bottom - workArea.top) - height) / 2);
 
-    window_ = CreateWindowEx(
-        extendedStyle,
-        LauncherConstants::WindowClassName,
-        LauncherConstants::WindowTitle,
-        windowStyle,
-        x,
-        y,
-        width,
-        height,
-        nullptr,
-        nullptr,
-        instance_,
-        this);
+    window_ = CreateWindowEx(extendedStyle, WindowClassName, WindowTitle, windowStyle,
+        x, y, width, height, nullptr, nullptr, instance_, this);
+    if (window_ == nullptr) return false;
 
-    if (window_ == nullptr)
-    {
-        return false;
-    }
+    BOOL dark = TRUE;
+    DwmSetWindowAttribute(window_, 20, &dark, sizeof(dark));            // DWMWA_USE_IMMERSIVE_DARK_MODE
+    const int corners = 2;                                              // DWMWCP_ROUND
+    DwmSetWindowAttribute(window_, 33, &corners, sizeof(corners));      // DWMWA_WINDOW_CORNER_PREFERENCE
+    const COLORREF border = RGB(42, 43, 58);
+    DwmSetWindowAttribute(window_, 34, &border, sizeof(border));        // DWMWA_BORDER_COLOR
+    const MARGINS shadow{0, 0, 0, 1};
+    DwmExtendFrameIntoClientArea(window_, &shadow);
+    SetWindowPos(window_, nullptr, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 
-    enableDarkTitleBar();
     updateMotionPreference();
-    createActionControls();
-    createNicknameInput();
+    createControls();
     if (!settingsPage_.create(window_, instance_)) { DestroyWindow(window_); return false; }
+    settingsPage_.show(false);
     layoutControls();
+    checkVersionToast();
     syncControls();
-    portalEntrance_=motionEnabled_ ? 0.0F : 1.0F;
-    portalBurst_=motionEnabled_ ? 1.0F : 0.0F;
+    portalEntrance_ = motionEnabled_ ? 0.0F : 1.0F;
+    portalBurst_ = motionEnabled_ ? 1.0F : 0.0F;
     ShowWindow(window_, showCommand);
+    SendMessageW(window_, WM_CHANGEUISTATE, MAKEWPARAM(UIS_INITIALIZE, 0), 0);
     redraw();
     UpdateWindow(window_);
     if (checkLauncherUpdate) checkLauncherUpdateAsync();
@@ -158,83 +232,149 @@ bool MainPage::create(int showCommand, bool checkLauncherUpdate, std::wstring up
 LRESULT CALLBACK MainPage::windowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 {
     MainPage* page = nullptr;
-
-    if (message == WM_NCCREATE)
-    {
+    if (message == WM_NCCREATE) {
         const auto createData = reinterpret_cast<CREATESTRUCT*>(lParam);
         page = static_cast<MainPage*>(createData->lpCreateParams);
         page->window_ = window;
         SetWindowLongPtr(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(page));
-    }
-    else
-    {
+    } else {
         page = reinterpret_cast<MainPage*>(GetWindowLongPtr(window, GWLP_USERDATA));
     }
+    return page != nullptr ? page->handleMessage(message, wParam, lParam) : DefWindowProc(window, message, wParam, lParam);
+}
 
-    return page != nullptr
-        ? page->handleMessage(message, wParam, lParam)
-        : DefWindowProc(window, message, wParam, lParam);
+LRESULT MainPage::hitTest(LPARAM lParam) const
+{
+    POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+    ScreenToClient(window_, &point);
+    RECT client{};
+    GetClientRect(window_, &client);
+    if (!IsZoomed(window_)) {
+        const int frameX = frameThickness(window_, false);
+        const int frameY = frameThickness(window_, true);
+        const bool left = point.x < frameX, right = point.x >= client.right - frameX;
+        const bool top = point.y < frameY, bottom = point.y >= client.bottom - frameY;
+        if (top && left) return HTTOPLEFT;
+        if (top && right) return HTTOPRIGHT;
+        if (bottom && left) return HTBOTTOMLEFT;
+        if (bottom && right) return HTBOTTOMRIGHT;
+        if (left) return HTLEFT;
+        if (right) return HTRIGHT;
+        if (top) return HTTOP;
+        if (bottom) return HTBOTTOM;
+    }
+    // Children (caption and navigation buttons) receive their own hits first.
+    if (static_cast<float>(point.y) < TitleBarHeight * viewScale_) return HTCAPTION;
+    return HTCLIENT;
 }
 
 LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
     {
+    case WM_NCCALCSIZE:
+        if (wParam && IsZoomed(window_)) {
+            // A maximized window extends past the monitor by its frame; keep the content on screen.
+            auto& rect = reinterpret_cast<NCCALCSIZE_PARAMS*>(lParam)->rgrc[0];
+            const int frameX = frameThickness(window_, false), frameY = frameThickness(window_, true);
+            rect.left += frameX; rect.right -= frameX; rect.top += frameY; rect.bottom -= frameY;
+        }
+        return 0;
+    case WM_NCHITTEST:
+        return hitTest(lParam);
+    case WM_NCACTIVATE:
+        windowActive_ = wParam != FALSE;
+        redraw();
+        // -1 keeps DefWindowProc from painting a native frame over the custom title bar.
+        return DefWindowProc(window_, message, wParam, -1);
     case WM_PAINT:
         paint();
         return 0;
     case WM_PRINTCLIENT:
-        if(prepareFrame()) {
+        if (prepareFrame()) {
             Gdiplus::Graphics output(reinterpret_cast<HDC>(wParam));
             output.SetCompositingMode(Gdiplus::CompositingModeSourceCopy);
-            const int width=static_cast<int>(frame_->GetWidth()),height=static_cast<int>(frame_->GetHeight());
-            output.DrawImage(frame_.get(),Gdiplus::Rect(0,0,width,height),0,0,width,height,Gdiplus::UnitPixel);
+            const int width = static_cast<int>(frame_->GetWidth()), height = static_cast<int>(frame_->GetHeight());
+            output.DrawImage(frame_.get(), Gdiplus::Rect(0, 0, width, height), 0, 0, width, height, Gdiplus::UnitPixel);
         }
         return 0;
     case WM_ERASEBKGND:
         return 1;
-    case LauncherConstants::InterfaceRedrawMessage:
+    case InterfaceRedrawMessage:
         redraw();
         return 0;
     case WM_SIZE:
-        leftTransition_.reset();transitionTime_=1;
-        pageTravel_=1;
         if (wParam != SIZE_MINIMIZED) layoutControls();
         redraw();
         return 0;
     case WM_SHOWWINDOW:
-        if(!wParam) portalHovered_=false;
+        if (!wParam) portalHovered_ = false;
         // Visibility is applied after this message; defer scheduling until that state is observable.
-        PostMessage(window_,LauncherConstants::InterfaceRedrawMessage,0,0);
+        PostMessage(window_, InterfaceRedrawMessage, 0, 0);
         return 0;
     case WM_ACTIVATEAPP:
-        PostMessage(window_,LauncherConstants::InterfaceRedrawMessage,0,0);return 0;
+        PostMessage(window_, InterfaceRedrawMessage, 0, 0);
+        return 0;
     case WM_MOUSEMOVE:
     {
-        const float x=(static_cast<float>(GET_X_LPARAM(lParam))-offsetX_)/viewScale_-pageOffset();
-        const float y=(static_cast<float>(GET_Y_LPARAM(lParam))-offsetY_)/viewScale_;
-        const bool hovered=!settingsVisible_ && !installation_.visible && HeroBounds.Contains(x,y);
-        if(hovered!=portalHovered_) {
-            portalHovered_=hovered;
-            TRACKMOUSEEVENT track{sizeof(track),TME_LEAVE,window_,0};TrackMouseEvent(&track);
+        const auto point = toContent(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+        bool changed = false;
+        const bool hovered = page_ == LauncherPage::Home && !installation_.visible &&
+            Layout::Hero.Contains(point.X, point.Y);
+        if (hovered != portalHovered_) { portalHovered_ = hovered; changed = true; }
+        if (page_ == LauncherPage::Mods) {
+            const auto hit = ModsView::hitTest(modsModel(), point.X, point.Y);
+            const int action = hit.action == ModsView::Action::Toggle ? 0 : hit.action == ModsView::Action::Remove ? 1 : -1;
+            if (hit.row != modsHoverRow_ || action != modsHoverAction_) {
+                modsHoverRow_ = hit.row; modsHoverAction_ = action; changed = true;
+            }
+        }
+        if (changed) {
+            TRACKMOUSEEVENT track{sizeof(track), TME_LEAVE, window_, 0};
+            TrackMouseEvent(&track);
             redraw();
         }
         return 0;
     }
     case WM_MOUSELEAVE:
-        portalHovered_=false;redraw();return 0;
+        portalHovered_ = false;
+        modsHoverRow_ = modsHoverAction_ = -1;
+        redraw();
+        return 0;
+    case WM_SETCURSOR:
+        if (reinterpret_cast<HWND>(wParam) == window_ && LOWORD(lParam) == HTCLIENT &&
+            page_ == LauncherPage::Mods && modsHoverAction_ >= 0) {
+            SetCursor(LoadCursor(nullptr, IDC_HAND));
+            return TRUE;
+        }
+        return DefWindowProc(window_, message, wParam, lParam);
+    case WM_LBUTTONUP:
+        if (page_ == LauncherPage::Mods) handleModsClick(toContent(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)));
+        return 0;
+    case WM_MOUSEWHEEL:
+    {
+        POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+        ScreenToClient(window_, &point);
+        scrollContent(GET_WHEEL_DELTA_WPARAM(wParam), toContent(point.x, point.y));
+        return 0;
+    }
     case WM_DPICHANGED:
     {
         const auto rect = reinterpret_cast<RECT*>(lParam);
-        SetWindowPos(window_, nullptr, rect->left, rect->top,
-                     rect->right - rect->left, rect->bottom - rect->top,
-                     SWP_NOZORDER | SWP_NOACTIVATE);
+        SetWindowPos(window_, nullptr, rect->left, rect->top, rect->right - rect->left, rect->bottom - rect->top,
+            SWP_NOZORDER | SWP_NOACTIVATE);
         return 0;
     }
     case WM_GETMINMAXINFO:
     {
         auto limits = reinterpret_cast<MINMAXINFO*>(lParam);
-        limits->ptMinTrackSize = {900, 590};
+        float scale = static_cast<float>(GetDpiForWindow(window_)) / 96.0F;
+        MONITORINFO info{sizeof(info)};
+        if (GetMonitorInfo(MonitorFromWindow(window_, MONITOR_DEFAULTTONEAREST), &info)) {
+            scale = std::min({scale, static_cast<float>(info.rcWork.right - info.rcWork.left) / WindowWidth,
+                static_cast<float>(info.rcWork.bottom - info.rcWork.top) / WindowHeight});
+        }
+        limits->ptMinTrackSize = {static_cast<LONG>(MinimumWindowWidth * scale), static_cast<LONG>(MinimumWindowHeight * scale)};
         return 0;
     }
     case WM_SETTINGCHANGE:
@@ -242,69 +382,88 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         redraw();
         return 0;
     case WM_COMMAND:
-        if (settingsVisible_ && SettingsPage::containsId(LOWORD(wParam))) {
-            const int id = LOWORD(wParam);
-            if (HIWORD(wParam) == BN_CLICKED && (id == SettingsPage::Back || id == SettingsPage::Cancel)) hideSettings();
-            else if (HIWORD(wParam) == BN_CLICKED && id == SettingsPage::Save) saveSettings();
-            else settingsPage_.handle(id, HIWORD(wParam));
+    {
+        const int id = LOWORD(wParam);
+        const int notification = HIWORD(wParam);
+        if (page_ == LauncherPage::Settings && SettingsPage::containsId(id)) {
+            if (notification == BN_CLICKED && id == SettingsPage::Save) saveSettings();
+            else settingsPage_.handle(id, notification);
             return 0;
         }
-        if (HIWORD(wParam) == BN_CLICKED) {
-            if (LOWORD(wParam) == LauncherConstants::UpdateDownloadButtonId) {
-                ShellExecuteW(window_, L"open", std::wstring(LauncherConfig::LauncherDownloadUrl).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-                return 0;
-            }
-            switch (LOWORD(wParam)) {
-            case LauncherConstants::CancelInstallationButtonId: cancelInstallation(); break;
-            case LauncherConstants::InstallationLogButtonId: openInstallationLog(); break;
-            case LauncherConstants::PlayButtonId: handlePrimaryAction(); break;
-            case LauncherConstants::OfflineButtonId:
-                if (viewState_.playEnabled) { originalMode_ = false; ShowWindow(nicknameInput_, SW_SHOW); redraw(); }
-                break;
-            case LauncherConstants::OriginalButtonId:
-                if (viewState_.playEnabled) { originalMode_ = true; ShowWindow(nicknameInput_, SW_HIDE); redraw(); }
-                break;
-            case LauncherConstants::SettingsButtonId: showSettings(); break;
-            default: break;
-            }
-        } else if (LOWORD(wParam) == LauncherConstants::NicknameInputId &&
-                   (HIWORD(wParam) == EN_SETFOCUS || HIWORD(wParam) == EN_KILLFOCUS)) redraw();
+        if (id == NicknameInputId) {
+            if (notification == EN_CHANGE || notification == EN_SETFOCUS || notification == EN_KILLFOCUS) redraw();
+            return 0;
+        }
+        if (notification == BN_CLICKED) handleCommand(id, notification);
         return 0;
+    }
     case WM_HSCROLL:
-        if (settingsVisible_) settingsPage_.handleMemoryScroll(reinterpret_cast<HWND>(lParam));
+        if (page_ == LauncherPage::Settings) settingsPage_.handleMemoryScroll(reinterpret_cast<HWND>(lParam));
         return 0;
     case WM_DRAWITEM:
     {
         const auto item = reinterpret_cast<DRAWITEMSTRUCT*>(lParam);
         if (item->CtlType != ODT_BUTTON) return DefWindowProc(window_, message, wParam, lParam);
         if (!prepareFrame()) return TRUE;
-        RECT button{}; GetWindowRect(item->hwndItem, &button);
+        RECT button{};
+        GetWindowRect(item->hwndItem, &button);
         MapWindowPoints(nullptr, window_, reinterpret_cast<POINT*>(&button), 2);
         Gdiplus::Graphics output(item->hDC);
         output.SetCompositingMode(Gdiplus::CompositingModeSourceCopy);
-        output.DrawImage(frame_.get(), Gdiplus::Rect(0,0,button.right-button.left,button.bottom-button.top),
-            button.left,button.top,button.right-button.left,button.bottom-button.top,Gdiplus::UnitPixel);
+        output.DrawImage(frame_.get(), Gdiplus::Rect(0, 0, button.right - button.left, button.bottom - button.top),
+            button.left, button.top, button.right - button.left, button.bottom - button.top, Gdiplus::UnitPixel);
         return TRUE;
     }
     case WM_TIMER:
-        if (wParam == LauncherConstants::GameProcessTimerId) pollGameProcess();
-        else if (wParam == LauncherConstants::AnimationTimerId) animate();
-        else if (wParam == LauncherConstants::InstallationProgressTimerId) consumeInstallationProgress();
+        if (wParam == GameProcessTimerId) pollGameProcess();
+        else if (wParam == AnimationTimerId) animate();
+        else if (wParam == InstallationProgressTimerId) consumeInstallationProgress();
+        else if (wParam == PlaytimeTimerId) { flushPlaytime(); updateTrayTooltip(); redraw(); }
         return 0;
-    case LauncherConstants::InstallationProgressMessage:
+    case TrayIconMessage:
+        switch (LOWORD(lParam)) {
+        case NIN_SELECT:
+        case NIN_KEYSELECT:
+        case WM_LBUTTONDBLCLK:
+            restoreFromTray();
+            break;
+        case WM_CONTEXTMENU:
+            showTrayMenu({GET_X_LPARAM(wParam), GET_Y_LPARAM(wParam)});
+            break;
+        default:
+            break;
+        }
+        return 0;
+    case InstallationProgressMessage:
         consumeInstallationProgress();
         return 0;
-    case LauncherConstants::LauncherUpdateProgressMessage:
+    case NewsResultMessage:
+    {
+        std::unique_ptr<NewsFeedResult> result(reinterpret_cast<NewsFeedResult*>(lParam));
+        if (newsThread_.joinable()) newsThread_.join();
+        newsLoading_ = false;
+        if (result) {
+            std::vector<NewsItem> items;
+            if (result->success) { items = std::move(result->items); newsError_.clear(); }
+            else newsError_ = L"Não foi possível carregar os avisos do servidor agora.";
+            items.push_back(NewsFeed::releaseNotes());
+            viewState_.news = std::move(items);
+            newsFirst_ = 0;
+        }
+        redraw();
+        return 0;
+    }
+    case LauncherUpdateProgressMessage:
     {
         std::unique_ptr<LauncherUpdateProgress> progress(reinterpret_cast<LauncherUpdateProgress*>(lParam));
         if (progress) applyLauncherUpdateProgress(*progress);
         return 0;
     }
-    case LauncherConstants::LauncherUpdateResultMessage:
+    case LauncherUpdateResultMessage:
     {
         std::unique_ptr<LauncherUpdateResult> result(reinterpret_cast<LauncherUpdateResult*>(lParam));
         if (!result) return 0;
-        if (result->restart) {PostMessageW(window_, WM_CLOSE, 0, 0); return 0;}
+        if (result->restart) { PostMessageW(window_, WM_CLOSE, 0, 0); return 0; }
         if (result->updateAvailable) {
             updatingLauncher_ = false;
             updateWarning_.clear();
@@ -313,9 +472,8 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             viewState_.operation = LauncherOperation::UpdateAvailable;
             viewState_.headline = L"Atualização disponível";
             viewState_.operationMessage = L"Uma nova versão do launcher está pronta para baixar.";
-            viewState_.primaryActionLabel = L"AGUARDANDO CONFIRMAÇÃO";
+            viewState_.primaryActionLabel = L"AGUARDANDO";
             viewState_.playEnabled = false;
-            syncControls();
             redraw();
 
             std::wstring prompt = L"Há uma nova versão do Eternal Launcher disponível";
@@ -334,8 +492,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
                 viewState_.operation = LauncherOperation::CheckingUpdates;
                 viewState_.headline = L"Conferindo a instância";
                 viewState_.operationMessage = L"Verificando a instalação e os mods...";
-                viewState_.primaryActionLabel = L"JOGAR AGORA";
-                syncControls();
+                viewState_.primaryActionLabel = L"JOGAR";
                 checkFileServerAsync();
                 redraw();
             }
@@ -352,117 +509,132 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         redraw();
         return 0;
     }
-    case LauncherConstants::FileServerResultMessage:
+    case FileServerResultMessage:
     {
         // Ownership of the result moves to the UI thread at this point.
-        std::unique_ptr<FileServerManifestResponse> response(
-            reinterpret_cast<FileServerManifestResponse*>(lParam));
-        if (response != nullptr)
-        {
-            applyFileServerResult(*response);
-        }
+        std::unique_ptr<FileServerManifestResponse> response(reinterpret_cast<FileServerManifestResponse*>(lParam));
+        if (response) applyFileServerResult(*response);
         return 0;
     }
-    case LauncherConstants::MicrosoftDeviceCodeMessage:
+    case MicrosoftDeviceCodeMessage:
     {
         std::unique_ptr<MicrosoftDeviceCode> code(reinterpret_cast<MicrosoftDeviceCode*>(lParam));
-        if (code)
-        {
-            const std::wstring prompt = L"Abra " + code->url +
-                L" no navegador e digite o código:\n\n" + code->code;
+        if (code) {
+            const std::wstring prompt = L"Abra " + code->url + L" no navegador e digite o código:\n\n" + code->code;
             MessageBox(window_, prompt.c_str(), L"Entrar com Microsoft", MB_OK | MB_ICONINFORMATION);
         }
         return 0;
     }
-    case LauncherConstants::MicrosoftAuthResultMessage:
+    case MicrosoftAuthResultMessage:
     {
         std::unique_ptr<MicrosoftAuthResult> result(reinterpret_cast<MicrosoftAuthResult*>(lParam));
         if (microsoftAuthThread_.joinable()) microsoftAuthThread_.join();
-        if (result && result->success)
-        {
+        if (result && result->success) {
             microsoftIdentity_ = result->identity;
             pendingIdentity_ = microsoftIdentity_;
             pendingNickname_ = microsoftIdentity_.name;
             redraw();
             beginPlay();
-        }
-        else
-        {
+        } else {
             viewState_.operation = LauncherOperation::AuthenticationError;
             viewState_.headline = L"Falha no login Microsoft";
             viewState_.operationMessage = result ? result->message : L"Falha desconhecida.";
             viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
             viewState_.playEnabled = true;
             redraw();
-            MessageBox(window_, viewState_.operationMessage.c_str(), L"Login Microsoft",
-                       MB_OK | MB_ICONWARNING);
+            MessageBox(window_, viewState_.operationMessage.c_str(), L"Login Microsoft", MB_OK | MB_ICONWARNING);
         }
         return 0;
     }
     case WM_CTLCOLORBTN:
         SetBkColor(reinterpret_cast<HDC>(wParam), RGB(13, 14, 20));
         return reinterpret_cast<LRESULT>(backgroundBrush_);
-    case WM_CTLCOLORSTATIC:
     case WM_CTLCOLOREDIT:
+    case WM_CTLCOLORSTATIC:
     {
-        const HDC editContext = reinterpret_cast<HDC>(wParam);
-        SetTextColor(editContext, RGB(245, 247, 250));
-        SetBkColor(editContext, RGB(30, 31, 44));
+        // WM_CTLCOLORSTATIC reaches the parent for disabled and read-only EDIT controls.
+        const HDC context = reinterpret_cast<HDC>(wParam);
+        const bool nickname = reinterpret_cast<HWND>(lParam) == nicknameInput_;
+        const bool disabled = message == WM_CTLCOLORSTATIC;
+        SetTextColor(context, disabled ? RGB(150, 151, 172) : RGB(245, 247, 250));
+        if (nickname) { SetBkColor(context, RGB(22, 23, 33)); return reinterpret_cast<LRESULT>(surfaceBrush_); }
+        if (disabled) { SetBkColor(context, RGB(27, 28, 40)); return reinterpret_cast<LRESULT>(sunkenBrush_); }
+        SetBkColor(context, RGB(30, 31, 44));
         return reinterpret_cast<LRESULT>(inputBrush_);
     }
+    case WM_QUERYENDSESSION:
+        flushPlaytime();
+        return TRUE;
+    case WM_ENDSESSION:
+        if (wParam) flushPlaytime();
+        return 0;
     case WM_CLOSE:
-    {
-        if(installation_.running) {
-            closing_=true;
+        if (installation_.running) {
+            closing_ = true;
             cancelInstallation();
             return 0; // Continue pumping messages until the installation's terminal event.
         }
-        installationThread_.request_stop();
-        fileServerThread_.request_stop();
-        microsoftAuthThread_.request_stop();
-        if(installationThread_.joinable()) installationThread_.join();
-        if(fileServerThread_.joinable()) fileServerThread_.join();
-        if(microsoftAuthThread_.joinable()) microsoftAuthThread_.join();
-        launcherUpdateThread_.request_stop();
-        if (launcherUpdateThread_.joinable()) launcherUpdateThread_.join();
-        // Drain ownership-bearing messages before the HWND disappears.
-        MSG pending{};
-        while (PeekMessageW(&pending, window_, LauncherConstants::LauncherUpdateProgressMessage,
-            LauncherConstants::LauncherUpdateResultMessage, PM_REMOVE)) {
-            if (pending.message == LauncherConstants::LauncherUpdateProgressMessage)
-                delete reinterpret_cast<LauncherUpdateProgress*>(pending.lParam);
-            else delete reinterpret_cast<LauncherUpdateResult*>(pending.lParam);
+        if (!forceExit_ && trayIcon_.visible() && gameRunning()) {
+            // Closing while Minecraft runs keeps counting play time from the notification area.
+            hideToTray(true);
+            return 0;
         }
-        while(PeekMessageW(&pending,window_,LauncherConstants::FileServerResultMessage,LauncherConstants::MicrosoftAuthResultMessage,PM_REMOVE)) {
-            if(pending.message==LauncherConstants::FileServerResultMessage) delete reinterpret_cast<FileServerManifestResponse*>(pending.lParam);
-            else if(pending.message==LauncherConstants::MicrosoftDeviceCodeMessage) delete reinterpret_cast<MicrosoftDeviceCode*>(pending.lParam);
-            else if(pending.message==LauncherConstants::MicrosoftAuthResultMessage) delete reinterpret_cast<MicrosoftAuthResult*>(pending.lParam);
-        }
-        // Also save when the user closes without clicking Play.
-        std::array<wchar_t, 32> nickname{};
-        GetWindowText(nicknameInput_, nickname.data(), static_cast<int>(nickname.size()));
-        if (NicknameStore::isValid(nickname.data()))
-        {
-            (void)NicknameStore::save(
-                LauncherSettingsStore::dataDirectory(), nickname.data());
-        }
-        DestroyWindow(window_);
+        shutdown();
         return 0;
-    }
     case WM_DESTROY:
         launcherUpdateThread_.request_stop();
-        KillTimer(window_, LauncherConstants::GameProcessTimerId);
-        KillTimer(window_, LauncherConstants::AnimationTimerId);
-        KillTimer(window_, LauncherConstants::InstallationProgressTimerId);
+        KillTimer(window_, GameProcessTimerId);
+        KillTimer(window_, AnimationTimerId);
+        KillTimer(window_, InstallationProgressTimerId);
+        KillTimer(window_, PlaytimeTimerId);
+        trayIcon_.hide();
         fileServerThread_.request_stop();
         installationThread_.request_stop();
         microsoftAuthThread_.request_stop();
+        newsThread_.request_stop();
         PostQuitMessage(0);
         return 0;
     default:
+        if (message == TrayIcon::taskbarCreatedMessage()) { trayIcon_.restore(); return 0; }
         return DefWindowProc(window_, message, wParam, lParam);
     }
 }
+
+void MainPage::shutdown()
+{
+    installationThread_.request_stop();
+    fileServerThread_.request_stop();
+    microsoftAuthThread_.request_stop();
+    newsThread_.request_stop();
+    if (installationThread_.joinable()) installationThread_.join();
+    if (fileServerThread_.joinable()) fileServerThread_.join();
+    if (microsoftAuthThread_.joinable()) microsoftAuthThread_.join();
+    if (newsThread_.joinable()) newsThread_.join();
+    launcherUpdateThread_.request_stop();
+    if (launcherUpdateThread_.joinable()) launcherUpdateThread_.join();
+    // Drain ownership-bearing messages before the HWND disappears.
+    MSG pending{};
+    while (PeekMessageW(&pending, window_, LauncherUpdateProgressMessage, LauncherUpdateResultMessage, PM_REMOVE)) {
+        if (pending.message == LauncherUpdateProgressMessage) delete reinterpret_cast<LauncherUpdateProgress*>(pending.lParam);
+        else delete reinterpret_cast<LauncherUpdateResult*>(pending.lParam);
+    }
+    while (PeekMessageW(&pending, window_, FileServerResultMessage, MicrosoftAuthResultMessage, PM_REMOVE)) {
+        if (pending.message == FileServerResultMessage) delete reinterpret_cast<FileServerManifestResponse*>(pending.lParam);
+        else if (pending.message == MicrosoftDeviceCodeMessage) delete reinterpret_cast<MicrosoftDeviceCode*>(pending.lParam);
+        else if (pending.message == MicrosoftAuthResultMessage) delete reinterpret_cast<MicrosoftAuthResult*>(pending.lParam);
+    }
+    while (PeekMessageW(&pending, window_, NewsResultMessage, NewsResultMessage, PM_REMOVE))
+        delete reinterpret_cast<NewsFeedResult*>(pending.lParam);
+    // Also save when the user closes without clicking Play.
+    const auto nickname = nicknameText();
+    if (NicknameStore::isValid(nickname)) (void)NicknameStore::save(LauncherSettingsStore::dataDirectory(), nickname);
+    finishPlaySession();
+    DestroyWindow(window_);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Drawing
+// ---------------------------------------------------------------------------------------------
 
 void MainPage::paint()
 {
@@ -472,8 +644,8 @@ void MainPage::paint()
         Gdiplus::Graphics output(dc);
         output.SetCompositingMode(Gdiplus::CompositingModeSourceCopy);
         // Explicit pixel bounds prevent GDI+ from scaling the buffer again at 125%/150% DPI.
-        const int width=static_cast<int>(frame_->GetWidth()),height=static_cast<int>(frame_->GetHeight());
-        output.DrawImage(frame_.get(),Gdiplus::Rect(0,0,width,height),0,0,width,height,Gdiplus::UnitPixel);
+        const int width = static_cast<int>(frame_->GetWidth()), height = static_cast<int>(frame_->GetHeight());
+        output.DrawImage(frame_.get(), Gdiplus::Rect(0, 0, width, height), 0, 0, width, height, Gdiplus::UnitPixel);
     }
     EndPaint(window_, &ps);
 }
@@ -491,211 +663,944 @@ bool MainPage::prepareFrame()
     if (frameDirty_) {
         // Finish the whole frame before any child copies its pixels. A child can paint before WM_PAINT.
         Gdiplus::Graphics graphics(frame_.get());
-        render(graphics);
+        render(graphics, static_cast<float>(client.right), static_cast<float>(client.bottom));
         graphics.Flush(Gdiplus::FlushIntentionSync);
         frameDirty_ = false;
     }
     return true;
 }
 
-bool MainPage::renderSettingsTransition(Gdiplus::Graphics& g)
+ControlVisual MainPage::visual(int id, bool preview) const
 {
-    RECT client{};GetClientRect(window_,&client);
-    if(client.right<=0 || client.bottom<=0) return false;
-    if(!settingsTransitionFrame_) {
-        auto cache=std::make_unique<Gdiplus::Bitmap>(client.right,client.bottom,PixelFormat32bppPARGB);
-        if(cache->GetLastStatus()!=Gdiplus::Ok) return false;
-        Gdiplus::Graphics drawing(cache.get());
-        render(drawing,false,true);
-        drawing.Flush(Gdiplus::FlushIntentionSync);
-        settingsTransitionFrame_=std::move(cache);
+    ControlVisual result;
+    result.enabled = controlEnabled(id);
+    if (preview) return result;
+    const bool keyboardCues = window_ && (SendMessageW(window_, WM_QUERYUISTATE, 0, 0) & UISF_HIDEFOCUS) == 0;
+    if (id == NicknameInputId) {
+        // The EDIT always shows its caret; the underline marks focus even after a mouse click.
+        result.focused = nicknameInput_ && GetFocus() == nicknameInput_;
+        return result;
     }
-    // Reuse the current form at rest. Real native controls still move/paint independently.
-    // Integer pixel copies keep ClearType sharp and leave the fixed header untouched.
-    const int width=client.right,height=client.bottom;
-    const int bodyY=std::clamp(static_cast<int>(std::floor(offsetY_+104*viewScale_)),0,height);
-    const int travel=static_cast<int>(std::round(pageOffset()*viewScale_));
-    const auto saved=g.Save();
-    g.Clear(Theme::Background);
-    g.SetCompositingMode(Gdiplus::CompositingModeSourceCopy);
-    g.SetInterpolationMode(Gdiplus::InterpolationModeNearestNeighbor);
-    g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
-    g.DrawImage(settingsTransitionFrame_.get(),Gdiplus::Rect(0,0,width,bodyY),0,0,width,bodyY,Gdiplus::UnitPixel);
-    g.SetClip(Gdiplus::Rect(0,bodyY,width,height-bodyY),Gdiplus::CombineModeIntersect);
-    g.DrawImage(settingsTransitionFrame_.get(),Gdiplus::Rect(travel,0,width,height),0,0,width,height,Gdiplus::UnitPixel);
-    g.Restore(saved);
-    return true;
+    const auto* control = findControl(id);
+    if (!control || !control->window) return result;
+    result.hover = result.enabled ? control->hover : 0;
+    result.focused = keyboardCues && GetFocus() == control->window;
+    result.pressed = (SendMessageW(control->window, BM_GETSTATE, 0, 0) & BST_PUSHED) != 0;
+    return result;
 }
 
-void MainPage::render(Gdiplus::Graphics& g, bool preview, bool restingSettings)
+HomeModel MainPage::homeModel(bool preview) const
 {
-    if(!preview && !restingSettings && settingsVisible_ && pageTravel_<1 && renderSettingsTransition(g)) return;
+    HomeModel model;
+    auto& player = model.player;
+    player.state = &viewState_;
+    player.originalMode = originalMode_;
+    player.microsoftName = microsoftIdentity_.name;
+    const auto nickname = preview ? std::wstring(L"Steve") : nicknameText();
+    if (preview && !originalMode_) player.previewNickname = nickname;
+    player.nicknameEmpty = nickname.empty();
+    player.nicknameValid = NicknameStore::isValid(nickname);
+    player.identitySelection = preview ? (originalMode_ ? 1.0F : 0.0F) : identitySelection_;
+    const auto now = wallClock();
+    const auto record = playSession_.active() ? playSession_.snapshot(PlaySession::Clock::now(), now) : playtime_;
+    player.playing = playSession_.active() || viewState_.operation == LauncherOperation::MinecraftRunning;
+    player.lastPlayed = player.playing ? std::wstring(L"Agora") : PlaytimeStore::formatLastPlayed(record.lastPlayed, now);
+    player.totalPlayed = record.totalSeconds > 0 || player.playing ? PlaytimeStore::formatDuration(record.totalSeconds) : std::wstring(L"—");
+    const bool busy = !viewState_.playEnabled && viewState_.operation != LauncherOperation::MinecraftRunning &&
+        viewState_.operation != LauncherOperation::UpdateAvailable;
+    if (installation_.visible && installation_.running)
+        player.progress = InstallationPanelComponent::overallPercent(installation_, preview ? -1 : installationFill_);
+    else if (busy) player.progress = viewState_.progressVisible ? (preview ? static_cast<float>(viewState_.progressPercent) : displayedProgress_) : 0;
+    player.phase = animationPhase_;
+    player.updateWarning = updateWarning_;
+    player.installationVisible = installation_.visible;
+
+    const int serverMods = mods_.manifestKnown ? static_cast<int>(mods_.server.size()) : -1;
+    model.chips = {L"Minecraft " + std::wstring(LauncherConfig::MinecraftVersion), L"Forge " + std::wstring(LauncherConfig::ForgeVersion),
+        serverMods >= 0 ? std::to_wstring(serverMods) + L" mods" : std::wstring(L"Modpack do grupo")};
+    model.reveal = preview ? 1 : portalEntrance_;
+    model.energy = preview || !motionEnabled_ ? 0 : std::max({portalEnergy_, portalBurst_, .28F});
+    model.phase = animationPhase_;
+    model.drift = preview ? 0 : particlePhase_;
+    model.toast = toastVisible_ && !installation_.visible;
+    model.toastText = toastText_;
+    model.serverMods = serverMods;
+    model.userMods = modsScanned_ ? static_cast<int>(mods_.user.size()) : -1;
+    return model;
+}
+
+ModsModel MainPage::modsModel() const
+{
+    ModsModel model;
+    model.inventory = &mods_;
+    model.serverScroll = serverScroll_;
+    model.userScroll = userScroll_;
+    model.hoveredRow = modsHoverRow_;
+    model.hoveredAction = modsHoverAction_;
+    model.message = modsMessage_;
+    model.messageError = modsMessageError_;
+    model.locked = gameRunning() || installation_.running;
+    return model;
+}
+
+void MainPage::render(Gdiplus::Graphics& g, float width, float height, bool preview)
+{
     g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
     g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
     g.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
     g.Clear(Theme::Background);
-    const auto saved = g.Save();
+    const ControlVisuals visuals = [this, preview](int id) { return visual(id, preview); };
+    const float s = viewScale_;
+
+    // Content: uniformly scaled and centered, clipped to the area beside the chrome.
+    auto saved = g.Save();
+    g.SetClip(Gdiplus::RectF(SidebarWidth * s, TitleBarHeight * s, width, height), Gdiplus::CombineModeIntersect);
     g.TranslateTransform(offsetX_, offsetY_);
-    g.ScaleTransform(viewScale_, viewScale_);
-    const auto focus = GetFocus();
-    header_.draw(g, static_cast<float>(LauncherConstants::WindowWidth), hover_[3],
-                 !preview && focus == actions_[3], !settingsVisible_);
-    if(!preview && !restingSettings) g.TranslateTransform(pageOffset(),0);
-    if (settingsVisible_) { settingsPage_.draw(g, preview); g.Restore(saved); return; }
-    if(installation_.visible) installationPanel_.draw(g,installation_,animationPhase_,
-        !preview && focus==cancelInstallationButton_,!preview && focus==installationLogButton_,
-        preview ? 0 : installationHover_[0],preview ? 0 : installationHover_[1],
-        !preview && cancelInstallationButton_ && (SendMessageW(cancelInstallationButton_,BM_GETSTATE,0,0)&BST_PUSHED),
-        !preview && installationLogButton_ && (SendMessageW(installationLogButton_,BM_GETSTATE,0,0)&BST_PUSHED),
-        preview ? -1 : installationFill_,preview ? std::array<float,6>{} : completionPulse_);
-    else {
-        hero_.draw(g, HeroBounds,preview ? 1 : portalEntrance_,
-            preview || !motionEnabled_ ? 0 : std::max({portalEnergy_,portalBurst_,.28F}),animationPhase_,particlePhase_);
-        statusPanel_.draw(g, StatusBounds, viewState_.statusCards);
-        newsPanel_.draw(g, NewsBounds, viewState_.featuredNews);
+    g.ScaleTransform(s, s);
+    switch (page_) {
+    case LauncherPage::Home:
+        home_.draw(g, homeModel(preview), hero_, visuals, !installation_.visible);
+        if (installation_.visible)
+            installationPanel_.draw(g, installation_, animationPhase_, visuals, preview ? -1 : installationFill_,
+                preview ? std::array<float, 6>{} : completionPulse_);
+        break;
+    case LauncherPage::News:
+        newsView_.draw(g, NewsModel{&viewState_.news, newsFirst_, newsLoading_, newsError_}, visuals);
+        break;
+    case LauncherPage::Mods:
+        modsView_.draw(g, modsModel(), visuals);
+        break;
+    case LauncherPage::Settings:
+        settingsPage_.draw(g, preview);
+        break;
+    case LauncherPage::Help:
+        helpView_.draw(g, HelpModel{helpMessage_, helpMessageError_, canRepair()}, visuals);
+        break;
     }
-    DrawingUtils::fillRoundedRectangle(g, {808,112,336,592}, Theme::PanelRadius, Theme::Surface);
-    int profileFocus = 0;
-    if (!preview) {
-        if (focus == actions_[0]) profileFocus = 1;
-        if (focus == actions_[1]) profileFocus = 2;
-        if (focus == nicknameInput_) profileFocus = 3;
-    }
-    playerProfile_.draw(g, ProfileBounds, originalMode_, microsoftIdentity_.name,
-                       hover_[0], hover_[1], profileFocus, viewState_.playEnabled,preview ? -1 : identitySelection_);
-    playPanel_.draw(g, PlayBounds, viewState_, hover_[2], !preview && focus == actions_[2],
-                   !preview && (SendMessage(actions_[2], BM_GETSTATE, 0, 0) & BST_PUSHED) != 0,
-                   preview ? 0 : playPress_,preview ? 1 : playSweep_,preview ? 0 : playPulse_,
-                   playLight_,animationPhase_,!preview && motionEnabled_);
-    const bool error = isLauncherError(viewState_.operation);
-    const bool needsInstallation = viewState_.operation == LauncherOperation::NeedsInstallation;
-    const bool busy = viewState_.progressVisible ||
-                      (!viewState_.playEnabled && viewState_.operation != LauncherOperation::MinecraftRunning);
-    const bool updateNotice = !busy && !updateWarning_.empty();
-    progress_.draw(g, ProgressBounds, viewState_.progressPercent,
-                   installation_.visible ? L"Acompanhe as etapas no painel ao lado." : updateNotice ? updateWarning_ : busy ? viewState_.operationMessage : error ? L"Consulte o status acima e tente novamente."
-                   : needsInstallation ? L"Java, Minecraft e Forge serão preparados ao jogar."
-                   : L"Nenhuma operação de arquivo em andamento.",
-                   busy && !installation_.visible, !error && !updateNotice, displayedProgress_, animationPhase_,
-                   installation_.visible ? L"Preparação do jogo" : updatingLauncher_ ? L"Atualização do launcher" : updateNotice ? L"Atualização pendente" : L"", updateNotice);
-    if (updateNotice && !preview && GetFocus() == updateDownloadButton_)
-        DrawingUtils::drawRoundedRectangle(g,{831,681,290,24},3,Theme::AccentLight,1);
-    if (preview && !originalMode_) {
-        const auto input = playerProfile_.inputBounds(ProfileBounds);
-        DrawingUtils::drawText(g, L"Steve", {input.X+14,input.Y,input.Width-28,input.Height},15,
-            Gdiplus::FontStyleRegular,Theme::TextPrimary,Gdiplus::StringAlignmentNear,Gdiplus::StringAlignmentCenter);
+    if (!preview && pageFade_ < 1) {
+        // New pages rise out of the background instead of sliding native controls around.
+        const float remaining = 1 - pageFade_;
+        g.ResetTransform();
+        Gdiplus::SolidBrush veil(Gdiplus::Color(static_cast<BYTE>(std::clamp(remaining * remaining * 255.0F, 0.0F, 255.0F)),
+            Theme::Background.GetR(), Theme::Background.GetG(), Theme::Background.GetB()));
+        g.FillRectangle(&veil, 0.0F, 0.0F, width, height);
     }
     g.Restore(saved);
-    if(!preview && leftTransition_ && transitionTime_<1) {
-        // A portal shutter replaces the old scene without superimposing two sets of copy.
-        // Native actions and keyboard focus remain outside this cached region.
-        const float remaining=1-transitionTime_;
-        const float edge=transitionBounds_.X+transitionBounds_.Width*(1-remaining*remaining*remaining);
-        const auto overlay=g.Save();
-        g.SetClip(Gdiplus::RectF(edge,transitionBounds_.Y,transitionBounds_.GetRight()-edge,transitionBounds_.Height),
-            Gdiplus::CombineModeIntersect);
-        g.DrawImage(leftTransition_.get(),transitionBounds_,0,0,
-            static_cast<float>(leftTransition_->GetWidth()),static_cast<float>(leftTransition_->GetHeight()),
-            Gdiplus::UnitPixel);
-        g.Restore(overlay);
+
+    // Chrome: anchored to the window edges, scaled only.
+    saved = g.Save();
+    g.ScaleTransform(s, s);
+    chrome_.draw(g, width / s, height / s, page_, window_ && IsZoomed(window_), windowActive_ || preview, visuals);
+    g.Restore(saved);
+}
+
+void MainPage::updateMotionPreference()
+{
+    BOOL enabled = TRUE;
+    if (SystemParametersInfo(SPI_GETCLIENTAREAANIMATION, 0, &enabled, 0)) motionEnabled_ = enabled != FALSE;
+    if (!motionEnabled_) {
+        for (auto& control : controls_) control.hover = control.hovered ? 1.0F : 0.0F;
+        displayedProgress_ = static_cast<float>(viewState_.progressPercent);
+        animationPhase_ = 0.45F;
+        portalEntrance_ = 1;
+        pageFade_ = 1;
     }
 }
 
-void MainPage::enableDarkTitleBar() const
+void MainPage::redraw(bool animationFrame)
 {
-    // Blend the native frame into the dark theme when the Windows version supports it.
-    constexpr DWORD useImmersiveDarkMode = 20;
-    BOOL enabled = TRUE;
-    DwmSetWindowAttribute(window_, useImmersiveDarkMode, &enabled, sizeof(enabled));
+    if (!window_) return;
+    if (pulseAttempt_ != installation_.attempt) {
+        pulseAttempt_ = installation_.attempt;
+        completionPulse_ = {};
+        previousSteps_.fill(InstallationStepState::Waiting);
+    }
+    for (std::size_t i = 0; i < completionPulse_.size(); ++i) {
+        if (installation_.steps[i] != previousSteps_[i] &&
+            (installation_.steps[i] == InstallationStepState::Complete || installation_.steps[i] == InstallationStepState::Available))
+            completionPulse_[i] = 1;
+        previousSteps_[i] = installation_.steps[i];
+        if (!installation_.visible) completionPulse_[i] = 0;
+    }
+    const auto& transfer = installation_.progress;
+    const float fillTarget = static_cast<float>(transfer.percent.value_or(0));
+    if (fillAttempt_ != installation_.attempt || fillStage_ != transfer.stage || fillTransfer_ != transfer.transferId ||
+        transfer.activity != InstallationActivity::Downloading || fillTarget < installationFill_) {
+        installationFill_ = 0;
+        fillAttempt_ = installation_.attempt; fillStage_ = transfer.stage; fillTransfer_ = transfer.transferId;
+    }
+    frameDirty_ = true;
+    if (!animationFrame) syncControls();
+
+    bool unsettled = std::abs(displayedProgress_ - static_cast<float>(viewState_.progressPercent)) > 0.1F || pageFade_ < 1;
+    for (const auto& control : controls_) unsettled |= std::abs(control.hover - (control.hovered ? 1.0F : 0.0F)) > 0.005F;
+    const float selection = originalMode_ ? 1.0F : 0.0F;
+    unsettled |= std::abs(identitySelection_ - selection) > .005F;
+    const bool transferVisible = installation_.visible && installation_.running && !installation_.cancelling &&
+        transfer.activity == InstallationActivity::Downloading && transfer.percent.has_value();
+    unsettled |= transferVisible && std::abs(installationFill_ - fillTarget) > .1F;
+    for (const float pulse : completionPulse_) unsettled |= pulse > 0;
+    if (!motionEnabled_) {
+        for (auto& control : controls_) control.hover = control.hovered ? 1.0F : 0.0F;
+        displayedProgress_ = static_cast<float>(viewState_.progressPercent);
+        identitySelection_ = selection;
+        installationFill_ = fillTarget;
+        portalEntrance_ = 1; portalEnergy_ = 0; portalBurst_ = 0; pageFade_ = 1;
+        completionPulse_ = {};
+        unsettled = false;
+    }
+    const bool home = page_ == LauncherPage::Home;
+    const bool busy = !viewState_.playEnabled && viewState_.operation != LauncherOperation::MinecraftRunning &&
+        viewState_.operation != LauncherOperation::UpdateAvailable;
+    const bool indeterminate = home && (installation_.visible ? installation_.running && !installation_.cancelling :
+        busy && !viewState_.progressVisible);
+    const bool hero = home && !installation_.visible;
+    const bool ambient = ambientMotion_ && hero && GetForegroundWindow() == window_;
+    const bool running = motionEnabled_ && IsWindowVisible(window_) && !IsIconic(window_) && !closing_ &&
+        (unsettled || indeterminate || (hero && (ambient || portalEntrance_ < 1 || portalHovered_ || portalEnergy_ > .005F || portalBurst_ > 0)));
+    if (running && !animationTimer_) {
+        previousFrame_ = std::chrono::steady_clock::now();
+        animationTimer_ = SetTimer(window_, AnimationTimerId, USER_TIMER_MINIMUM, nullptr) != 0;
+    } else if (!running && animationTimer_) {
+        KillTimer(window_, AnimationTimerId);
+        animationTimer_ = false;
+    }
+    // Hover/focus changes the canvas and owner-drawn buttons, not the EDIT contents or caret.
+    RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_NOCHILDREN);
+    for (const auto& control : controls_)
+        if (control.window && (GetWindowLongPtrW(control.window, GWL_STYLE) & WS_VISIBLE) &&
+            control.id != NicknameInputId) InvalidateRect(control.window, nullptr, FALSE);
+    if (page_ == LauncherPage::Settings) settingsPage_.invalidateButtons();
+}
+
+void MainPage::animate()
+{
+    const auto now = std::chrono::steady_clock::now();
+    const float dt = std::clamp(std::chrono::duration<float, std::milli>(now - previousFrame_).count(), 0.0F, 100.0F);
+    previousFrame_ = now;
+    particlePhase_ = std::fmod(particlePhase_ + dt / 8000, 1.0F);
+    const float energyTarget = portalHovered_ && page_ == LauncherPage::Home && !installation_.visible ? 1.0F : 0.0F;
+    portalEnergy_ += (energyTarget - portalEnergy_) * (1 - std::exp(-dt / 95));
+    if (std::abs(energyTarget - portalEnergy_) < .006F) portalEnergy_ = energyTarget;
+    portalBurst_ = std::max(0.0F, portalBurst_ - dt / 1400);
+    for (float& pulse : completionPulse_) pulse = std::max(0.0F, pulse - dt / 420);
+    const float ease = 1 - std::exp(-dt / 45);
+    for (auto& control : controls_) {
+        const float target = control.hovered ? 1.0F : 0.0F;
+        control.hover += (target - control.hover) * ease;
+        if (std::abs(target - control.hover) < 0.006F) control.hover = target;
+    }
+    const float target = static_cast<float>(viewState_.progressPercent);
+    // A new phase can reset progress, so never animate a backwards value.
+    if (target < displayedProgress_) displayedProgress_ = target;
+    else displayedProgress_ += (target - displayedProgress_) * (1 - std::exp(-dt / 85));
+    if (std::abs(target - displayedProgress_) < 0.1F) displayedProgress_ = target;
+    const float selection = originalMode_ ? 1.0F : 0.0F;
+    identitySelection_ += (selection - identitySelection_) * (1 - std::exp(-dt / 55));
+    if (std::abs(selection - identitySelection_) < .006F) identitySelection_ = selection;
+    const float fillTarget = static_cast<float>(installation_.progress.percent.value_or(0));
+    installationFill_ += (fillTarget - installationFill_) * (1 - std::exp(-dt / 70));
+    if (std::abs(fillTarget - installationFill_) < .1F) installationFill_ = fillTarget;
+    if (page_ == LauncherPage::Home && !installation_.visible) portalEntrance_ = std::min(1.0F, portalEntrance_ + dt / 750);
+    pageFade_ = std::min(1.0F, pageFade_ + dt / 200);
+    animationPhase_ = std::fmod(animationPhase_ + dt / 1600, 1.0F);
+    redraw(true);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Controls
+// ---------------------------------------------------------------------------------------------
+
+void MainPage::createControls()
+{
+    for (const auto& spec : ControlSpecs) {
+        if (spec.id == NicknameInputId) {
+            createNicknameInput();
+            controls_.push_back({NicknameInputId, nicknameInput_, false});
+            continue;
+        }
+        const DWORD style = WS_CHILD | BS_OWNERDRAW | (spec.tabStop ? WS_TABSTOP : 0);
+        const auto window = CreateWindowExW(0, L"BUTTON", spec.label, style, 0, 0, 0, 0, window_,
+            reinterpret_cast<HMENU>(static_cast<INT_PTR>(spec.id)), instance_, nullptr);
+        if (!window) continue;
+        SetWindowSubclass(window, controlProcedure, static_cast<UINT_PTR>(spec.id), reinterpret_cast<DWORD_PTR>(this));
+        controls_.push_back({spec.id, window, spec.chrome});
+    }
 }
 
 void MainPage::createNicknameInput()
 {
-    const auto savedNickname = NicknameStore::load(
-        LauncherSettingsStore::dataDirectory());
-    nicknameInput_ = CreateWindowEx(
-        0,
-        L"EDIT",
-        savedNickname.c_str(),
-        WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
-        0, 0, 0, 0,
-        window_,
-        reinterpret_cast<HMENU>(static_cast<INT_PTR>(LauncherConstants::NicknameInputId)),
-        instance_,
-        nullptr);
-
-    inputFont_ = CreateFont(
-        -15, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-    SendMessage(nicknameInput_, WM_SETFONT, reinterpret_cast<WPARAM>(inputFont_), TRUE);
-    SendMessage(nicknameInput_, EM_SETCUEBANNER, TRUE,
-                reinterpret_cast<LPARAM>(L"Digite seu nickname"));
+    const auto savedNickname = NicknameStore::load(LauncherSettingsStore::dataDirectory());
+    nicknameInput_ = CreateWindowEx(0, L"EDIT", savedNickname.c_str(), WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
+        0, 0, 0, 0, window_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(NicknameInputId)), instance_, nullptr);
+    SendMessage(nicknameInput_, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(L"Seu nickname"));
     SendMessage(nicknameInput_, EM_SETLIMITTEXT, 16, 0);
+    SendMessage(nicknameInput_, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, 0);
     SetWindowTheme(nicknameInput_, L"DarkMode_Explorer", nullptr);
-    layoutNicknameInput();
 }
 
-void MainPage::layoutNicknameInput() const
+MainPage::Control* MainPage::findControl(int id)
 {
-    const auto field = playerProfile_.inputBounds(ProfileBounds);
-    SetWindowPos(nicknameInput_, nullptr,
-        static_cast<int>(offsetX_ + (field.X+14)*viewScale_),
-        static_cast<int>(offsetY_ + (field.Y+12)*viewScale_),
-        static_cast<int>((field.Width-28)*viewScale_),
-        static_cast<int>((field.Height-20)*viewScale_), SWP_NOZORDER | SWP_NOACTIVATE);
+    for (auto& control : controls_) if (control.id == id) return &control;
+    return nullptr;
+}
+
+const MainPage::Control* MainPage::findControl(int id) const
+{
+    for (const auto& control : controls_) if (control.id == id) return &control;
+    return nullptr;
+}
+
+bool MainPage::chromeControl(int id) const
+{
+    return id == MinimizeButtonId || id == MaximizeButtonId || id == CloseButtonId || inRange(id, NavHomeId, 5);
+}
+
+float MainPage::chromeWidth() const { return viewScale_ > 0 ? clientWidth_ / viewScale_ : static_cast<float>(WindowWidth); }
+float MainPage::chromeHeight() const { return viewScale_ > 0 ? clientHeight_ / viewScale_ : static_cast<float>(WindowHeight); }
+
+Gdiplus::PointF MainPage::toContent(int x, int y) const
+{
+    return {(static_cast<float>(x) - offsetX_) / viewScale_, (static_cast<float>(y) - offsetY_) / viewScale_};
+}
+
+Gdiplus::RectF MainPage::controlBounds(int id) const
+{
+    switch (id) {
+    case MinimizeButtonId: return Layout::captionButton(0, chromeWidth());
+    case MaximizeButtonId: return Layout::captionButton(1, chromeWidth());
+    case CloseButtonId: return Layout::captionButton(2, chromeWidth());
+    case NavHomeId: return Layout::navButton(0);
+    case NavNewsId: return Layout::navButton(1);
+    case NavModsId: return Layout::navButton(2);
+    case NavSettingsId: return Layout::navButton(3);
+    case NavHelpId: return Layout::sidebarHelp(chromeHeight());
+    case NicknameInputId: return Layout::NicknameEdit;
+    case EditNicknameButtonId: return Layout::EditNickname;
+    case OfflineButtonId: return Layout::OfflineMode;
+    case OriginalButtonId: return Layout::OriginalMode;
+    case UpdateDownloadButtonId: return Layout::UpdateLink;
+    case PlayButtonId: return Layout::Play;
+    case PlayMenuButtonId: return Layout::PlayMenu;
+    case QuickFolderButtonId: return Layout::quickAction(0);
+    case QuickRepairButtonId: return Layout::quickAction(1);
+    case QuickLogsButtonId: return Layout::quickAction(2);
+    case ToastNewsButtonId: return Layout::ToastButton;
+    case NewsAllButtonId: return {Layout::NewsAll.X + 20, Layout::NewsAll.Y, Layout::NewsAll.Width - 20, Layout::NewsAll.Height};
+    case InstallationLogButtonId: return Layout::InstallationLog;
+    case CancelInstallationButtonId: return Layout::InstallationCancel;
+    case ModsRefreshButtonId: return Layout::ModsRefresh;
+    case ModsFolderButtonId: return Layout::ModsFolder;
+    case ModsAddButtonId: return Layout::ModsAdd;
+    case HelpRepairButtonId: return Layout::helpButton(0, 0);
+    case HelpInstallLogButtonId: return Layout::helpButton(1, 0);
+    case HelpForgeLogButtonId: return Layout::helpButton(1, 1);
+    case HelpGameLogButtonId: return Layout::helpButton(1, 2);
+    case HelpLogsFolderButtonId: return Layout::helpButton(1, 3);
+    case HelpCopySupportButtonId: return Layout::helpButton(2, 0);
+    case HelpReportIssueButtonId: return Layout::helpButton(2, 1);
+    case HelpDataFolderButtonId: return Layout::helpButton(3, 0);
+    default: break;
+    }
+    if (inRange(id, NewsCardFirstId, NewsCardCount)) return Layout::newsCard(id - NewsCardFirstId);
+    if (inRange(id, NewsLinkFirstId, NewsLinkCount)) return Layout::newsLink(id - NewsLinkFirstId);
+    return {};
+}
+
+bool MainPage::controlVisible(int id) const
+{
+    if (chromeControl(id)) return true;
+    const bool home = page_ == LauncherPage::Home;
+    const bool leftColumn = home && !installation_.visible;
+    switch (id) {
+    case NicknameInputId:
+    case EditNicknameButtonId:
+        return home && !originalMode_;
+    case OfflineButtonId:
+    case OriginalButtonId:
+    case PlayButtonId:
+    case PlayMenuButtonId:
+    case QuickFolderButtonId:
+    case QuickRepairButtonId:
+    case QuickLogsButtonId:
+        return home;
+    case UpdateDownloadButtonId:
+        return home && !updateWarning_.empty() && viewState_.playEnabled;
+    case ToastNewsButtonId:
+        return leftColumn && toastVisible_;
+    case NewsAllButtonId:
+        return leftColumn;
+    case InstallationLogButtonId:
+        return home && installation_.visible;
+    case CancelInstallationButtonId:
+        return home && installation_.visible && installation_.running;
+    case ModsRefreshButtonId:
+    case ModsFolderButtonId:
+    case ModsAddButtonId:
+        return page_ == LauncherPage::Mods;
+    default:
+        break;
+    }
+    if (inRange(id, NewsCardFirstId, NewsCardCount))
+        return leftColumn && static_cast<std::size_t>(id - NewsCardFirstId) < viewState_.news.size();
+    if (inRange(id, NewsLinkFirstId, NewsLinkCount)) {
+        const auto index = newsFirst_ + static_cast<std::size_t>(id - NewsLinkFirstId);
+        return page_ == LauncherPage::News && index < viewState_.news.size() && !viewState_.news[index].url.empty();
+    }
+    if (inRange(id, HelpRepairButtonId, 8)) return page_ == LauncherPage::Help;
+    return false;
+}
+
+bool MainPage::controlEnabled(int id) const
+{
+    const bool idle = viewState_.playEnabled && !updatingLauncher_;
+    switch (id) {
+    case NicknameInputId:
+    case EditNicknameButtonId:
+    case OfflineButtonId:
+    case OriginalButtonId:
+    case PlayButtonId:
+        return idle;
+    case PlayMenuButtonId:
+        return !updatingLauncher_;
+    case QuickRepairButtonId:
+    case HelpRepairButtonId:
+        return canRepair();
+    case CancelInstallationButtonId:
+        return installation_.running && !installation_.cancelling;
+    case ModsAddButtonId:
+        return !gameRunning() && !installation_.running;
+    default:
+        return true;
+    }
+}
+
+std::wstring MainPage::controlLabel(int id) const
+{
+    switch (id) {
+    case PlayButtonId: return viewState_.primaryActionLabel.empty() ? L"Jogar" : viewState_.primaryActionLabel;
+    case OfflineButtonId: return originalMode_ ? L"Nickname" : L"Nickname (selecionado)";
+    case OriginalButtonId: return originalMode_ ? L"Conta original (selecionado)" : L"Conta original";
+    case MaximizeButtonId: return window_ && IsZoomed(window_) ? L"Restaurar" : L"Maximizar";
+    case CancelInstallationButtonId: return installation_.cancelling ? L"Cancelando instalação" : L"Cancelar instalação";
+    default: break;
+    }
+    if (inRange(id, NavHomeId, 5)) {
+        const wchar_t* names[] = {L"Início", L"Notícias", L"Mods", L"Configurações", L"Ajuda"};
+        const LauncherPage pages[] = {LauncherPage::Home, LauncherPage::News, LauncherPage::Mods, LauncherPage::Settings, LauncherPage::Help};
+        const auto index = static_cast<std::size_t>(id - NavHomeId);
+        return std::wstring(names[index]) + (page_ == pages[index] ? L" (página atual)" : L"");
+    }
+    if (inRange(id, NewsCardFirstId, NewsCardCount)) {
+        const auto index = static_cast<std::size_t>(id - NewsCardFirstId);
+        return index < viewState_.news.size() ? viewState_.news[index].title : std::wstring{};
+    }
+    for (const auto& spec : ControlSpecs) if (spec.id == id && spec.label) return spec.label;
+    return {};
+}
+
+void MainPage::layoutControls()
+{
+    RECT client{};
+    GetClientRect(window_, &client);
+    if (client.right <= 0 || client.bottom <= 0) return;
+    clientWidth_ = static_cast<float>(client.right);
+    clientHeight_ = static_cast<float>(client.bottom);
+    viewScale_ = std::min(clientWidth_ / WindowWidth, clientHeight_ / WindowHeight);
+    offsetX_ = std::floor((clientWidth_ - WindowWidth * viewScale_) / 2);
+    offsetY_ = std::floor((clientHeight_ - WindowHeight * viewScale_) / 2);
+    const float s = viewScale_;
+    for (const auto& control : controls_) {
+        if (!control.window) continue;
+        auto bounds = controlBounds(control.id);
+        const float ox = control.chrome ? 0 : offsetX_, oy = control.chrome ? 0 : offsetY_;
+        if (control.id == NicknameInputId) {
+            // The single-line EDIT draws its text at the top; size it to one line of the display face.
+            const float line = 30;
+            bounds = {bounds.X, bounds.Y + (bounds.Height - line) / 2, bounds.Width, line};
+        }
+        const int x = static_cast<int>(std::floor(ox + bounds.X * s)), y = static_cast<int>(std::floor(oy + bounds.Y * s));
+        const int right = static_cast<int>(std::ceil(ox + bounds.GetRight() * s));
+        const int bottom = static_cast<int>(std::ceil(oy + bounds.GetBottom() * s));
+        SetWindowPos(control.window, nullptr, x, y, right - x, bottom - y, SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    if (nicknameInput_) {
+        const HFONT font = CreateFontW(-static_cast<int>(std::round(22 * s)), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE,
+            DrawingUtils::displayFontFamily());
+        if (font) {
+            SendMessage(nicknameInput_, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+            if (inputFont_) DeleteObject(inputFont_);
+            inputFont_ = font;
+        }
+    }
+    settingsPage_.layout(viewScale_, offsetX_, offsetY_);
+}
+
+void MainPage::syncControls()
+{
+    for (auto& control : controls_) {
+        if (!control.window) continue;
+        const bool visible = controlVisible(control.id);
+        if (((GetWindowLongPtrW(control.window, GWL_STYLE) & WS_VISIBLE) != 0) != visible)
+            ShowWindow(control.window, visible ? SW_SHOWNA : SW_HIDE);
+        const bool enabled = controlEnabled(control.id);
+        if ((IsWindowEnabled(control.window) != FALSE) != enabled) EnableWindow(control.window, enabled);
+        if (!enabled || !visible) control.hovered = false;
+        if (control.id == NicknameInputId) continue;
+        const auto label = controlLabel(control.id);
+        std::array<wchar_t, 256> current{};
+        GetWindowTextW(control.window, current.data(), static_cast<int>(current.size()));
+        if (label != current.data()) SetWindowTextW(control.window, label.c_str());
+    }
+    if (page_ == LauncherPage::Settings) settingsPage_.setLocked(!viewState_.playEnabled || gameRunning());
+    // Never leave keyboard focus on a control that just disappeared.
+    const HWND focus = GetFocus();
+    if (focus && focus != window_ && IsChild(window_, focus) && !(GetWindowLongPtrW(focus, GWL_STYLE) & WS_VISIBLE)) {
+        const int navigation[] = {NavHomeId, NavNewsId, NavModsId, NavSettingsId, NavHelpId};
+        if (const auto* control = findControl(navigation[static_cast<int>(page_)]); control && control->window)
+            SetFocus(control->window);
+    }
+}
+
+LRESULT CALLBACK MainPage::controlProcedure(HWND control, UINT message, WPARAM wParam, LPARAM lParam,
+                                            UINT_PTR subclass, DWORD_PTR data)
+{
+    auto* page = reinterpret_cast<MainPage*>(data);
+    const int id = static_cast<int>(subclass);
+    // WM_DRAWITEM covers the complete button, including its rounded corners.
+    if (message == WM_ERASEBKGND) return 1;
+    auto* entry = page->findControl(id);
+    if (message == WM_MOUSEMOVE && entry && !entry->hovered && IsWindowEnabled(control)) {
+        entry->hovered = true;
+        TRACKMOUSEEVENT track{sizeof(TRACKMOUSEEVENT), TME_LEAVE, control, 0};
+        TrackMouseEvent(&track);
+        page->redraw();
+    } else if (message == WM_MOUSELEAVE && entry) {
+        entry->hovered = false;
+        page->redraw();
+    } else if (message == WM_SETCURSOR && IsWindowEnabled(control)) {
+        const bool caption = id == MinimizeButtonId || id == MaximizeButtonId || id == CloseButtonId;
+        SetCursor(LoadCursor(nullptr, caption ? IDC_ARROW : IDC_HAND));
+        return TRUE;
+    } else if (message == WM_NCDESTROY) {
+        RemoveWindowSubclass(control, controlProcedure, subclass);
+    }
+    const auto result = DefSubclassProc(control, message, wParam, lParam);
+    if (message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_LBUTTONDOWN || message == WM_LBUTTONUP ||
+        message == WM_KEYDOWN || message == WM_KEYUP) page->redraw();
+    return result;
+}
+
+bool MainPage::handleKeyboard(MSG& message)
+{
+    if (message.message == WM_KEYDOWN) {
+        if (message.wParam == VK_ESCAPE && page_ != LauncherPage::Home) { showPage(LauncherPage::Home); return true; }
+        if (message.wParam == VK_RETURN) {
+            const HWND focus = GetFocus();
+            if (page_ == LauncherPage::Settings) {
+                const int id = settingsPage_.focusedControlId();
+                if (id == SettingsPage::MinRam || id == SettingsPage::MaxRam || id == SettingsPage::Width ||
+                    id == SettingsPage::Height || id == SettingsPage::JavaPath || id == SettingsPage::GamePath) {
+                    saveSettings();
+                    return true;
+                }
+                if (SettingsPage::containsId(id) && id != SettingsPage::RamSlider) {
+                    SendMessage(GetDlgItem(window_, id), BM_CLICK, 0, 0);
+                    return true;
+                }
+            }
+            if (focus && focus == nicknameInput_) { handlePrimaryAction(); return true; }
+            for (const auto& control : controls_)
+                if (control.window && focus == control.window) { SendMessage(control.window, BM_CLICK, 0, 0); return true; }
+        }
+    }
+    return IsDialogMessage(window_, &message) != FALSE;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Navigation and page actions
+// ---------------------------------------------------------------------------------------------
+
+void MainPage::showPage(LauncherPage page)
+{
+    if (page_ == page) return;
+    if (page_ == LauncherPage::Settings) settingsPage_.show(false);
+    page_ = page;
+    if (page == LauncherPage::Settings) {
+        settingsPage_.open(settings_, settingsWarning_);
+        settingsPage_.setLocked(!viewState_.playEnabled || gameRunning());
+        settingsPage_.show(true);
+    }
+    if (page == LauncherPage::Mods) { refreshMods(); modsMessage_.clear(); modsMessageError_ = false; }
+    if (page == LauncherPage::News) toastVisible_ = false;
+    if (page == LauncherPage::Help) helpMessage_.clear();
+    portalHovered_ = false;
+    modsHoverRow_ = modsHoverAction_ = -1;
+    pageFade_ = motionEnabled_ ? 0.0F : 1.0F;
+    redraw();
+}
+
+void MainPage::handleCommand(int id, int)
+{
+    if (inRange(id, NewsCardFirstId, NewsCardCount)) {
+        const auto count = viewState_.news.size();
+        const auto last = count > NewsView::Visible ? count - NewsView::Visible : 0;
+        newsFirst_ = std::min(static_cast<std::size_t>(id - NewsCardFirstId), last);
+        showPage(LauncherPage::News);
+        return;
+    }
+    if (inRange(id, NewsLinkFirstId, NewsLinkCount)) {
+        const auto index = newsFirst_ + static_cast<std::size_t>(id - NewsLinkFirstId);
+        if (index < viewState_.news.size() && !viewState_.news[index].url.empty())
+            ShellExecuteW(window_, L"open", viewState_.news[index].url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        return;
+    }
+    const auto logs = gameDirectory() / L"logs";
+    switch (id) {
+    case MinimizeButtonId: PostMessageW(window_, WM_SYSCOMMAND, SC_MINIMIZE, 0); break;
+    case MaximizeButtonId: PostMessageW(window_, WM_SYSCOMMAND, IsZoomed(window_) ? SC_RESTORE : SC_MAXIMIZE, 0); break;
+    case CloseButtonId: PostMessageW(window_, WM_CLOSE, 0, 0); break;
+    case NavHomeId: showPage(LauncherPage::Home); break;
+    case NavNewsId: showPage(LauncherPage::News); break;
+    case NavModsId: showPage(LauncherPage::Mods); break;
+    case NavSettingsId: showPage(LauncherPage::Settings); break;
+    case NavHelpId: showPage(LauncherPage::Help); break;
+    case PlayButtonId: handlePrimaryAction(); break;
+    case PlayMenuButtonId: showPlayMenu(); break;
+    case OfflineButtonId:
+        if (viewState_.playEnabled) { originalMode_ = false; redraw(); }
+        break;
+    case OriginalButtonId:
+        if (viewState_.playEnabled) { originalMode_ = true; redraw(); }
+        break;
+    case EditNicknameButtonId:
+        SetFocus(nicknameInput_);
+        SendMessageW(nicknameInput_, EM_SETSEL, 0, -1);
+        break;
+    case UpdateDownloadButtonId:
+        ShellExecuteW(window_, L"open", std::wstring(LauncherConfig::LauncherDownloadUrl).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        break;
+    case QuickFolderButtonId:
+    case MenuOpenGameFolder:
+        openPath(gameDirectory(), true);
+        break;
+    case MenuOpenModsFolder:
+    case ModsFolderButtonId:
+        openPath(gameDirectory() / L"mods", true);
+        break;
+    case QuickRepairButtonId:
+    case MenuRepair:
+    case HelpRepairButtonId:
+        startRepair();
+        break;
+    case QuickLogsButtonId:
+    case MenuOpenLogs:
+    case HelpLogsFolderButtonId:
+        openPath(logs, true);
+        break;
+    case ToastNewsButtonId:
+    case NewsAllButtonId:
+        newsFirst_ = 0;
+        showPage(LauncherPage::News);
+        break;
+    case CancelInstallationButtonId: cancelInstallation(); break;
+    case InstallationLogButtonId:
+    case HelpInstallLogButtonId:
+        openLog(logs / L"installation.log");
+        break;
+    case HelpForgeLogButtonId: openLog(logs / L"forge-installer.log"); break;
+    case HelpGameLogButtonId: openLog(logs / L"latest.log"); break;
+    case HelpCopySupportButtonId: copySupportInformation(); break;
+    case HelpReportIssueButtonId:
+        ShellExecuteW(window_, L"open", IssueUrl, nullptr, nullptr, SW_SHOWNORMAL);
+        break;
+    case HelpDataFolderButtonId: openPath(LauncherSettingsStore::dataDirectory(), true); break;
+    case ModsRefreshButtonId:
+        refreshMods();
+        modsMessage_ = L"Lista atualizada.";
+        modsMessageError_ = false;
+        redraw();
+        break;
+    case ModsAddButtonId: addMod(); break;
+    case MenuTrayOpen: restoreFromTray(); break;
+    case MenuTrayExit:
+        forceExit_ = true;
+        PostMessageW(window_, WM_CLOSE, 0, 0);
+        break;
+    default:
+        break;
+    }
+}
+
+void MainPage::showPlayMenu()
+{
+    const auto* button = findControl(PlayMenuButtonId);
+    if (!button || !button->window) return;
+    HMENU menu = CreatePopupMenu();
+    if (!menu) return;
+    AppendMenuW(menu, MF_STRING, MenuOpenGameFolder, L"Abrir pasta do jogo");
+    AppendMenuW(menu, MF_STRING, MenuOpenModsFolder, L"Abrir pasta de mods");
+    AppendMenuW(menu, MF_STRING, MenuOpenLogs, L"Abrir logs");
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(menu, MF_STRING | (canRepair() ? 0U : MF_GRAYED), MenuRepair, L"Reparar instalação");
+    RECT bounds{};
+    GetWindowRect(button->window, &bounds);
+    TrackPopupMenuEx(menu, TPM_RIGHTALIGN | TPM_TOPALIGN | TPM_RIGHTBUTTON, bounds.right, bounds.bottom + 4, window_, nullptr);
+    DestroyMenu(menu);
+}
+
+void MainPage::scrollContent(int delta, Gdiplus::PointF point)
+{
+    const int notches = delta / WHEEL_DELTA != 0 ? delta / WHEEL_DELTA : (delta > 0 ? 1 : -1);
+    if (page_ == LauncherPage::News) {
+        const auto count = viewState_.news.size();
+        const auto last = static_cast<int>(count > NewsView::Visible ? count - NewsView::Visible : 0);
+        const int first = std::clamp(static_cast<int>(newsFirst_) - notches, 0, last);
+        if (static_cast<std::size_t>(first) != newsFirst_) { newsFirst_ = static_cast<std::size_t>(first); redraw(); }
+    } else if (page_ == LauncherPage::Mods) {
+        const auto model = modsModel();
+        const float step = static_cast<float>(notches) * 3 * ModsView::ServerRowHeight;
+        if (Layout::ModsServer.Contains(point.X, point.Y))
+            serverScroll_ = std::clamp(serverScroll_ - step, 0.0F, ModsView::maximumServerScroll(model));
+        else if (Layout::ModsUser.Contains(point.X, point.Y))
+            userScroll_ = std::clamp(userScroll_ - step, 0.0F, ModsView::maximumUserScroll(model));
+        else return;
+        const auto hit = ModsView::hitTest(modsModel(), point.X, point.Y);
+        modsHoverRow_ = hit.row;
+        modsHoverAction_ = hit.action == ModsView::Action::Toggle ? 0 : hit.action == ModsView::Action::Remove ? 1 : -1;
+        redraw();
+    }
+}
+
+void MainPage::handleModsClick(Gdiplus::PointF point)
+{
+    const auto model = modsModel();
+    const auto hit = ModsView::hitTest(model, point.X, point.Y);
+    if (hit.row < 0 || hit.action == ModsView::Action::None) return;
+    if (model.locked) {
+        modsMessage_ = L"Feche o jogo e espere a preparação terminar para mudar os mods.";
+        modsMessageError_ = true;
+        redraw();
+        return;
+    }
+    const auto mod = mods_.user[static_cast<std::size_t>(hit.row)];
+    std::wstring error;
+    if (hit.action == ModsView::Action::Toggle) {
+        if (ModInventory::setEnabled(mod, !mod.enabled, error)) {
+            modsMessage_ = mod.name + (mod.enabled ? L" desativado." : L" ativado.") + L" Vale a partir do próximo Jogar.";
+            modsMessageError_ = false;
+        } else { modsMessage_ = error; modsMessageError_ = true; }
+    } else {
+        const auto prompt = L"Mover \"" + mod.name + L"\" para a Lixeira?\n\nVocê pode recuperá-lo de lá se mudar de ideia.";
+        if (MessageBoxW(window_, prompt.c_str(), L"Remover mod", MB_OKCANCEL | MB_ICONQUESTION | MB_DEFBUTTON2) != IDOK) return;
+        if (ModInventory::remove(mod, error)) { modsMessage_ = mod.name + L" foi para a Lixeira."; modsMessageError_ = false; }
+        else { modsMessage_ = error; modsMessageError_ = true; }
+    }
+    refreshMods();
+    redraw();
+}
+
+void MainPage::refreshMods()
+{
+    mods_ = ModInventory::scan(gameDirectory() / L"mods", fileServerManifest_);
+    modsScanned_ = true;
+    const auto model = modsModel();
+    serverScroll_ = std::min(serverScroll_, ModsView::maximumServerScroll(model));
+    userScroll_ = std::min(userScroll_, ModsView::maximumUserScroll(model));
+}
+
+void MainPage::addMod()
+{
+    std::array<wchar_t, 32768> file{};
+    OPENFILENAMEW dialog{sizeof(OPENFILENAMEW)};
+    dialog.hwndOwner = window_;
+    dialog.lpstrFilter = L"Mods do Minecraft (*.jar)\0*.jar\0\0";
+    dialog.lpstrFile = file.data();
+    dialog.nMaxFile = static_cast<DWORD>(file.size());
+    dialog.lpstrTitle = L"Adicionar mod";
+    dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+    if (!GetOpenFileNameW(&dialog)) return;
+    std::wstring error;
+    const std::filesystem::path source(file.data());
+    if (ModInventory::add(gameDirectory() / L"mods", source, error)) {
+        modsMessage_ = source.filename().wstring() + L" adicionado. Vale a partir do próximo Jogar.";
+        modsMessageError_ = false;
+    } else { modsMessage_ = error; modsMessageError_ = true; }
+    refreshMods();
+    redraw();
+}
+
+std::filesystem::path MainPage::gameDirectory() const
+{
+    return LauncherSettingsStore::effectiveGameDirectory(settings_);
+}
+
+bool MainPage::openPath(const std::filesystem::path& path, bool createDirectory)
+{
+    std::error_code ignored;
+    if (createDirectory) std::filesystem::create_directories(path, ignored);
+    const auto result = reinterpret_cast<INT_PTR>(ShellExecuteW(window_, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL));
+    if (result > 32) return true;
+    const std::wstring message = L"Não foi possível abrir " + path.wstring() + L".";
+    if (page_ == LauncherPage::Help) setHelpMessage(message, true);
+    else MessageBoxW(window_, message.c_str(), L"Eternal Launcher", MB_OK | MB_ICONWARNING);
+    return false;
+}
+
+void MainPage::openLog(const std::filesystem::path& file)
+{
+    std::error_code ignored;
+    if (std::filesystem::is_regular_file(file, ignored)) { openPath(file); return; }
+    // No log yet: open the folder and say why.
+    if (page_ == LauncherPage::Help)
+        setHelpMessage(file.filename().wstring() + L" ainda não existe. Abrimos a pasta de logs.", false);
+    openPath(file.parent_path(), true);
+}
+
+void MainPage::setHelpMessage(std::wstring message, bool error)
+{
+    helpMessage_ = std::move(message);
+    helpMessageError_ = error;
+    redraw();
+}
+
+void MainPage::copySupportInformation()
+{
+    std::wostringstream text;
+    text << L"Eternal Launcher " << LauncherConfig::LauncherVersion << L"\r\n";
+    text << L"Minecraft " << LauncherConfig::MinecraftVersion << L" · Forge " << LauncherConfig::ForgeVersion << L"\r\n";
+    const auto product = registryText(L"ProductName"), display = registryText(L"DisplayVersion"), build = registryText(L"CurrentBuild");
+    if (!product.empty()) text << product << L" " << display << L" (build " << build << L")\r\n";
+    text << L"RAM do PC: " << LauncherSettingsStore::physicalMemoryMegabytes() << L" MiB · RAM do jogo: "
+         << settings_.minimumMemoryMegabytes << L"–" << settings_.maximumMemoryMegabytes << L" MiB\r\n";
+    text << L"Java: " << (settings_.javaExecutable.empty() ? std::wstring(L"automático") : anonymizePath(settings_.javaExecutable.wstring())) << L"\r\n";
+    text << L"Pasta do jogo: " << anonymizePath(gameDirectory().wstring()) << L"\r\n";
+    text << L"Modo: " << (originalMode_ ? L"conta original" : L"nickname") << L"\r\n";
+    text << L"Mods: " << (mods_.manifestKnown ? std::to_wstring(mods_.server.size()) : std::wstring(L"?")) << L" do servidor, "
+         << mods_.user.size() << L" do jogador\r\n";
+    text << L"Estado: " << viewState_.headline << L" — " << viewState_.operationMessage << L"\r\n";
+    // The end of the installation log usually explains the failure.
+    std::ifstream log(gameDirectory() / L"logs" / L"installation.log", std::ios::binary);
+    if (log) {
+        std::deque<std::string> lines;
+        for (std::string line; std::getline(log, line);) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            lines.push_back(std::move(line));
+            if (lines.size() > 30) lines.pop_front();
+        }
+        text << L"\r\nFim do installation.log:\r\n";
+        for (const auto& line : lines) text << anonymizePath(utf8ToWide(line)) << L"\r\n";
+    }
+    const auto value = text.str();
+    bool copied = false;
+    if (OpenClipboard(window_)) {
+        EmptyClipboard();
+        const auto bytes = (value.size() + 1) * sizeof(wchar_t);
+        if (HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, bytes)) {
+            if (auto* target = static_cast<wchar_t*>(GlobalLock(memory))) {
+                std::memcpy(target, value.c_str(), bytes);
+                GlobalUnlock(memory);
+                copied = SetClipboardData(CF_UNICODETEXT, memory) != nullptr;
+            }
+            if (!copied) GlobalFree(memory);
+        }
+        CloseClipboard();
+    }
+    setHelpMessage(copied ? L"Informações copiadas. Cole no grupo ou no relato do GitHub." :
+        L"Não foi possível usar a área de transferência. Tente de novo.", !copied);
+}
+
+void MainPage::checkVersionToast()
+{
+    const auto directory = LauncherSettingsStore::dataDirectory();
+    const auto file = directory / L"last-version.txt";
+    const std::string current(LauncherConfig::NumericVersion);
+    std::string previous;
+    std::error_code ignored;
+    const bool existed = std::filesystem::exists(file, ignored);
+    if (existed) {
+        std::ifstream input(file, std::ios::binary);
+        std::getline(input, previous);
+        while (!previous.empty() && (previous.back() == '\r' || previous.back() == ' ')) previous.pop_back();
+    }
+    if (previous == current) return;
+    // Existing players (a saved nickname) get the toast; a first install does not.
+    if (existed || std::filesystem::exists(NicknameStore::filePath(directory), ignored)) {
+        toastVisible_ = true;
+        toastText_ = L"Launcher atualizado";
+    }
+    std::filesystem::create_directories(directory, ignored);
+    std::ofstream output(file, std::ios::binary | std::ios::trunc);
+    output << current << "\n";
+}
+
+// ---------------------------------------------------------------------------------------------
+// Play flow
+// ---------------------------------------------------------------------------------------------
+
+std::wstring MainPage::nicknameText() const
+{
+    if (!nicknameInput_) return {};
+    std::array<wchar_t, 32> nickname{};
+    GetWindowTextW(nicknameInput_, nickname.data(), static_cast<int>(nickname.size()));
+    return nickname.data();
+}
+
+bool MainPage::gameRunning() const
+{
+    return playSession_.active() || (minecraftLauncherService_ && minecraftLauncherService_->isGameRunning());
+}
+
+bool MainPage::canRepair() const
+{
+    return viewState_.playEnabled && !updatingLauncher_ && !installation_.running && !gameRunning();
 }
 
 void MainPage::handlePrimaryAction()
 {
-    if (!viewState_.playEnabled)
-    {
-        return;
-    }
-
+    if (!viewState_.playEnabled) return;
     std::wstring settingsError;
     if (!LauncherSettingsStore::validate(settings_, settingsError)) {
-        showSettings(); settingsPage_.setMessage(settingsError, true); return;
+        showPage(LauncherPage::Settings);
+        settingsPage_.setMessage(settingsError, true);
+        return;
     }
-
-    if (originalMode_)
-    {
-        if (!microsoftIdentity_.online())
-        {
-            startMicrosoftSignIn();
-            return;
-        }
+    if (originalMode_) {
+        if (!microsoftIdentity_.online()) { startMicrosoftSignIn(); return; }
         pendingIdentity_ = microsoftIdentity_;
         pendingNickname_ = microsoftIdentity_.name;
         beginPlay();
         return;
     }
-
-    std::array<wchar_t, 32> nickname{};
-    GetWindowText(nicknameInput_, nickname.data(), static_cast<int>(nickname.size()));
-    pendingNickname_ = nickname.data();
+    pendingNickname_ = nicknameText();
     pendingIdentity_ = MinecraftIdentity{pendingNickname_};
-    if (!NicknameStore::isValid(pendingNickname_))
-    {
+    if (!NicknameStore::isValid(pendingNickname_)) {
         viewState_.operation = LauncherOperation::InvalidNickname;
         viewState_.headline = L"Confira seu nickname";
-        viewState_.operationMessage =
-            L"Use de 3 a 16 letras, números ou underline antes de instalar.";
+        viewState_.operationMessage = L"Use de 3 a 16 letras, números ou underline antes de jogar.";
         viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
         redraw();
         SetFocus(nicknameInput_);
         return;
     }
-
-    if (!NicknameStore::save(
-            LauncherSettingsStore::dataDirectory(), pendingNickname_))
-    {
+    if (!NicknameStore::save(LauncherSettingsStore::dataDirectory(), pendingNickname_)) {
         MessageBox(window_, L"Não foi possível salvar o nickname. O jogo ainda pode iniciar, "
-                   L"mas talvez você precise digitá-lo novamente na próxima abertura.",
-                   L"Nickname", MB_OK | MB_ICONWARNING);
+                   L"mas talvez você precise digitá-lo novamente na próxima abertura.", L"Nickname", MB_OK | MB_ICONWARNING);
     }
-
     beginPlay();
+}
+
+void MainPage::startRepair()
+{
+    if (!canRepair()) return;
+    std::wstring settingsError;
+    if (!LauncherSettingsStore::validate(settings_, settingsError)) {
+        showPage(LauncherPage::Settings);
+        settingsPage_.setMessage(settingsError, true);
+        return;
+    }
+    beginPlay(true);
 }
 
 void MainPage::startMicrosoftSignIn()
@@ -704,119 +1609,101 @@ void MainPage::startMicrosoftSignIn()
     viewState_.operation = LauncherOperation::SigningIn;
     viewState_.headline = L"Entrando com Microsoft";
     viewState_.operationMessage = L"Aguarde o código de confirmação...";
-    viewState_.primaryActionLabel = L"CONECTANDO...";
+    viewState_.primaryActionLabel = L"CONECTANDO";
     viewState_.playEnabled = false;
     redraw();
-    microsoftAuthThread_ = std::jthread([this](std::stop_token stopToken)
-    {
+    microsoftAuthThread_ = std::jthread([this](std::stop_token stopToken) {
         MicrosoftAuthService service;
-        auto result = service.signIn(stopToken, [this, stopToken](const MicrosoftDeviceCode& code)
-        {
+        auto result = service.signIn(stopToken, [this, stopToken](const MicrosoftDeviceCode& code) {
             if (stopToken.stop_requested()) return;
             auto* transferred = new MicrosoftDeviceCode(code);
-            if (!PostMessage(window_, LauncherConstants::MicrosoftDeviceCodeMessage, 0,
-                             reinterpret_cast<LPARAM>(transferred))) delete transferred;
+            if (!PostMessage(window_, MicrosoftDeviceCodeMessage, 0, reinterpret_cast<LPARAM>(transferred))) delete transferred;
         });
         if (stopToken.stop_requested()) return;
         auto* transferred = new MicrosoftAuthResult(std::move(result));
-        if (!PostMessage(window_, LauncherConstants::MicrosoftAuthResultMessage, 0,
-                         reinterpret_cast<LPARAM>(transferred))) delete transferred;
+        if (!PostMessage(window_, MicrosoftAuthResultMessage, 0, reinterpret_cast<LPARAM>(transferred))) delete transferred;
     });
 }
 
-void MainPage::beginPlay()
+void MainPage::beginPlay(bool repairOnly)
 {
-    if (installation_.running || updatingLauncher_ || minecraftLauncherService_->isGameRunning()) return;
+    if (installation_.running || updatingLauncher_ || gameRunning()) return;
     if (installationThread_.joinable()) installationThread_.join();
     fileServerThread_.request_stop();
     if (fileServerThread_.joinable()) fileServerThread_.join();
+    repairOnly_ = repairOnly;
     installation_.begin();
     installationMailbox_.begin(installation_.attempt);
-    viewState_.operation=LauncherOperation::PreparingMinecraft;
-    viewState_.headline=L"Preparando seu mundo";
-    viewState_.operationMessage=L"Conferindo Java e arquivos do grupo...";
-    viewState_.primaryActionLabel=L"PREPARANDO...";
-    viewState_.playEnabled=false;
-    viewState_.progressVisible=true;
-    viewState_.progressPercent=0;
-    layoutControls();
-    SetTimer(window_,LauncherConstants::InstallationProgressTimerId,200,nullptr);
+    viewState_.operation = LauncherOperation::PreparingMinecraft;
+    viewState_.headline = repairOnly ? L"Reparando a instalação" : L"Preparando seu mundo";
+    viewState_.operationMessage = L"Conferindo Java e arquivos do grupo...";
+    viewState_.primaryActionLabel = repairOnly ? L"REPARANDO" : L"PREPARANDO";
+    viewState_.playEnabled = false;
+    viewState_.progressVisible = true;
+    viewState_.progressPercent = 0;
+    showPage(LauncherPage::Home);
+    SetTimer(window_, InstallationProgressTimerId, 200, nullptr);
     redraw();
-    const auto attempt=installation_.attempt;
-    installationThread_=std::jthread([this,attempt](std::stop_token stop) {
-        InstallationCoordinator coordinator(*fileServerService_,*javaRuntimeService_,*gameInstallationService_,*minecraftLauncherService_,settings_);
-        auto result=coordinator.run(stop,[this,attempt](const InstallationProgress& value) {
-            if(installationMailbox_.publish(attempt,value,InstallationTransferMeter::Clock::now()))
-                PostMessageW(window_,LauncherConstants::InstallationProgressMessage,0,0);
+    const auto attempt = installation_.attempt;
+    installationThread_ = std::jthread([this, attempt](std::stop_token stop) {
+        InstallationCoordinator coordinator(*fileServerService_, *javaRuntimeService_, *gameInstallationService_,
+            *minecraftLauncherService_, settings_);
+        auto result = coordinator.run(stop, [this, attempt](const InstallationProgress& value) {
+            if (installationMailbox_.publish(attempt, value, InstallationTransferMeter::Clock::now()))
+                PostMessageW(window_, InstallationProgressMessage, 0, 0);
         });
-        installationMailbox_.finish(attempt,std::move(result));
-        PostMessageW(window_,LauncherConstants::InstallationProgressMessage,0,0);
+        installationMailbox_.finish(attempt, std::move(result));
+        PostMessageW(window_, InstallationProgressMessage, 0, 0);
     });
 }
+
 void MainPage::pollGameProcess()
 {
-    if (minecraftLauncherService_->isGameRunning())
-    {
-        return;
-    }
-
-    KillTimer(window_, LauncherConstants::GameProcessTimerId);
-    if (minimizedForGame_) { ShowWindow(window_, SW_RESTORE); minimizedForGame_ = false; }
+    if (minecraftLauncherService_->isGameRunning()) return;
+    KillTimer(window_, GameProcessTimerId);
+    const auto session = playSession_.active() ? playSession_.elapsedSeconds(PlaySession::Clock::now()) : 0;
+    const bool wasHidden = hiddenToTray_;
+    finishPlaySession();
     viewState_.operation = LauncherOperation::ReadyToPlay;
     viewState_.headline = L"Minecraft encerrado";
-    viewState_.operationMessage = L"Você pode iniciar uma nova sessão quando quiser.";
-    viewState_.primaryActionLabel = L"JOGAR NOVAMENTE";
+    viewState_.operationMessage = session > 0 ? L"Sessão de " + PlaytimeStore::formatDuration(session) +
+        L". Você pode jogar de novo quando quiser." : std::wstring(L"Você pode iniciar uma nova sessão quando quiser.");
+    viewState_.primaryActionLabel = L"JOGAR";
     viewState_.playEnabled = true;
-    redraw();
-}
-
-void MainPage::showSettings()
-{
-    if(settingsVisible_) return;
-    settingsPage_.open(settings_, settingsWarning_);
-    settingsVisible_ = true;
-    pageTravel_=motionEnabled_ ? 0.0F : 1.0F;
-    for (const auto action : actions_) ShowWindow(action, SW_HIDE);
-    ShowWindow(nicknameInput_, SW_HIDE);
-    settingsPage_.setLocked(!viewState_.playEnabled || minecraftLauncherService_->isGameRunning());
-    settingsPage_.show(true);
-    redraw();
-}
-
-void MainPage::hideSettings()
-{
-    if(!settingsVisible_) return;
-    settingsVisible_ = false;
-    pageTravel_=motionEnabled_ ? 0.0F : 1.0F;
-    settingsPage_.show(false);
-    for (const auto action : actions_) ShowWindow(action, SW_SHOW);
-    ShowWindow(nicknameInput_, originalMode_ ? SW_HIDE : SW_SHOW);
-    SetFocus(actions_[3]);
+    refreshMods();
+    if (exitAfterGame_) {
+        // The window was closed during the session: finish closing now that the time is saved.
+        PostMessageW(window_, WM_CLOSE, 0, 0);
+        return;
+    }
+    if (wasHidden) restoreFromTray();
     redraw();
 }
 
 void MainPage::saveSettings()
 {
-    if (!viewState_.playEnabled || minecraftLauncherService_->isGameRunning()) return;
+    if (!viewState_.playEnabled || gameRunning()) return;
     LauncherSettings candidate;
     if (!settingsPage_.collect(candidate)) return;
     std::wstring error;
     if (!LauncherSettingsStore::save(LauncherSettingsStore::dataDirectory(), candidate, error)) {
-        settingsPage_.setMessage(error, true); return;
+        settingsPage_.setMessage(error, true);
+        return;
     }
     settings_ = std::move(candidate);
-    installation_.visible=false;
+    installation_.visible = false;
     settingsWarning_.clear();
     // No active operation or game can hold these services while the form is editable.
     minecraftLauncherService_ = std::make_unique<MinecraftLauncherService>(settings_);
     gameInstallationService_ = std::make_unique<GameInstallationService>(settings_);
     settingsPage_.open(settings_, {});
-    settingsPage_.setMessage(L"Preferências salvas. Serão usadas na próxima sessão.");
+    settingsPage_.setMessage(L"Preferências salvas. Valem a partir do próximo Jogar.");
     viewState_.operation = LauncherOperation::CheckingUpdates;
     viewState_.headline = L"Conferindo a instância";
     viewState_.operationMessage = L"Verificando a instalação e o servidor de arquivos...";
-    viewState_.primaryActionLabel = L"VERIFICANDO...";
+    viewState_.primaryActionLabel = L"VERIFICANDO";
     viewState_.playEnabled = false;
+    refreshMods();
     redraw();
     checkFileServerAsync();
 }
@@ -826,23 +1713,25 @@ void MainPage::checkFileServerAsync()
     // The HTTP call never runs on the window thread, keeping the
     // nickname field, drawing and other controls responsive.
     if (fileServerThread_.joinable()) fileServerThread_.join();
-    fileServerThread_ = std::jthread([this](std::stop_token stopToken)
-    {
+    fileServerThread_ = std::jthread([this](std::stop_token stopToken) {
         auto response = fileServerService_->fetchManifest(stopToken);
-        if (stopToken.stop_requested())
-        {
-            return;
-        }
+        if (stopToken.stop_requested()) return;
+        auto* transferred = new FileServerManifestResponse(std::move(response));
+        // If the window was closed during the request, nobody will receive the message.
+        if (!PostMessage(window_, FileServerResultMessage, 0, reinterpret_cast<LPARAM>(transferred))) delete transferred;
+    });
+}
 
-        auto* transferredResponse = new FileServerManifestResponse(std::move(response));
-        if (!PostMessage(
-                window_, LauncherConstants::FileServerResultMessage, 0,
-                reinterpret_cast<LPARAM>(transferredResponse)))
-        {
-            // If the window was closed during the request, nobody will
-            // receive the message, so the result must be freed here.
-            delete transferredResponse;
-        }
+void MainPage::fetchNewsAsync()
+{
+    if (newsRequested_) return;
+    newsRequested_ = true;
+    newsLoading_ = true;
+    newsThread_ = std::jthread([this](std::stop_token stop) {
+        auto result = NewsFeed::fetch(LauncherConfig::FileServerBaseUrl, stop);
+        if (stop.stop_requested()) return;
+        auto* transferred = new NewsFeedResult(std::move(result));
+        if (!PostMessage(window_, NewsResultMessage, 0, reinterpret_cast<LPARAM>(transferred))) delete transferred;
     });
 }
 
@@ -857,43 +1746,43 @@ void MainPage::checkLauncherUpdateAsync(bool confirmed)
         auto result = service.prepare(executable, stop, [this, stop](const LauncherUpdateProgress& value) {
             if (stop.stop_requested()) return;
             auto* progress = new LauncherUpdateProgress(value);
-            if (!PostMessageW(window_, LauncherConstants::LauncherUpdateProgressMessage, 0, reinterpret_cast<LPARAM>(progress))) delete progress;
+            if (!PostMessageW(window_, LauncherUpdateProgressMessage, 0, reinterpret_cast<LPARAM>(progress))) delete progress;
         }, transport, confirmed);
         if (stop.stop_requested()) return;
         auto* transferred = new LauncherUpdateResult(std::move(result));
-        if (!PostMessageW(window_, LauncherConstants::LauncherUpdateResultMessage, 0, reinterpret_cast<LPARAM>(transferred))) delete transferred;
+        if (!PostMessageW(window_, LauncherUpdateResultMessage, 0, reinterpret_cast<LPARAM>(transferred))) delete transferred;
     });
 }
 
 void MainPage::applyLauncherUpdateProgress(const LauncherUpdateProgress& progress)
 {
     viewState_.playEnabled = false;
-    viewState_.progressVisible = true;
+    viewState_.progressVisible = progress.phase == LauncherUpdatePhase::Downloading;
     viewState_.progressPercent = progress.percent;
     switch (progress.phase) {
     case LauncherUpdatePhase::Checking:
         viewState_.operation = LauncherOperation::CheckingLauncherUpdate;
         viewState_.headline = L"Verificando atualização";
         viewState_.operationMessage = L"Consultando a versão mais recente do launcher...";
-        viewState_.primaryActionLabel = L"VERIFICANDO...";
+        viewState_.primaryActionLabel = L"VERIFICANDO";
         break;
     case LauncherUpdatePhase::Downloading:
         viewState_.operation = LauncherOperation::DownloadingLauncherUpdate;
         viewState_.headline = L"Baixando atualização";
         viewState_.operationMessage = L"O launcher vai reabrir ao concluir. Seus dados serão preservados.";
-        viewState_.primaryActionLabel = L"BAIXANDO...";
+        viewState_.primaryActionLabel = L"BAIXANDO";
         break;
     case LauncherUpdatePhase::Applying:
         viewState_.operation = LauncherOperation::ApplyingLauncherUpdate;
         viewState_.headline = L"Aplicando atualização";
         viewState_.operationMessage = L"Verificando o arquivo e preparando a troca...";
-        viewState_.primaryActionLabel = L"ATUALIZANDO...";
+        viewState_.primaryActionLabel = L"ATUALIZANDO";
         break;
     case LauncherUpdatePhase::Restarting:
         viewState_.operation = LauncherOperation::RestartingLauncher;
         viewState_.headline = L"Reabrindo launcher";
         viewState_.operationMessage = L"Tudo pronto. A nova versão vai abrir automaticamente.";
-        viewState_.primaryActionLabel = L"REABRINDO...";
+        viewState_.primaryActionLabel = L"REABRINDO";
         break;
     }
     redraw();
@@ -901,22 +1790,18 @@ void MainPage::applyLauncherUpdateProgress(const LauncherUpdateProgress& progres
 
 void MainPage::applyFileServerResult(const FileServerManifestResponse& response)
 {
-    if(installation_.visible) return;
-    if (viewState_.statusCards.size() < 3)
-    {
-        return;
-    }
-
+    fetchNewsAsync();
+    if (installation_.visible) return;
+    if (viewState_.statusCards.size() < 3) return;
     const auto installation = minecraftLauncherService_->validateInstallation();
     updateInstallationState(installation);
 
     auto& serverCard = viewState_.statusCards[2];
-    if (response.success)
-    {
+    if (response.success) {
         fileServerManifest_ = response.content;
-        serverCard.value = L"Disponível";
-        serverCard.detail = L"HTTP " + std::to_wstring(response.httpStatus) +
-                            L" • " + std::to_wstring(response.elapsedMilliseconds) + L" ms";
+        refreshMods();
+        serverCard.value = L"Online";
+        serverCard.detail = L"Respondeu em " + std::to_wstring(response.elapsedMilliseconds) + L" ms";
         serverCard.tone = StatusTone::Success;
 
         if (installation.issue == MinecraftLaunchIssue::InvalidConfiguration) {
@@ -929,38 +1814,25 @@ void MainPage::applyFileServerResult(const FileServerManifestResponse& response)
             redraw();
             return;
         }
-        if (refreshBeforePlay_)
-        {
+        if (refreshBeforePlay_) {
             refreshBeforePlay_ = false;
             // Only clicking Play starts downloads and Minecraft preparation.
             beginPlay();
             return;
         }
-
         // Opening the screen only checks the local state and the server. Downloads and
         // sync are reserved for an explicit Play click.
-        viewState_.operation = installation.success
-            ? LauncherOperation::ReadyToPlay
-            : LauncherOperation::NeedsInstallation;
-        viewState_.headline = installation.success
-            ? L"Pronto para jogar"
-            : L"Pronto para instalar";
+        viewState_.operation = installation.success ? LauncherOperation::ReadyToPlay : LauncherOperation::NeedsInstallation;
+        viewState_.headline = installation.success ? L"Pronto para jogar" : L"Pronto para instalar";
         viewState_.operationMessage = installation.success
-            ? L"Clique em Jogar para conferir os arquivos do grupo e iniciar."
-            : L"Clique em Jogar para preparar Java, Minecraft e Forge.";
-        viewState_.primaryActionLabel = installation.success
-            ? L"JOGAR AGORA"
-            : L"INSTALAR E JOGAR";
+            ? L"Os arquivos do grupo são conferidos a cada Jogar."
+            : L"Ao jogar, o launcher prepara Java, Minecraft e Forge.";
+        viewState_.primaryActionLabel = installation.success ? L"JOGAR" : L"INSTALAR E JOGAR";
         viewState_.playEnabled = true;
-    }
-    else
-    {
+    } else {
         serverCard.value = L"Indisponível";
-        serverCard.detail = response.errorMessage.empty()
-            ? L"Não foi possível obter o manifesto"
-            : response.errorMessage;
+        serverCard.detail = response.errorMessage.empty() ? L"Não foi possível obter o manifesto" : response.errorMessage;
         serverCard.tone = StatusTone::Error;
-
         refreshBeforePlay_ = false;
         viewState_.operation = LauncherOperation::ServerUnavailable;
         viewState_.headline = L"Servidor indisponível";
@@ -968,69 +1840,69 @@ void MainPage::applyFileServerResult(const FileServerManifestResponse& response)
         viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
         viewState_.playEnabled = true;
     }
-
     redraw();
 }
 
 void MainPage::cancelInstallation()
 {
-    if(!installation_.running || installation_.cancelling) return;
-    installation_.cancelling=true;
+    if (!installation_.running || installation_.cancelling) return;
+    installation_.cancelling = true;
     installationThread_.request_stop();
-    viewState_.headline=L"Cancelando instalação...";
-    viewState_.operationMessage=L"Aguardando as tarefas encerrarem com segurança...";
-    viewState_.primaryActionLabel=L"CANCELANDO...";
+    viewState_.headline = L"Cancelando instalação...";
+    viewState_.operationMessage = L"Aguardando as tarefas encerrarem com segurança...";
+    viewState_.primaryActionLabel = L"CANCELANDO";
     redraw();
-}
-
-void MainPage::openInstallationLog()
-{
-    const auto directory=LauncherSettingsStore::effectiveGameDirectory(settings_)/L"logs";
-    const auto log=directory/L"installation.log";
-    std::error_code ignored;
-    const bool hasLog=std::filesystem::is_regular_file(log,ignored);
-    const auto target=hasLog ? log : directory;
-    const auto result=reinterpret_cast<INT_PTR>(ShellExecuteW(window_,L"open",target.c_str(),nullptr,nullptr,SW_SHOWNORMAL));
-    if(result<=32) {
-        viewState_.operationMessage=L"Não foi possível abrir o log. Confira as permissões da pasta do jogo.";
-        redraw();
-    }
 }
 
 void MainPage::consumeInstallationProgress()
 {
-    auto snapshot=installationMailbox_.take();
-    if(!snapshot) {
-        if(installation_.running && !installation_.cancelling && installation_.progress.activity==InstallationActivity::Downloading) {
-            installation_.meter.sample(installation_.progress.receivedBytes,InstallationTransferMeter::Clock::now());
+    auto snapshot = installationMailbox_.take();
+    if (!snapshot) {
+        if (installation_.running && !installation_.cancelling && installation_.progress.activity == InstallationActivity::Downloading) {
+            installation_.meter.sample(installation_.progress.receivedBytes, InstallationTransferMeter::Clock::now());
             redraw();
         }
         return;
     }
-    if(snapshot->attempt!=installation_.attempt || !installation_.running) return;
-    if(installation_.apply(snapshot->attempt,snapshot->progress,InstallationTransferMeter::Clock::now())) {
-        installation_.steps=snapshot->steps;
-        viewState_.headline=installationStageLabel(snapshot->progress.stage);
-        viewState_.operationMessage=snapshot->progress.message;
-        viewState_.progressPercent=snapshot->progress.activity==InstallationActivity::Downloading ? snapshot->progress.percent.value_or(0) : 0;
+    if (snapshot->attempt != installation_.attempt || !installation_.running) return;
+    if (installation_.apply(snapshot->attempt, snapshot->progress, InstallationTransferMeter::Clock::now())) {
+        installation_.steps = snapshot->steps;
+        viewState_.headline = installationStageLabel(snapshot->progress.stage);
+        viewState_.operationMessage = snapshot->progress.message;
+        viewState_.progressPercent = snapshot->progress.activity == InstallationActivity::Downloading ? snapshot->progress.percent.value_or(0) : 0;
     }
-    if(snapshot->result && installation_.finish(snapshot->attempt,*snapshot->result)) {
+    if (snapshot->result && installation_.finish(snapshot->attempt, *snapshot->result)) {
         // The worker has published its terminal result; joining here only completes cleanup.
-        if(installationThread_.joinable()) installationThread_.join();
-        KillTimer(window_,LauncherConstants::InstallationProgressTimerId);
-        if(closing_) {SendMessageW(window_,WM_CLOSE,0,0);return;}
-        viewState_.progressVisible=false;viewState_.progressPercent=0;
-        const auto result=*installation_.result;
-        if(result.outcome==InstallationOutcome::Success) launchPreparedMinecraft(result);
-        else {
-            const bool cancelled=result.outcome==InstallationOutcome::Cancelled;
-            viewState_.operation=cancelled ? LauncherOperation::NeedsInstallation : LauncherOperation::LaunchError;
-            viewState_.headline=cancelled ? L"Instalação cancelada" : L"Falha na preparação";
-            viewState_.operationMessage=cancelled ? L"Os arquivos completos serão reaproveitados." : result.message;
-            viewState_.primaryActionLabel=cancelled ? L"CONTINUAR INSTALAÇÃO" : L"TENTAR NOVAMENTE";
-            viewState_.playEnabled=true;
+        if (installationThread_.joinable()) installationThread_.join();
+        KillTimer(window_, InstallationProgressTimerId);
+        if (closing_) { SendMessageW(window_, WM_CLOSE, 0, 0); return; }
+        viewState_.progressVisible = false;
+        viewState_.progressPercent = 0;
+        const auto result = *installation_.result;
+        const bool repair = repairOnly_;
+        repairOnly_ = false;
+        if (result.outcome == InstallationOutcome::Success && repair) {
+            installation_.visible = false;
             updateInstallationState(minecraftLauncherService_->validateInstallation());
-            SetFocus(actions_[2]);
+            refreshMods();
+            viewState_.operation = LauncherOperation::ReadyToPlay;
+            viewState_.headline = L"Instalação reparada";
+            viewState_.operationMessage = L"Tudo conferido. Clique em Jogar quando quiser.";
+            viewState_.primaryActionLabel = L"JOGAR";
+            viewState_.playEnabled = true;
+            helpMessage_ = L"Reparo concluído: Java, Minecraft, Forge e mods conferidos.";
+            helpMessageError_ = false;
+        } else if (result.outcome == InstallationOutcome::Success) {
+            launchPreparedMinecraft(result);
+        } else {
+            const bool cancelled = result.outcome == InstallationOutcome::Cancelled;
+            viewState_.operation = cancelled ? LauncherOperation::NeedsInstallation : LauncherOperation::LaunchError;
+            viewState_.headline = cancelled ? L"Instalação cancelada" : L"Falha na preparação";
+            viewState_.operationMessage = cancelled ? L"Os arquivos completos serão reaproveitados." : result.message;
+            viewState_.primaryActionLabel = cancelled ? L"CONTINUAR" : L"TENTAR NOVAMENTE";
+            viewState_.playEnabled = true;
+            updateInstallationState(minecraftLauncherService_->validateInstallation());
+            if (const auto* play = findControl(PlayButtonId); play && play->window && page_ == LauncherPage::Home) SetFocus(play->window);
         }
     }
     redraw();
@@ -1038,599 +1910,375 @@ void MainPage::consumeInstallationProgress()
 
 void MainPage::launchPreparedMinecraft(const InstallationResult& result)
 {
-    updateInstallationState({true,L"Instalação pronta."});
-    auto& modsCard=viewState_.statusCards[1];
-    modsCard.value=L"Sincronizados";
-    modsCard.detail=std::to_wstring(result.synchronizedFiles)+L" arquivos do manifesto privado";
-    modsCard.tone=StatusTone::Success;
-    viewState_.operation=LauncherOperation::LaunchingMinecraft;
-    viewState_.headline=L"Iniciando Minecraft";
-    viewState_.operationMessage=L"Preparação concluída; iniciando Forge 47.4.10...";
-    viewState_.primaryActionLabel=L"INICIANDO...";
-    viewState_.playEnabled=false;
-    redraw();UpdateWindow(window_);
-    const auto launched=minecraftLauncherService_->launch(pendingIdentity_);
-    if(!launched.success) {
-        InstallationCoordinator::recordLaunchFailure(settings_,launched.message);
-        installation_.result=InstallationResult{InstallationOutcome::Failed,InstallationFailure::Process,
-            L"Não foi possível iniciar o jogo. Tente novamente ou abra o log.",launched.message,0};
-        installation_.steps[5]=InstallationStepState::Failed;
-        viewState_.operation=LauncherOperation::LaunchError;
-        viewState_.headline=L"Não foi possível iniciar";
-        viewState_.operationMessage=installation_.result->message;
-        viewState_.primaryActionLabel=L"TENTAR NOVAMENTE";
-        viewState_.playEnabled=true;
-    } else {
-        installation_.visible=false;
-        viewState_.operation=LauncherOperation::MinecraftRunning;
-        viewState_.headline=L"Minecraft em execução";
-        viewState_.operationMessage=L"Forge 47.4.10 iniciado para "+pendingNickname_+L".";
-        viewState_.primaryActionLabel=L"JOGO EM EXECUÇÃO";
-        SetTimer(window_,LauncherConstants::GameProcessTimerId,1000,nullptr);
-        if(settings_.minimizeOnLaunch) {ShowWindow(window_,SW_MINIMIZE);minimizedForGame_=true;}
+    updateInstallationState({true, L"Instalação pronta."});
+    auto& modsCard = viewState_.statusCards[1];
+    modsCard.value = L"Sincronizados";
+    modsCard.detail = std::to_wstring(result.synchronizedFiles) + L" arquivos conferidos";
+    modsCard.tone = StatusTone::Success;
+    refreshMods();
+    viewState_.operation = LauncherOperation::LaunchingMinecraft;
+    viewState_.headline = L"Iniciando Minecraft";
+    viewState_.operationMessage = L"Preparação concluída; iniciando Forge " + std::wstring(LauncherConfig::ForgeVersion) + L"...";
+    viewState_.primaryActionLabel = L"INICIANDO";
+    viewState_.playEnabled = false;
+    redraw();
+    UpdateWindow(window_);
+    const auto launched = minecraftLauncherService_->launch(pendingIdentity_);
+    if (!launched.success) {
+        InstallationCoordinator::recordLaunchFailure(settings_, launched.message);
+        installation_.result = InstallationResult{InstallationOutcome::Failed, InstallationFailure::Process,
+            L"Não foi possível iniciar o jogo. Tente novamente ou abra o log.", launched.message, 0};
+        installation_.steps[5] = InstallationStepState::Failed;
+        viewState_.operation = LauncherOperation::LaunchError;
+        viewState_.headline = L"Não foi possível iniciar";
+        viewState_.operationMessage = installation_.result->message;
+        viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
+        viewState_.playEnabled = true;
+        return;
     }
+    installation_.visible = false;
+    viewState_.operation = LauncherOperation::MinecraftRunning;
+    viewState_.headline = L"Jogando agora";
+    viewState_.operationMessage = L"Forge " + std::wstring(LauncherConfig::ForgeVersion) + L" iniciado para " + pendingNickname_ +
+        L". O tempo de jogo é contado mesmo com a janela fechada.";
+    viewState_.primaryActionLabel = L"JOGANDO";
+    SetTimer(window_, GameProcessTimerId, 1000, nullptr);
+    startPlaySession();
+    if (settings_.minimizeOnLaunch) hideToTray(false);
 }
+
 void MainPage::updateInstallationState(const MinecraftLaunchResult& installation)
 {
     auto& installationCard = viewState_.statusCards[0];
-    if (installation.success)
-    {
+    if (installation.success) {
         installationCard.value = L"Pronta";
-        installationCard.detail = L"Minecraft 1.20.1 + Forge 47.4.10";
+        installationCard.detail = L"Minecraft " + std::wstring(LauncherConfig::MinecraftVersion) + L" + Forge";
         installationCard.tone = StatusTone::Success;
         return;
     }
-
     installationCard.value = L"Incompleta";
-    switch (installation.issue)
-    {
-    case MinecraftLaunchIssue::InvalidConfiguration:
-        installationCard.detail = L"Confira Java e preferências";
-        break;
-    case MinecraftLaunchIssue::JavaMissing:
-        installationCard.detail = L"Java 17 será baixado automaticamente";
-        break;
-    case MinecraftLaunchIssue::NativeLibrariesMissing:
-        installationCard.detail = L"Bibliotecas nativas ausentes";
-        break;
-    default:
-        installationCard.detail = L"Arquivos do Minecraft/Forge ausentes";
-        break;
+    switch (installation.issue) {
+    case MinecraftLaunchIssue::InvalidConfiguration: installationCard.detail = L"Confira Java e preferências"; break;
+    case MinecraftLaunchIssue::JavaMissing: installationCard.detail = L"Java 17 será baixado ao jogar"; break;
+    case MinecraftLaunchIssue::NativeLibrariesMissing: installationCard.detail = L"Bibliotecas nativas ausentes"; break;
+    default: installationCard.detail = L"Minecraft/Forge serão baixados"; break;
     }
     installationCard.tone = StatusTone::Warning;
 }
 
-void MainPage::createActionControls()
+// ---------------------------------------------------------------------------------------------
+// Play time and tray
+// ---------------------------------------------------------------------------------------------
+
+void MainPage::startPlaySession()
 {
-    const wchar_t* labels[] = {L"Nickname local", L"Original", L"Jogar", L"Configurações"};
-    for (std::size_t i = 0; i < actions_.size(); ++i) {
-        actions_[i] = CreateWindowEx(0, L"BUTTON", labels[i],
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, 0,0,0,0, window_,
-            reinterpret_cast<HMENU>(static_cast<INT_PTR>(ActionIds[i])), instance_, nullptr);
-        SetWindowSubclass(actions_[i], controlProcedure, i+1, reinterpret_cast<DWORD_PTR>(this));
-    }
-    updateDownloadButton_ = CreateWindowExW(0, L"BUTTON", L"Baixar launcher", WS_CHILD | WS_TABSTOP | BS_OWNERDRAW,
-        0,0,0,0,window_,reinterpret_cast<HMENU>(static_cast<INT_PTR>(LauncherConstants::UpdateDownloadButtonId)),instance_,nullptr);
-    SetWindowSubclass(updateDownloadButton_, controlProcedure, 10, reinterpret_cast<DWORD_PTR>(this));
-    cancelInstallationButton_=CreateWindowExW(0,L"BUTTON",L"Cancelar instalação",WS_CHILD|WS_TABSTOP|BS_OWNERDRAW,
-        0,0,0,0,window_,reinterpret_cast<HMENU>(static_cast<INT_PTR>(LauncherConstants::CancelInstallationButtonId)),instance_,nullptr);
-    installationLogButton_=CreateWindowExW(0,L"BUTTON",L"Abrir log",WS_CHILD|WS_TABSTOP|BS_OWNERDRAW,
-        0,0,0,0,window_,reinterpret_cast<HMENU>(static_cast<INT_PTR>(LauncherConstants::InstallationLogButtonId)),instance_,nullptr);
-    SetWindowSubclass(cancelInstallationButton_,controlProcedure,11,reinterpret_cast<DWORD_PTR>(this));
-    SetWindowSubclass(installationLogButton_,controlProcedure,12,reinterpret_cast<DWORD_PTR>(this));
+    playtime_ = PlaytimeStore::load(LauncherSettingsStore::dataDirectory());
+    playSession_.start(playtime_, PlaySession::Clock::now(), wallClock());
+    flushPlaytime();
+    SetTimer(window_, PlaytimeTimerId, 60 * 1000, nullptr);
+    const int size = GetSystemMetrics(SM_CXSMICON);
+    const auto icon = static_cast<HICON>(LoadImageW(instance_, MAKEINTRESOURCEW(101), IMAGE_ICON, size, size, LR_SHARED));
+    trayIcon_.show(window_, TrayIconMessage, icon ? icon : LoadIcon(nullptr, IDI_APPLICATION), L"Eternal Launcher · Jogando");
+    updateTrayTooltip();
 }
 
-void MainPage::layoutControls()
+void MainPage::flushPlaytime()
 {
-    settingsTransitionFrame_.reset();
-    RECT client{}; GetClientRect(window_, &client);
-    if (client.right <= 0 || client.bottom <= 0) return;
-    viewScale_ = std::min(static_cast<float>(client.right) / LauncherConstants::WindowWidth,
-                         static_cast<float>(client.bottom) / LauncherConstants::WindowHeight);
-    offsetX_ = (client.right - LauncherConstants::WindowWidth * viewScale_) / 2;
-    offsetY_ = (client.bottom - LauncherConstants::WindowHeight * viewScale_) / 2;
-    const std::array<Gdiplus::RectF,4> bounds = {
-        playerProfile_.offlineTabBounds(ProfileBounds), playerProfile_.originalTabBounds(ProfileBounds),
-        playPanel_.buttonBounds(PlayBounds), header_.settingsBounds(static_cast<float>(LauncherConstants::WindowWidth))};
-    for (std::size_t i=0; i<actions_.size(); ++i) {
-        if (!actions_[i]) continue;
-        const auto& b=bounds[i];
-        const int x=static_cast<int>(std::floor(offsetX_+b.X*viewScale_));
-        const int y=static_cast<int>(std::floor(offsetY_+b.Y*viewScale_));
-        const int right=static_cast<int>(std::ceil(offsetX_+b.GetRight()*viewScale_));
-        const int bottom=static_cast<int>(std::ceil(offsetY_+b.GetBottom()*viewScale_));
-        SetWindowPos(actions_[i],nullptr,x,y,right-x,bottom-y,SWP_NOZORDER | SWP_NOACTIVATE);
-    }
-    settingsPage_.layout(viewScale_, offsetX_, offsetY_);
-    for(const auto& item:{std::pair{cancelInstallationButton_,InstallationPanelComponent::cancelBounds()},
-        std::pair{installationLogButton_,InstallationPanelComponent::logBounds()}}) {
-        if(!item.first) continue;
-        const auto& controlBounds=item.second;
-        SetWindowPos(item.first,nullptr,static_cast<int>(offsetX_+controlBounds.X*viewScale_),static_cast<int>(offsetY_+controlBounds.Y*viewScale_),
-            static_cast<int>(controlBounds.Width*viewScale_),static_cast<int>(controlBounds.Height*viewScale_),SWP_NOZORDER|SWP_NOACTIVATE);
-    }
-    if(installationLogButton_ && cancelInstallationButton_) {
-        SetWindowPos(installationLogButton_,actions_[2],0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE);
-        SetWindowPos(cancelInstallationButton_,installationLogButton_,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE);
-    }
-    if(updateDownloadButton_) SetWindowPos(updateDownloadButton_,nullptr,
-        static_cast<int>(offsetX_+832*viewScale_),static_cast<int>(offsetY_+681*viewScale_),
-        static_cast<int>(288*viewScale_),static_cast<int>(24*viewScale_),SWP_NOZORDER | SWP_NOACTIVATE);
-    if (nicknameInput_) {
-        // Child Z order also defines Win32 dialog tab order.
-        SetWindowPos(nicknameInput_, actions_[1], 0,0,0,0,
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-        const HFONT font=CreateFont(-static_cast<int>(std::round(15*viewScale_)),0,0,0,FW_NORMAL,
-            FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,
-            CLEARTYPE_QUALITY,DEFAULT_PITCH | FF_DONTCARE,Theme::FontFamily);
-        if (font) {
-            SendMessage(nicknameInput_,WM_SETFONT,reinterpret_cast<WPARAM>(font),TRUE);
-            if (inputFont_) DeleteObject(inputFont_);
-            inputFont_=font;
-        }
-        layoutNicknameInput();
-    }
-    const std::array<HWND,7> controls={actions_[0],actions_[1],actions_[2],nicknameInput_,updateDownloadButton_,cancelInstallationButton_,installationLogButton_};
-    for(std::size_t i=0;i<controls.size();++i) if(controls[i]) {
-        GetWindowRect(controls[i],&mainControlBounds_[i]);
-        MapWindowPoints(nullptr,window_,reinterpret_cast<POINT*>(&mainControlBounds_[i]),2);
-    }
-    positionedScene_=-1;
+    if (!playSession_.active()) return;
+    playtime_ = playSession_.snapshot(PlaySession::Clock::now(), wallClock());
+    (void)PlaytimeStore::save(LauncherSettingsStore::dataDirectory(), playtime_);
 }
 
-float MainPage::pageOffset() const
+void MainPage::finishPlaySession()
 {
-    const float remaining=1-pageTravel_;
-    const float logical=(settingsVisible_ ? 96.0F : -72.0F)*remaining*remaining*remaining;
-    return viewScale_>0 ? std::round(logical*viewScale_)/viewScale_ : 0;
+    if (playSession_.active()) {
+        flushPlaytime();
+        playSession_.stop();
+    }
+    if (window_) KillTimer(window_, PlaytimeTimerId);
+    trayIcon_.hide();
+    hiddenToTray_ = false;
 }
 
-void MainPage::positionPageControls()
+void MainPage::updateTrayTooltip()
 {
-    const int pixels=static_cast<int>(std::round(pageOffset()*viewScale_));
-    const int scene=settingsVisible_ ? 1 : 0;
-    if(positionedScene_==scene && positionedOffset_==pixels) return;
-    positionedScene_=scene;positionedOffset_=pixels;
-    if(settingsVisible_) {settingsPage_.setTransitionOffset(pixels);return;}
-    const std::array<HWND,7> controls={actions_[0],actions_[1],actions_[2],nicknameInput_,updateDownloadButton_,cancelInstallationButton_,installationLogButton_};
-    auto batch=BeginDeferWindowPos(static_cast<int>(controls.size()));
-    for(std::size_t i=0;i<controls.size();++i) {
-        if(!controls[i]) continue;
-        const auto& b=mainControlBounds_[i];
-        if(batch) batch=DeferWindowPos(batch,controls[i],nullptr,b.left+pixels,b.top,0,0,
-            SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS);
-        if(!batch) break;
-    }
-    if(batch && EndDeferWindowPos(batch)) return;
-    for(std::size_t i=0;i<controls.size();++i) if(controls[i])
-        SetWindowPos(controls[i],nullptr,mainControlBounds_[i].left+pixels,mainControlBounds_[i].top,0,0,
-            SWP_NOSIZE|SWP_NOZORDER|SWP_NOACTIVATE|SWP_NOCOPYBITS);
+    if (!playSession_.active()) return;
+    const auto elapsed = playSession_.elapsedSeconds(PlaySession::Clock::now());
+    trayIcon_.setTooltip(L"Eternal Launcher · Jogando · " + PlaytimeStore::formatDuration(elapsed));
 }
 
-void MainPage::syncControls()
+void MainPage::hideToTray(bool closedByUser)
 {
-    if(cancelInstallationButton_) {
-        ShowWindow(cancelInstallationButton_,!settingsVisible_ && installation_.visible && installation_.running ? SW_SHOW : SW_HIDE);
-        EnableWindow(cancelInstallationButton_,installation_.running && !installation_.cancelling);
-        SetWindowTextW(cancelInstallationButton_,installation_.cancelling ? L"Cancelando instalação" : L"Cancelar instalação");
+    if (!trayIcon_.visible()) {
+        // Without an icon there is no way back; minimize instead of hiding.
+        ShowWindow(window_, SW_MINIMIZE);
+        return;
     }
-    if(installationLogButton_) ShowWindow(installationLogButton_,!settingsVisible_ && installation_.visible ? SW_SHOW : SW_HIDE);
-    if (updateDownloadButton_) {
-        const bool busy = viewState_.progressVisible || (!viewState_.playEnabled && viewState_.operation != LauncherOperation::MinecraftRunning);
-        ShowWindow(updateDownloadButton_, !settingsVisible_ && !busy && !updateWarning_.empty() ? SW_SHOW : SW_HIDE);
-    }
-    if (settingsVisible_) settingsPage_.setLocked(!viewState_.playEnabled || minecraftLauncherService_->isGameRunning());
-    for (std::size_t i=0;i<actions_.size();++i) {
-        if (!actions_[i]) continue;
-        const bool enabled=!updatingLauncher_ && (i==3 || viewState_.playEnabled);
-        if ((IsWindowEnabled(actions_[i]) != FALSE) != enabled) EnableWindow(actions_[i],enabled);
-        if (!enabled) hovered_[i]=false;
-    }
-    if (nicknameInput_ && (IsWindowEnabled(nicknameInput_) != FALSE) != viewState_.playEnabled)
-        EnableWindow(nicknameInput_,viewState_.playEnabled);
-    const auto setLabel=[](HWND control,const std::wstring& label) {
-        if (!control) return;
-        std::array<wchar_t,256> current{};
-        GetWindowText(control,current.data(),static_cast<int>(current.size()));
-        if (label != current.data()) SetWindowText(control,label.c_str());
-    };
-    setLabel(actions_[0],originalMode_ ? L"Nickname local" : L"Nickname local (selecionado)");
-    setLabel(actions_[1],originalMode_ ? L"Original (selecionado)" : L"Original");
-    setLabel(actions_[2],viewState_.primaryActionLabel.empty() ? L"Jogar agora" : viewState_.primaryActionLabel);
-}
-
-void MainPage::updateMotionPreference()
-{
-    BOOL enabled=TRUE;
-    if (SystemParametersInfo(SPI_GETCLIENTAREAANIMATION,0,&enabled,0)) motionEnabled_=enabled!=FALSE;
-    if (!motionEnabled_) {
-        for (std::size_t i=0;i<hover_.size();++i) hover_[i]=hovered_[i] ? 1.0F : 0.0F;
-        displayedProgress_=static_cast<float>(viewState_.progressPercent);
-        animationPhase_=0.45F;
-        portalEntrance_=1;transitionTime_=1;leftTransition_.reset();
+    ShowWindow(window_, SW_HIDE);
+    hiddenToTray_ = true;
+    if (closedByUser) exitAfterGame_ = true;
+    if (!trayNoticeShown_) {
+        trayNoticeShown_ = true;
+        trayIcon_.notify(L"O Eternal continua contando seu tempo",
+            closedByUser ? L"Ele fecha sozinho quando o Minecraft encerrar. Clique no ícone para abrir." :
+                           L"Clique no ícone perto do relógio para abrir o launcher.");
     }
 }
 
-void MainPage::redraw(bool animationFrame)
+void MainPage::restoreFromTray()
 {
-    if (!window_) return;
-    // Any native interaction or new data invalidates the cached form. Timer-only frames reuse it.
-    if(!animationFrame || !settingsVisible_ || pageTravel_==1 || !motionEnabled_ ||
-        !IsWindowVisible(window_) || IsIconic(window_) || closing_) settingsTransitionFrame_.reset();
-    const int scene=settingsVisible_ ? 2 : installation_.visible ? 1 : 0;
-    if(scene!=0) portalHovered_=false;
-    if(pulseAttempt_!=installation_.attempt) {
-        pulseAttempt_=installation_.attempt;completionPulse_={};previousSteps_.fill(InstallationStepState::Waiting);
-    }
-    for(std::size_t i=0;i<completionPulse_.size();++i) {
-        if(installation_.steps[i]!=previousSteps_[i] &&
-            (installation_.steps[i]==InstallationStepState::Complete || installation_.steps[i]==InstallationStepState::Available))
-            completionPulse_[i]=1;
-        previousSteps_[i]=installation_.steps[i];
-        if(!installation_.visible) completionPulse_[i]=0;
-    }
-    if(scene!=previousScene_) {
-        leftTransition_.reset();transitionTime_=1;
-        if(motionEnabled_ && frame_ && IsWindowVisible(window_) && !IsIconic(window_) &&
-            scene!=2 && previousScene_!=2 && pageTravel_==1) {
-            // Cache the pixels actually presented. Interrupted transitions start from that image.
-            const int x=static_cast<int>(offsetX_+36*viewScale_),y=static_cast<int>(offsetY_+112*viewScale_);
-            const int width=static_cast<int>(744*viewScale_),height=static_cast<int>(512*viewScale_);
-            if(x>=0 && y>=0 && x+width<=static_cast<int>(frame_->GetWidth()) &&
-                y+height<=static_cast<int>(frame_->GetHeight()) && width>0 && height>0) {
-                leftTransition_.reset(frame_->Clone(Gdiplus::Rect(x,y,width,height),PixelFormat32bppPARGB));
-                if(leftTransition_ && leftTransition_->GetLastStatus()==Gdiplus::Ok) {
-                    transitionBounds_={static_cast<float>(x),static_cast<float>(y),static_cast<float>(width),static_cast<float>(height)};
-                    transitionTime_=0;
-                } else leftTransition_.reset();
-            }
-        }
-        previousScene_=scene;
-    }
-    const auto& transfer=installation_.progress;
-    const float fillTarget=static_cast<float>(transfer.percent.value_or(0));
-    if(fillAttempt_!=installation_.attempt || fillStage_!=transfer.stage || fillTransfer_!=transfer.transferId ||
-        transfer.activity!=InstallationActivity::Downloading || fillTarget<installationFill_) {
-        installationFill_=0;
-        fillAttempt_=installation_.attempt;fillStage_=transfer.stage;fillTransfer_=transfer.transferId;
-    }
-    frameDirty_ = true;
-    if(!animationFrame) syncControls();
-    positionPageControls();
-    bool unsettled=std::abs(displayedProgress_-viewState_.progressPercent)>0.1F;
-    for (std::size_t i=0;i<hover_.size();++i) unsettled |= std::abs(hover_[i]-(hovered_[i] ? 1.0F : 0.0F))>0.005F;
-    for(std::size_t i=0;i<installationHover_.size();++i)
-        unsettled |= std::abs(installationHover_[i]-(installationHovered_[i] ? 1.0F : 0.0F))>0.005F;
-    const float selection=originalMode_ ? 1.0F : 0.0F;
-    unsettled |= std::abs(identitySelection_-selection)>.005F;
-    const bool transferVisible=installation_.visible && installation_.running && !installation_.cancelling &&
-        transfer.activity==InstallationActivity::Downloading && transfer.percent.has_value();
-    unsettled |= transferVisible && std::abs(installationFill_-fillTarget)>.1F;
-    const float pressed=viewState_.playEnabled && actions_[2] &&
-        (SendMessageW(actions_[2],BM_GETSTATE,0,0)&BST_PUSHED) ? 1.0F : 0.0F;
-    unsettled |= std::abs(playPress_-pressed)>.005F || playSweep_<1 || playPulse_>0;
-    unsettled |= std::abs(playLight_-playLightTarget_)>.005F;
-    for(const float pulse:completionPulse_) unsettled |= pulse>0;
-    const bool busy=viewState_.progressVisible ||
-        (!viewState_.playEnabled && viewState_.operation!=LauncherOperation::MinecraftRunning);
-    if (!motionEnabled_) {
-        for (std::size_t i=0;i<hover_.size();++i) hover_[i]=hovered_[i] ? 1.0F : 0.0F;
-        displayedProgress_=static_cast<float>(viewState_.progressPercent);
-        for(std::size_t i=0;i<installationHover_.size();++i) installationHover_[i]=installationHovered_[i] ? 1.0F : 0.0F;
-        identitySelection_=selection;installationFill_=fillTarget;
-        portalEntrance_=1;transitionTime_=1;leftTransition_.reset();
-        portalEnergy_=0;portalBurst_=0;playPress_=pressed;playPulse_=0;playSweep_=1;completionPulse_={};
-        pageTravel_=1;playLight_=playLightTarget_;positionPageControls();
-    }
-    const bool indeterminate=installation_.visible ? installation_.running && !installation_.cancelling :
-        busy && viewState_.progressPercent==0;
-    const bool ambient=ambientMotion_ && !installation_.visible && GetForegroundWindow()==window_;
-    const bool running=motionEnabled_ && IsWindowVisible(window_) && !IsIconic(window_) && !closing_ &&
-        (settingsVisible_ ? pageTravel_<1 : pageTravel_<1 || unsettled || indeterminate || (!installation_.visible &&
-            (ambient || portalEntrance_<1 || portalHovered_ || portalEnergy_>.005F || portalBurst_>0)) || transitionTime_<1);
-    if (running && !animationTimer_) {
-        previousFrame_=std::chrono::steady_clock::now();
-        animationTimer_=SetTimer(window_,LauncherConstants::AnimationTimerId,USER_TIMER_MINIMUM,nullptr)!=0;
-    } else if (!running && animationTimer_) {
-        KillTimer(window_,LauncherConstants::AnimationTimerId); animationTimer_=false;
-    }
-    // Hover/focus changes the canvas and owner-drawn buttons, not the EDIT contents or caret.
-    RedrawWindow(window_,nullptr,nullptr,RDW_INVALIDATE | RDW_NOCHILDREN);
-    if (settingsVisible_) settingsPage_.invalidateButtons();
-    else {
-        for (const auto action : actions_) if (action) InvalidateRect(action, nullptr, FALSE);
-        if(cancelInstallationButton_) InvalidateRect(cancelInstallationButton_,nullptr,FALSE);
-        if(installationLogButton_) InvalidateRect(installationLogButton_,nullptr,FALSE);
-    }
+    ShowWindow(window_, IsIconic(window_) ? SW_RESTORE : SW_SHOW);
+    SetForegroundWindow(window_);
+    hiddenToTray_ = false;
+    exitAfterGame_ = false;
+    redraw();
 }
 
-void MainPage::animate()
+void MainPage::showTrayMenu(POINT anchor)
 {
-    const auto now=std::chrono::steady_clock::now();
-    const float dt=std::clamp(std::chrono::duration<float,std::milli>(now-previousFrame_).count(),0.0F,100.0F);
-    previousFrame_=now;
-    pageTravel_=std::min(1.0F,pageTravel_+dt/(settingsVisible_ ? 340.0F : 280.0F));
-    playLight_+=(playLightTarget_-playLight_)*(1-std::exp(-dt/55));
-    if(std::abs(playLight_-playLightTarget_)<.006F) playLight_=playLightTarget_;
-    particlePhase_=std::fmod(particlePhase_+dt/8000,1.0F);
-    const float energyTarget=portalHovered_ && !settingsVisible_ && !installation_.visible ? 1.0F : 0.0F;
-    portalEnergy_+=(energyTarget-portalEnergy_)*(1-std::exp(-dt/95));
-    if(std::abs(energyTarget-portalEnergy_)<.006F) portalEnergy_=energyTarget;
-    portalBurst_=std::max(0.0F,portalBurst_-dt/1400);
-    playSweep_=std::min(1.0F,playSweep_+dt/480);
-    playPulse_=std::max(0.0F,playPulse_-dt/380);
-    const float pressed=viewState_.playEnabled && actions_[2] &&
-        (SendMessageW(actions_[2],BM_GETSTATE,0,0)&BST_PUSHED) ? 1.0F : 0.0F;
-    playPress_+=(pressed-playPress_)*(1-std::exp(-dt/30));
-    if(std::abs(pressed-playPress_)<.006F) playPress_=pressed;
-    for(float& pulse:completionPulse_) pulse=std::max(0.0F,pulse-dt/420);
-    const float ease=1-std::exp(-dt/35);
-    for (std::size_t i=0;i<hover_.size();++i) {
-        const float target=hovered_[i] ? 1.0F : 0.0F;
-        hover_[i]+=(target-hover_[i])*ease;
-        if (std::abs(target-hover_[i])<0.006F) hover_[i]=target;
+    HMENU menu = CreatePopupMenu();
+    if (!menu) return;
+    if (playSession_.active()) {
+        const auto status = L"Jogando · " + PlaytimeStore::formatDuration(playSession_.elapsedSeconds(PlaySession::Clock::now()));
+        AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, status.c_str());
+        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     }
-    const float target=static_cast<float>(viewState_.progressPercent);
-    // A new phase can reset progress, so never animate a backwards value.
-    if (target<displayedProgress_) displayedProgress_=target;
-    else displayedProgress_+=(target-displayedProgress_)*(1-std::exp(-dt/85));
-    if (std::abs(target-displayedProgress_)<0.1F) displayedProgress_=target;
-    for(std::size_t i=0;i<installationHover_.size();++i) {
-        const float targetHover=installationHovered_[i] ? 1.0F : 0.0F;
-        installationHover_[i]+=(targetHover-installationHover_[i])*(1-std::exp(-dt/45));
-        if(std::abs(targetHover-installationHover_[i])<.006F) installationHover_[i]=targetHover;
-    }
-    const float selection=originalMode_ ? 1.0F : 0.0F;
-    identitySelection_+=(selection-identitySelection_)*(1-std::exp(-dt/55));
-    if(std::abs(selection-identitySelection_)<.006F) identitySelection_=selection;
-    const float fillTarget=static_cast<float>(installation_.progress.percent.value_or(0));
-    installationFill_+=(fillTarget-installationFill_)*(1-std::exp(-dt/70));
-    if(std::abs(fillTarget-installationFill_)<.1F) installationFill_=fillTarget;
-    if(!settingsVisible_ && !installation_.visible) portalEntrance_=std::min(1.0F,portalEntrance_+dt/750);
-    transitionTime_=std::min(1.0F,transitionTime_+dt/240);
-    if(transitionTime_==1) leftTransition_.reset();
-    animationPhase_+=dt/1600;
-    animationPhase_=std::fmod(animationPhase_,1.0F);
-    redraw(true);
+    AppendMenuW(menu, MF_STRING, MenuTrayOpen, L"Abrir Eternal Launcher");
+    AppendMenuW(menu, MF_STRING, MenuTrayExit, L"Sair do launcher");
+    SetMenuDefaultItem(menu, MenuTrayOpen, FALSE);
+    // Required so the menu closes when the user clicks elsewhere.
+    SetForegroundWindow(window_);
+    const UINT alignment = GetSystemMetrics(SM_MENUDROPALIGNMENT) ? TPM_RIGHTALIGN : TPM_LEFTALIGN;
+    TrackPopupMenuEx(menu, TPM_RIGHTBUTTON | TPM_BOTTOMALIGN | alignment, anchor.x, anchor.y, window_, nullptr);
+    PostMessageW(window_, WM_NULL, 0, 0);
+    DestroyMenu(menu);
 }
 
-LRESULT CALLBACK MainPage::controlProcedure(HWND control,UINT message,WPARAM wParam,
-    LPARAM lParam,UINT_PTR id,DWORD_PTR data)
-{
-    auto* page=reinterpret_cast<MainPage*>(data);
-    // WM_DRAWITEM covers the complete button, including its rounded corners.
-    if (message == WM_ERASEBKGND) return 1;
-    const auto index=static_cast<std::size_t>(id-1);
-    if(index==2 && message==WM_MOUSEMOVE && IsWindowEnabled(control)) {
-        RECT b{};GetClientRect(control,&b);
-        const float light=b.right>0 ? std::clamp(static_cast<float>(GET_X_LPARAM(lParam))/b.right,0.0F,1.0F) : .5F;
-        if(std::abs(page->playLightTarget_-light)>.005F) {page->playLightTarget_=light;page->redraw(true);}
-    }
-    if((id==11 || id==12) && (message==WM_MOUSEMOVE || message==WM_MOUSELEAVE)) {
-        const auto slot=static_cast<std::size_t>(id-11);
-        const bool hover=message==WM_MOUSEMOVE && IsWindowEnabled(control);
-        if(page->installationHovered_[slot]!=hover) {
-            page->installationHovered_[slot]=hover;
-            if(hover) {TRACKMOUSEEVENT track{sizeof(track),TME_LEAVE,control,0};TrackMouseEvent(&track);}
-            page->redraw();
-        }
-    }
-    if (message==WM_MOUSEMOVE && index < page->hovered_.size() && !page->hovered_[index]) {
-        page->hovered_[index]=true;
-        if(index==2) page->playSweep_=0;
-        TRACKMOUSEEVENT track{sizeof(TRACKMOUSEEVENT),TME_LEAVE,control,0};
-        TrackMouseEvent(&track); page->redraw();
-    } else if (message==WM_MOUSELEAVE && index < page->hovered_.size()) {
-        page->hovered_[index]=false; page->redraw();
-    } else if (message==WM_SETCURSOR && IsWindowEnabled(control)) {
-        SetCursor(LoadCursor(nullptr,IDC_HAND)); return TRUE;
-    } else if (message==WM_NCDESTROY) RemoveWindowSubclass(control,controlProcedure,id);
-    if(index==2 && IsWindowEnabled(control)) {
-        if(message==WM_SETFOCUS) page->playSweep_=0;
-        if(message==WM_LBUTTONDOWN || (message==WM_KEYDOWN && wParam==VK_SPACE && !(lParam&(1LL<<30))))
-            page->playPulse_=1;
-    }
-    const auto result=DefSubclassProc(control,message,wParam,lParam);
-    if (message==WM_SETFOCUS || message==WM_KILLFOCUS ||
-        message==WM_LBUTTONDOWN || message==WM_LBUTTONUP ||
-        message==WM_KEYDOWN || message==WM_KEYUP) page->redraw();
-    return result;
-}
-
-bool MainPage::handleKeyboard(MSG& message)
-{
-    if (settingsVisible_ && message.message == WM_KEYDOWN) {
-        if (message.wParam == VK_ESCAPE) { hideSettings(); return true; }
-        if (message.wParam == VK_RETURN) {
-            const int id = settingsPage_.focusedControlId();
-            if (id == SettingsPage::MinRam || id == SettingsPage::MaxRam || id == SettingsPage::Width ||
-                id == SettingsPage::Height || id == SettingsPage::JavaPath || id == SettingsPage::GamePath) saveSettings();
-            else if (SettingsPage::containsId(id) && id != SettingsPage::RamSlider) SendMessage(GetDlgItem(window_, id), BM_CLICK, 0, 0);
-            return true;
-        }
-    }
-    if (message.message==WM_KEYDOWN && message.wParam==VK_RETURN) {
-        for(const auto action:{cancelInstallationButton_,installationLogButton_}) if(action && GetFocus()==action) {
-            SendMessageW(action,BM_CLICK,0,0);return true;
-        }
-        if (GetFocus()==updateDownloadButton_) { SendMessage(updateDownloadButton_,BM_CLICK,0,0); return true; }
-        if (GetFocus()==nicknameInput_) { handlePrimaryAction(); return true; }
-        for (const auto action : actions_) if (GetFocus()==action) {
-            SendMessage(action,BM_CLICK,0,0); return true;
-        }
-    }
-    return IsDialogMessage(window_,&message)!=FALSE;
-}
+// ---------------------------------------------------------------------------------------------
+// Previews
+// ---------------------------------------------------------------------------------------------
 
 bool MainPage::renderPreviews(const std::filesystem::path& directory)
 {
     std::error_code error;
-    std::filesystem::create_directories(directory,error);
+    std::filesystem::create_directories(directory, error);
     if (error) return false;
-    UINT count=0,size=0;
-    Gdiplus::GetImageEncodersSize(&count,&size);
+    UINT count = 0, size = 0;
+    Gdiplus::GetImageEncodersSize(&count, &size);
     if (!size) return false;
     std::vector<BYTE> bytes(size);
-    auto* encoders=reinterpret_cast<Gdiplus::ImageCodecInfo*>(bytes.data());
-    if (Gdiplus::GetImageEncoders(count,size,encoders)!=Gdiplus::Ok) return false;
+    auto* encoders = reinterpret_cast<Gdiplus::ImageCodecInfo*>(bytes.data());
+    if (Gdiplus::GetImageEncoders(count, size, encoders) != Gdiplus::Ok) return false;
     CLSID png{};
-    bool found=false;
-    for (UINT i=0;i<count;++i) if (std::wstring_view(encoders[i].MimeType)==L"image/png") {
-        png=encoders[i].Clsid; found=true; break;
+    bool found = false;
+    for (UINT i = 0; i < count; ++i) if (std::wstring_view(encoders[i].MimeType) == L"image/png") {
+        png = encoders[i].Clsid; found = true; break;
     }
     if (!found) return false;
-    const auto initial=viewState_;
-    for (int variant=0;variant<24;++variant) {
-        viewState_=initial; originalMode_=false; updatingLauncher_=false; updateWarning_.clear();
-        installation_={};
-        const wchar_t* filename=L"loading.png";
-        if (variant!=0) {
-            viewState_.statusCards={
-                {L"INSTALAÇÃO",L"Pronta",L"Minecraft e Forge preparados",StatusTone::Success},
-                {L"ARQUIVOS",L"Sincronizados",L"Manifesto privado conferido",StatusTone::Success},
-                {L"SERVIDOR HTTP",L"Disponível",L"Manifesto de arquivos acessível",StatusTone::Success}};
-            viewState_.operation=LauncherOperation::ReadyToPlay;
-            viewState_.headline=L"Pronto para jogar";
-            viewState_.operationMessage=L"Seu mundo está preparado. Boa aventura!";
-            viewState_.primaryActionLabel=L"JOGAR AGORA";
-            viewState_.playEnabled=true;
-            filename=L"desktop.png";
-        }
-        if (variant==2) {
-            filename=L"original.png"; originalMode_=true;
-        } else if (variant==3) {
-            filename=L"download.png";
-            viewState_.operation=LauncherOperation::DownloadingFiles;
-            viewState_.headline=L"Preparando Minecraft";
-            viewState_.operationMessage=L"Baixando e verificando os arquivos do modpack...";
-            viewState_.primaryActionLabel=L"PREPARANDO...";
-            viewState_.playEnabled=false; viewState_.progressVisible=true; viewState_.progressPercent=47;
-        } else if (variant==4) {
-            filename=L"error.png";
-            viewState_.operation=LauncherOperation::ServerUnavailable;
-            viewState_.headline=L"Servidor indisponível";
-            viewState_.operationMessage=L"Não foi possível consultar o manifesto. Verifique sua conexão e tente novamente.";
-            viewState_.primaryActionLabel=L"TENTAR NOVAMENTE";
-            viewState_.statusCards[2]={L"SERVIDOR HTTP",L"Indisponível",L"Falha na consulta do manifesto",StatusTone::Error};
-        } else if (variant==5) filename=L"compact.png";
-        else if (variant==6) {
-            filename=L"first-install.png";
-            viewState_.operation=LauncherOperation::NeedsInstallation;
-            viewState_.headline=L"Pronto para instalar";
-            viewState_.operationMessage=L"Clique em Jogar para preparar Java, Minecraft e Forge.";
-            viewState_.primaryActionLabel=L"INSTALAR E JOGAR";
-            viewState_.statusCards[0]={L"INSTALAÇÃO",L"Incompleta",L"Java 17 será baixado automaticamente",StatusTone::Warning};
-        } else if (variant==7) {
-            filename=L"auth-error.png"; originalMode_=true;
-            viewState_.operation=LauncherOperation::AuthenticationError;
-            viewState_.headline=L"Falha no login Microsoft";
-            viewState_.operationMessage=L"Não foi possível autenticar. Confira sua conta e tente novamente.";
-            viewState_.primaryActionLabel=L"TENTAR NOVAMENTE";
-        } else if (variant==8) {
-            filename=L"nickname-error.png";
-            viewState_.operation=LauncherOperation::InvalidNickname;
-            viewState_.headline=L"Confira seu nickname";
-            viewState_.operationMessage=L"Use de 3 a 16 letras, números ou underline antes de instalar.";
-            viewState_.primaryActionLabel=L"TENTAR NOVAMENTE";
-        } else if (variant==9) {
-            filename=L"sign-in.png"; originalMode_=true;
-            viewState_.operation=LauncherOperation::SigningIn;
-            viewState_.headline=L"Entrando com Microsoft";
-            viewState_.operationMessage=L"Aguarde o código de confirmação...";
-            viewState_.primaryActionLabel=L"CONECTANDO...";
-            viewState_.playEnabled=false;
-        }
-        if (variant>=10 && variant<=13) {
-            updatingLauncher_=true;
-            applyLauncherUpdateProgress({static_cast<LauncherUpdatePhase>(variant-10),variant==10 ? 0 : variant==11 ? 47 : 100});
-            const wchar_t* names[]={L"update-check.png",L"update-download.png",L"update-apply.png",L"update-restart.png"};
-            filename=names[variant-10];
-        } else if(variant==15) {
-            updatingLauncher_=true; applyLauncherUpdateProgress({LauncherUpdatePhase::Downloading,47});
-            filename=L"update-compact.png";
-        } else if(variant==14 || variant==16) {
-            updateWarning_=L"A atualização falhou. A versão anterior foi restaurada.";
-            filename=variant==14 ? L"update-recovery.png" : L"update-recovery-compact.png";
-        }
-        if(variant>=17) {
-            installation_.begin();
-            auto& value=installation_.progress;
-            value.message=L"Consultando os arquivos do grupo...";
-            viewState_.operation=LauncherOperation::PreparingMinecraft;
-            viewState_.playEnabled=false;viewState_.progressVisible=true;viewState_.progressPercent=0;
-            viewState_.headline=L"Preparando seu mundo";viewState_.operationMessage=value.message;
-            viewState_.primaryActionLabel=L"PREPARANDO...";
-            filename=L"installation-checking.png";
-            if(variant!=17) {
-                installation_.steps[0]=InstallationStepState::Available;
-                installation_.steps[1]=InstallationStepState::Active;
-                value.stage=InstallationStage::Minecraft;value.activity=InstallationActivity::Downloading;
-                value.message=L"Baixando Minecraft, bibliotecas e assets...";
-                value.receivedBytes=282ULL*1024*1024;value.totalBytes=600ULL*1024*1024;value.percent=47;
-                value.completedFiles=140;value.totalFiles=900;value.reusedFiles=620;
-                const auto now=InstallationTransferMeter::Clock::now();
-                installation_.meter.sample(value.receivedBytes-12ULL*1024*1024,now-std::chrono::seconds(3));
-                installation_.meter.sample(value.receivedBytes,now);
-                viewState_.headline=L"Minecraft e assets";viewState_.operationMessage=value.message;viewState_.progressPercent=47;
-                filename=variant==23 ? L"installation-compact.png" : L"installation-download.png";
-            }
-            if(variant==19) {
-                value={InstallationStage::Forge,InstallationActivity::Installing,InstallationStepState::Active,L"Executando instalador Forge 47.4.10..."};
-                installation_.steps[1]=InstallationStepState::Complete;installation_.steps[2]=InstallationStepState::Complete;
-                installation_.steps[3]=InstallationStepState::Active;
-                viewState_.headline=L"Forge";viewState_.operationMessage=value.message;viewState_.progressPercent=0;
-                filename=L"installation-forge.png";
-            } else if(variant==20 || variant==21) {
-                const bool cancelled=variant==21;
-                installation_.finish(installation_.attempt,{cancelled ? InstallationOutcome::Cancelled : InstallationOutcome::Failed,
-                    cancelled ? InstallationFailure::None : InstallationFailure::Network,
-                    cancelled ? L"Instalação cancelada. Os arquivos completos serão reaproveitados." : L"A conexão foi interrompida. Confira sua internet e tente novamente."});
-                viewState_.operation=cancelled ? LauncherOperation::NeedsInstallation : LauncherOperation::LaunchError;
-                viewState_.headline=cancelled ? L"Instalação cancelada" : L"Falha na preparação";
-                viewState_.operationMessage=installation_.result->message;viewState_.playEnabled=true;viewState_.progressVisible=false;viewState_.progressPercent=0;
-                viewState_.primaryActionLabel=cancelled ? L"CONTINUAR INSTALAÇÃO" : L"TENTAR NOVAMENTE";
-                filename=cancelled ? L"installation-cancelled.png" : L"installation-error.png";
-            } else if(variant==22) {
-                installation_.cancelling=true;
-                viewState_.headline=L"Cancelando instalação...";viewState_.operationMessage=L"Aguardando as tarefas encerrarem com segurança...";
-                viewState_.primaryActionLabel=L"CANCELANDO...";viewState_.progressPercent=0;
-                filename=L"installation-cancelling.png";
-            }
-        }
-        displayedProgress_=static_cast<float>(viewState_.progressPercent); animationPhase_=0.45F;
-        viewScale_=variant==5 || variant==15 || variant==16 || variant==23 ? 0.8F : 1;
-        Gdiplus::Bitmap frame(static_cast<INT>(LauncherConstants::WindowWidth*viewScale_),
-            static_cast<INT>(LauncherConstants::WindowHeight*viewScale_),PixelFormat32bppPARGB);
+
+    const auto save = [&](const wchar_t* filename, float scale, float width = WindowWidth, float height = WindowHeight) {
+        viewScale_ = scale;
+        clientWidth_ = std::round(width * scale);
+        clientHeight_ = std::round(height * scale);
+        offsetX_ = std::floor((clientWidth_ - WindowWidth * scale) / 2);
+        offsetY_ = std::floor((clientHeight_ - WindowHeight * scale) / 2);
+        displayedProgress_ = static_cast<float>(viewState_.progressPercent);
+        animationPhase_ = 0.45F;
+        Gdiplus::Bitmap frame(static_cast<INT>(clientWidth_), static_cast<INT>(clientHeight_), PixelFormat32bppPARGB);
         Gdiplus::Graphics graphics(&frame);
-        render(graphics,true);
-        if (frame.Save((directory/filename).c_str(),&png)!=Gdiplus::Ok) return false;
+        render(graphics, clientWidth_, clientHeight_, true);
+        return frame.Save((directory / filename).c_str(), &png) == Gdiplus::Ok;
+    };
+
+    const auto initial = viewState_;
+    const auto ready = [&] {
+        viewState_ = initial;
+        viewState_.statusCards = {
+            {L"INSTALAÇÃO", L"Pronta", L"Minecraft 1.20.1 + Forge", StatusTone::Success},
+            {L"MODS", L"Sincronizados", L"184 arquivos conferidos", StatusTone::Success},
+            {L"SERVIDOR", L"Online", L"Respondeu em 84 ms", StatusTone::Success}};
+        viewState_.operation = LauncherOperation::ReadyToPlay;
+        viewState_.headline = L"Pronto para jogar";
+        viewState_.operationMessage = L"Os arquivos do grupo são conferidos a cada Jogar.";
+        viewState_.primaryActionLabel = L"JOGAR";
+        viewState_.playEnabled = true;
+        viewState_.news = {
+            {L"EVENTO", L"Noite de construção no spawn", L"Sábado às 20h: tragam blocos e ideias para a nova vila.", L"25 out 2026",
+             L"https://example.com/evento", false},
+            {L"SERVIDOR", L"Backup automático a cada 6 horas", L"Os mundos agora têm cópias de segurança frequentes.", L"20 out 2026", L"", false},
+            NewsFeed::releaseNotes()};
+        mods_ = {};
+        mods_.manifestKnown = true;
+        for (const auto* name : {L"create-1.20.1-0.5.1.f.jar", L"jei-1.20.1-forge-15.3.0.4.jar", L"sophisticatedbackpacks-1.20.1-3.20.5.jar",
+                 L"waystones-forge-1.20.1-14.1.3.jar", L"farmersdelight-1.20.1-1.2.4.jar", L"supplementaries-1.20-2.8.10.jar",
+                 L"moonlight-1.20-2.11.30-forge.jar", L"balm-forge-1.20.1-7.2.2.jar", L"cloth-config-11.1.118-forge.jar",
+                 L"architectury-9.2.14-forge.jar", L"geckolib-forge-1.20.1-4.4.4.jar", L"curios-forge-5.9.1+1.20.1.jar"})
+            mods_.server.push_back({name, 2'400'000, true});
+        mods_.user = {{L"journeymap-1.20.1-5.9.18-forge.jar", {}, 6'800'000, true},
+                      {L"Xaeros_Minimap_24.2.0_Forge_1.20.jar", {}, 1'200'000, false}};
+        modsScanned_ = true;
+        playtime_ = {4 * 3600 + 12 * 60, 3600, wallClock() - 26 * 3600};
+        originalMode_ = false; updatingLauncher_ = false; updateWarning_.clear();
+        installation_ = {};
+        toastVisible_ = false;
+        page_ = LauncherPage::Home;
+        newsFirst_ = 0; newsLoading_ = false; newsError_.clear();
+        modsMessage_.clear(); helpMessage_.clear();
+    };
+
+    // Home.
+    viewState_ = initial; page_ = LauncherPage::Home; modsScanned_ = false; mods_ = {};
+    if (!save(L"loading.png", 1)) return false;
+    ready();
+    if (!save(L"desktop.png", 1)) return false;
+    if (!save(L"compact.png", .8F)) return false;
+    if (!save(L"wide.png", 1, 1600, 800)) return false;
+    toastVisible_ = true; toastText_ = L"Launcher atualizado";
+    if (!save(L"toast.png", 1)) return false;
+    ready(); originalMode_ = true;
+    if (!save(L"original.png", 1)) return false;
+    ready();
+    viewState_.operation = LauncherOperation::ServerUnavailable;
+    viewState_.headline = L"Servidor indisponível";
+    viewState_.operationMessage = L"Não foi possível consultar o manifesto. Verifique sua conexão e tente novamente.";
+    viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
+    viewState_.statusCards[2] = {L"SERVIDOR", L"Indisponível", L"Falha ao consultar o manifesto", StatusTone::Error};
+    if (!save(L"error.png", 1)) return false;
+    ready();
+    viewState_.operation = LauncherOperation::NeedsInstallation;
+    viewState_.headline = L"Pronto para instalar";
+    viewState_.operationMessage = L"Ao jogar, o launcher prepara Java, Minecraft e Forge.";
+    viewState_.primaryActionLabel = L"INSTALAR E JOGAR";
+    viewState_.statusCards[0] = {L"INSTALAÇÃO", L"Incompleta", L"Java 17 será baixado ao jogar", StatusTone::Warning};
+    playtime_ = {};
+    if (!save(L"first-install.png", 1)) return false;
+    ready();
+    viewState_.operation = LauncherOperation::InvalidNickname;
+    viewState_.headline = L"Confira seu nickname";
+    viewState_.operationMessage = L"Use de 3 a 16 letras, números ou underline antes de jogar.";
+    viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
+    if (!save(L"nickname-error.png", 1)) return false;
+    ready(); originalMode_ = true;
+    viewState_.operation = LauncherOperation::SigningIn;
+    viewState_.headline = L"Entrando com Microsoft";
+    viewState_.operationMessage = L"Aguarde o código de confirmação...";
+    viewState_.primaryActionLabel = L"CONECTANDO";
+    viewState_.playEnabled = false;
+    if (!save(L"sign-in.png", 1)) return false;
+    ready();
+    viewState_.operation = LauncherOperation::MinecraftRunning;
+    viewState_.headline = L"Jogando agora";
+    viewState_.operationMessage = L"Forge 47.4.10 iniciado para Steve. O tempo de jogo é contado mesmo com a janela fechada.";
+    viewState_.primaryActionLabel = L"JOGANDO";
+    viewState_.playEnabled = false;
+    if (!save(L"playing.png", 1)) return false;
+
+    // Launcher self-update.
+    const wchar_t* updateNames[] = {L"update-check.png", L"update-download.png", L"update-apply.png", L"update-restart.png"};
+    for (int phase = 0; phase < 4; ++phase) {
+        ready();
+        updatingLauncher_ = true;
+        applyLauncherUpdateProgress({static_cast<LauncherUpdatePhase>(phase), phase == 0 ? 0 : phase == 1 ? 47 : 100});
+        if (!save(updateNames[phase], 1)) return false;
     }
-    installation_={};updatingLauncher_=false; updateWarning_.clear();
-    settingsVisible_ = true;
-    for (int variant = 0; variant < 4; ++variant) {
-        settingsPage_.open(LauncherSettings{}, {});
+    ready();
+    updateWarning_ = L"A atualização falhou. A versão anterior foi restaurada.";
+    if (!save(L"update-recovery.png", 1)) return false;
+
+    // Installation panel.
+    for (int variant = 0; variant < 7; ++variant) {
+        ready();
+        installation_.begin();
+        auto& value = installation_.progress;
+        value.message = L"Consultando os arquivos do grupo...";
+        viewState_.operation = LauncherOperation::PreparingMinecraft;
+        viewState_.playEnabled = false; viewState_.progressVisible = true; viewState_.progressPercent = 0;
+        viewState_.headline = L"Preparando seu mundo"; viewState_.operationMessage = value.message;
+        viewState_.primaryActionLabel = L"PREPARANDO";
+        const wchar_t* filename = L"installation-checking.png";
+        float scale = 1;
+        if (variant != 0) {
+            installation_.steps[0] = InstallationStepState::Available;
+            installation_.steps[1] = InstallationStepState::Active;
+            value.stage = InstallationStage::Minecraft; value.activity = InstallationActivity::Downloading;
+            value.message = L"Baixando Minecraft, bibliotecas e assets...";
+            value.receivedBytes = 282ULL * 1024 * 1024; value.totalBytes = 600ULL * 1024 * 1024; value.percent = 47;
+            value.completedFiles = 140; value.totalFiles = 900; value.reusedFiles = 620;
+            const auto now = InstallationTransferMeter::Clock::now();
+            installation_.meter.sample(value.receivedBytes - 12ULL * 1024 * 1024, now - std::chrono::seconds(3));
+            installation_.meter.sample(value.receivedBytes, now);
+            viewState_.headline = L"Minecraft e assets"; viewState_.operationMessage = value.message; viewState_.progressPercent = 47;
+            filename = L"installation-download.png";
+        }
         if (variant == 2) {
-            LauncherSettings invalid;
-            invalid.minimumMemoryMegabytes = 8192;
-            settingsPage_.open(invalid, {});
+            value = {InstallationStage::Forge, InstallationActivity::Installing, InstallationStepState::Active, L"Executando instalador Forge 47.4.10..."};
+            installation_.steps[1] = InstallationStepState::Complete; installation_.steps[2] = InstallationStepState::Complete;
+            installation_.steps[3] = InstallationStepState::Active;
+            viewState_.headline = L"Forge"; viewState_.operationMessage = value.message; viewState_.progressPercent = 0;
+            filename = L"installation-forge.png";
+        } else if (variant == 3 || variant == 4) {
+            const bool cancelled = variant == 4;
+            installation_.finish(installation_.attempt, {cancelled ? InstallationOutcome::Cancelled : InstallationOutcome::Failed,
+                cancelled ? InstallationFailure::None : InstallationFailure::Network,
+                cancelled ? L"Instalação cancelada. Os arquivos completos serão reaproveitados." :
+                            L"A conexão foi interrompida. Confira sua internet e tente novamente."});
+            viewState_.operation = cancelled ? LauncherOperation::NeedsInstallation : LauncherOperation::LaunchError;
+            viewState_.headline = cancelled ? L"Instalação cancelada" : L"Falha na preparação";
+            viewState_.operationMessage = installation_.result->message; viewState_.playEnabled = true;
+            viewState_.progressVisible = false; viewState_.progressPercent = 0;
+            viewState_.primaryActionLabel = cancelled ? L"CONTINUAR" : L"TENTAR NOVAMENTE";
+            filename = cancelled ? L"installation-cancelled.png" : L"installation-error.png";
+        } else if (variant == 5) {
+            installation_.cancelling = true;
+            viewState_.headline = L"Cancelando instalação..."; viewState_.operationMessage = L"Aguardando as tarefas encerrarem com segurança...";
+            viewState_.primaryActionLabel = L"CANCELANDO"; viewState_.progressPercent = 0;
+            filename = L"installation-cancelling.png";
+        } else if (variant == 6) {
+            filename = L"installation-compact.png";
+            scale = .8F;
+        }
+        if (!save(filename, scale)) return false;
+    }
+
+    // Other pages.
+    ready(); page_ = LauncherPage::News;
+    if (!save(L"news.png", 1)) return false;
+    viewState_.news.clear();
+    if (!save(L"news-empty.png", 1)) return false;
+    ready(); page_ = LauncherPage::Mods;
+    if (!save(L"mods.png", 1)) return false;
+    mods_.user.clear();
+    if (!save(L"mods-empty.png", 1)) return false;
+    ready(); page_ = LauncherPage::Help;
+    if (!save(L"help.png", 1)) return false;
+    helpMessage_ = L"Informações copiadas. Cole no grupo ou no relato do GitHub.";
+    if (!save(L"help-message.png", 1)) return false;
+
+    // Settings.
+    for (int variant = 0; variant < 6; ++variant) {
+        ready(); page_ = LauncherPage::Settings;
+        LauncherSettings settings;
+        const wchar_t* filename = L"settings.png";
+        float scale = 1;
+        auto tab = SettingsPage::Tab::General;
+        if (variant == 1) { filename = L"settings-compact.png"; scale = .8F; }
+        if (variant == 2) { settings.maximumMemoryMegabytes = 6656; filename = L"settings-half-step.png"; }
+        if (variant == 3) { settings.minimumMemoryMegabytes = 8192; tab = SettingsPage::Tab::Advanced; filename = L"settings-error.png"; }
+        if (variant == 4) { tab = SettingsPage::Tab::Advanced; filename = L"settings-advanced.png"; }
+        if (variant == 5) { tab = SettingsPage::Tab::About; filename = L"settings-about.png"; }
+        settingsPage_.open(settings, {});
+        settingsPage_.setTab(tab);
+        if (variant == 3) {
             std::wstring validation;
-            LauncherSettingsStore::validate(invalid, validation, false);
+            LauncherSettingsStore::validate(settings, validation, false);
             settingsPage_.setMessage(validation, true);
         }
-        if (variant == 3) {
-            LauncherSettings halfStep;
-            halfStep.maximumMemoryMegabytes = 6656;
-            settingsPage_.open(halfStep, {});
-        }
-        viewScale_ = variant == 1 ? 0.8F : 1.0F;
-        Gdiplus::Bitmap frame(static_cast<INT>(LauncherConstants::WindowWidth * viewScale_),
-            static_cast<INT>(LauncherConstants::WindowHeight * viewScale_), PixelFormat32bppPARGB);
-        Gdiplus::Graphics graphics(&frame);
-        render(graphics, true);
-        const auto filename = variant == 0 ? L"settings.png" : variant == 1 ? L"settings-compact.png" : variant == 2 ? L"settings-error.png" : L"settings-half-step.png";
-        if (frame.Save((directory / filename).c_str(), &png) != Gdiplus::Ok) return false;
+        if (!save(filename, scale)) return false;
     }
-    settingsVisible_ = false;
-    viewState_=initial; originalMode_=false; viewScale_=1;
+    viewState_ = initial;
+    page_ = LauncherPage::Home;
+    originalMode_ = false;
+    installation_ = {};
+    viewScale_ = 1;
     return true;
 }

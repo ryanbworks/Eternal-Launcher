@@ -27,7 +27,8 @@ HeroComponent::HeroComponent()
 }
 HeroComponent::~HeroComponent() {artwork_.reset(); if(stream_) stream_->Release();}
 
-void HeroComponent::draw(Gdiplus::Graphics& g,const Gdiplus::RectF& b,float reveal,float energy,float phase,float drift) const
+void HeroComponent::draw(Gdiplus::Graphics& g,const Gdiplus::RectF& b,float reveal,float energy,float phase,float drift,
+    const std::vector<std::wstring>& chips) const
 {
     auto path=DrawingUtils::createRoundedPath(b,Theme::PanelRadius);
     const auto saved=g.Save(); g.SetClip(path.get());
@@ -52,7 +53,7 @@ void HeroComponent::draw(Gdiplus::Graphics& g,const Gdiplus::RectF& b,float reve
         }
     }
     Gdiplus::LinearGradientBrush shade(b,Gdiplus::Color(235,14,15,27),Gdiplus::Color(0,14,15,27),Gdiplus::LinearGradientModeHorizontal);
-    const Gdiplus::Color colors[]={{240,14,15,27},{170,14,15,27},{25,14,15,27}};
+    const Gdiplus::Color colors[]={{120,14,15,27},{40,14,15,27},{0,14,15,27}};
     const Gdiplus::REAL stops[]={0,0.48F,1};
     shade.SetInterpolationColors(colors,stops,3); g.FillRectangle(&shade,b);
     if(energy>.005F) {
@@ -100,12 +101,34 @@ void HeroComponent::draw(Gdiplus::Graphics& g,const Gdiplus::RectF& b,float reve
             Gdiplus::SolidBrush dust(Gdiplus::Color(alpha,224,204,255));g.FillEllipse(&dust,x,y,size,size);
         }
     }
-    DrawingUtils::drawDisplayText(g,L"Sua próxima\naventura\ncomeça aqui.",{b.X+30,b.Y+32,386,159},
-        35,Theme::TextPrimary);
-    DrawingUtils::drawText(g,L"Uma instalação privada, sincronizada e\npreparada para o nosso grupo.",
-        {b.X+32,b.Y+199,365,47},13,Gdiplus::FontStyleRegular,Gdiplus::Color(255,207,203,225));
-    const std::wstring versions=L"Minecraft "+std::wstring(LauncherConfig::MinecraftVersion)+L"   /   Forge "+std::wstring(LauncherConfig::ForgeVersion);
-    DrawingUtils::drawText(g,versions,{b.X+32,b.GetBottom()-62,460,22},12,Gdiplus::FontStyleBold,Theme::AccentLight);
-    DrawingUtils::drawText(g,L"Eternal Realms",{b.X+32,b.GetBottom()-35,220,20},11,Gdiplus::FontStyleRegular,Gdiplus::Color(255,183,177,202));
     g.Restore(saved);
+    // Glass panel: a translucent dark plate keeps the copy legible over any part of the art.
+    const Gdiplus::RectF glass{b.X+20,b.GetBottom()-172,440,152};
+    DrawingUtils::fillRoundedRectangle(g,glass,16,Theme::Glass);
+    DrawingUtils::drawRoundedRectangle(g,{glass.X+.5F,glass.Y+.5F,glass.Width-1,glass.Height-1},16,Theme::GlassOutline);
+    DrawingUtils::drawText(g,L"ETERNAL REALMS",{glass.X+24,glass.Y+20,300,16},11,Gdiplus::FontStyleBold,Theme::AccentLight);
+    DrawingUtils::drawDisplayText(g,L"Sua próxima aventura\ncomeça aqui.",{glass.X+24,glass.Y+40,glass.Width-40,74},28,Theme::TextPrimary);
+    float x=glass.X+24;
+    for(const auto& chip:chips) {
+        if(chip.empty()) continue;
+        const float w=DrawingUtils::measureText(g,chip,12,Gdiplus::FontStyleBold)+22;
+        const Gdiplus::RectF pill{x,glass.GetBottom()-38,w,24};
+        DrawingUtils::fillPill(g,pill,Gdiplus::Color(22,255,255,255));
+        DrawingUtils::drawText(g,chip,pill,12,Gdiplus::FontStyleBold,Gdiplus::Color(255,230,231,239),
+            Gdiplus::StringAlignmentCenter,Gdiplus::StringAlignmentCenter);
+        x+=w+8;
+    }
+}
+
+
+void HeroComponent::drawThumbnail(Gdiplus::Graphics& g,const Gdiplus::RectF& b,std::size_t slot,float focusX,float focusY) const
+{
+    if(!artwork_ || slot>=thumbnails_.size()) {
+        Gdiplus::SolidBrush fill(Theme::SurfaceHover);g.FillRectangle(&fill,b);return;
+    }
+    const float sw=static_cast<float>(artwork_->GetWidth()),sh=static_cast<float>(artwork_->GetHeight());
+    float cropW=sw*.45F,cropH=cropW*b.Height/b.Width;
+    if(cropH>sh) {cropH=sh;cropW=cropH*b.Width/b.Height;}
+    const float x=std::clamp(sw*focusX-cropW/2,0.0F,sw-cropW),y=std::clamp(sh*focusY-cropH/2,0.0F,sh-cropH);
+    DrawingUtils::drawCachedImage(g,*artwork_,thumbnails_[slot],b,{x,y,cropW,cropH});
 }
