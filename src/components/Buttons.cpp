@@ -4,6 +4,7 @@
 #include "utils/DrawingUtils.h"
 
 #include <algorithm>
+#include <cmath>
 
 using DrawingUtils::blend;
 
@@ -49,10 +50,7 @@ void Buttons::draw(Gdiplus::Graphics& g, const Gdiplus::RectF& b, std::wstring_v
     }
     if (fill.GetA() > 0) DrawingUtils::fillRoundedRectangle(g, b, radius, fill);
     if (outline.GetA() > 0) DrawingUtils::drawRoundedRectangle(g, {b.X + .5F, b.Y + .5F, b.Width - 1, b.Height - 1}, radius, outline);
-    if (style == Style::Tab && selected) {
-        Gdiplus::SolidBrush underline(Theme::Accent);
-        g.FillRectangle(&underline, b.X + 8, b.GetBottom() - 2, b.Width - 16, 2.0F);
-    }
+    // Tabs draw no underline: the owner slides a shared indicator between them.
     const int fontStyle = style == Style::Link ? Gdiplus::FontStyleBold : Gdiplus::FontStyleBold;
     if (icon) {
         const float iconSize = 16;
@@ -85,14 +83,19 @@ void Buttons::drawIcon(Gdiplus::Graphics& g, const Gdiplus::RectF& b, Icons::Ico
     if (v.focused) DrawingUtils::drawFocusRing(g, b, 14, Theme::AccentLight);
 }
 
-void Buttons::drawSwitch(Gdiplus::Graphics& g, const Gdiplus::RectF& b, bool on, const ControlVisual& v)
+void Buttons::drawSwitch(Gdiplus::Graphics& g, const Gdiplus::RectF& b, float position, const ControlVisual& v)
 {
-    const Gdiplus::Color track = !v.enabled ? Theme::SurfaceHover : on ? blend(Theme::Accent, Theme::AccentLight, v.hover) :
-        blend(Theme::Border, Gdiplus::Color(255, 70, 70, 92), v.hover);
+    const float t = std::clamp(position, 0.0F, 1.0F);
+    // Ease in-out so the knob accelerates away and settles softly.
+    const float eased = t < .5F ? 4 * t * t * t : 1 - std::pow(-2 * t + 2, 3.0F) / 2;
+    const auto onTrack = blend(Theme::Accent, Theme::AccentLight, v.hover);
+    const auto offTrack = blend(Theme::Border, Gdiplus::Color(255, 70, 70, 92), v.hover);
+    const Gdiplus::Color track = !v.enabled ? Theme::SurfaceHover : blend(offTrack, onTrack, eased);
     DrawingUtils::fillPill(g, b, track);
     const float knob = b.Height - 6;
-    const float x = on ? b.GetRight() - 3 - knob : b.X + 3;
-    Gdiplus::SolidBrush brush(on ? Theme::AccentInk : Theme::TextSecondary);
-    g.FillEllipse(&brush, x, b.Y + 3, knob, knob);
+    // The knob stretches slightly while it travels, like a drop of light.
+    const float stretch = 6 * std::sin(eased * 3.14159265F);
+    const float x = b.X + 3 + (b.Width - 6 - knob) * eased - stretch / 2;
+    DrawingUtils::fillPill(g, {x, b.Y + 3, knob + stretch, knob}, blend(Theme::TextSecondary, Theme::AccentInk, eased));
     if (v.focused) DrawingUtils::drawRoundedRectangle(g, {b.X - 3, b.Y - 3, b.Width + 6, b.Height + 6}, (b.Height + 6) / 2, Theme::AccentLight, 2);
 }

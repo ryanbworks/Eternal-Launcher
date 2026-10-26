@@ -34,6 +34,9 @@ public:
     // Physical-memory based suggestion: 4, 6 or 8 GB.
     static int recommendedMemory();
     static bool containsId(int id) { return id>=TabGeneral && id<ControlEnd; }
+    // Moves the switch knobs toward their values; returns true while any is still travelling.
+    bool advance(float milliseconds);
+    void settle();
 private:
     static Gdiplus::RectF bounds(int id);
     static bool isEdit(int id);
@@ -69,4 +72,6 @@ private:
     int sliderMaximumSteps_=32;
     float controlScale_=1;
     Tab tab_=Tab::General;
+    std::array<float,2> knobs_{};  // Fullscreen, tray
+    float tabIndicator_=0;          // 0 General, 1 Advanced, 2 About
 };

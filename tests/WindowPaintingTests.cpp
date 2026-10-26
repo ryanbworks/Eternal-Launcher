@@ -458,9 +458,25 @@ public:
         check(entry && entry->hover==0 && !page.animationTimer_,"hover settles and stops the timer");
         page.showPage(LauncherPage::News);
         check(page.pageFade_==0 && page.animationTimer_,"page switches fade in");
+        tick(page);
+        check(page.navIndicator_>Layout::navButton(0).Y && page.navIndicator_<Layout::navButton(1).Y,
+            "the navigation selection slides toward the new page");
         for(int i=0;i<10;++i) tick(page);
         check(page.pageFade_==1 && !page.animationTimer_,"page fade completes and stops");
+        check(page.navIndicator_==Layout::navButton(1).Y,"the navigation selection settles on the page");
+        page.showPage(LauncherPage::Settings);for(int i=0;i<10;++i) tick(page);
+        check(!page.animationTimer_,"settings settles after its entrance");
+        SendMessageW(GetDlgItem(page.window_,SettingsPage::Fullscreen),BM_CLICK,0,0);
+        check(page.animationTimer_,"a switch slides instead of jumping");
+        for(int i=0;i<10;++i) tick(page);
+        check(!page.animationTimer_,"the switch settles and stops the timer");
+        page.settingsPage_.open(page.settings_,{});
         page.showPage(LauncherPage::Home);for(int i=0;i<10;++i) tick(page);
+        SendMessageW(control(page,PlayButtonId),WM_MOUSEMOVE,0,MAKELPARAM(30,20));
+        check(page.playSweep_==0 && page.animationTimer_,"hovering Play starts a light sweep");
+        SendMessageW(control(page,PlayButtonId),WM_MOUSELEAVE,0,0);
+        for(int i=0;i<30;++i) tick(page);
+        check(page.playSweep_==1 && !page.animationTimer_,"the sweep finishes once and stops");
         page.portalEntrance_=0;page.redraw();
         check(page.animationTimer_,"visible portal entrance schedules frames");
         ShowWindow(page.window_,SW_HIDE);page.redraw();

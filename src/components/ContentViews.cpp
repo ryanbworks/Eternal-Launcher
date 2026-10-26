@@ -25,6 +25,12 @@ namespace
         drawText(g, subtitle, Layout::PageSubtitle, 14, Gdiplus::FontStyleRegular, error ? Theme::Danger : Theme::TextSecondary);
     }
 
+    float rise(float entrance, int index, float distance = 20)
+    {
+        const float t = std::clamp((entrance - .08F * static_cast<float>(index)) / .6F, 0.0F, 1.0F);
+        return std::round(distance * (1 - t) * (1 - t) * (1 - t));
+    }
+
     void scrollbar(Gdiplus::Graphics& g, const Gdiplus::RectF& list, float content, float scroll)
     {
         if (content <= list.Height) return;
@@ -51,7 +57,8 @@ void NewsView::draw(Gdiplus::Graphics& g, const NewsModel& m, const ControlVisua
     }
     for (std::size_t slot = 0; slot < Visible && m.first + slot < count; ++slot) {
         const auto& item = (*m.items)[m.first + slot];
-        const auto b = Layout::newsEntry(static_cast<int>(slot));
+        auto b = Layout::newsEntry(static_cast<int>(slot));
+        b.Y += rise(m.entrance, static_cast<int>(slot));
         card(g, b);
         const float categoryWidth = measureText(g, item.category, 11, Gdiplus::FontStyleBold) + 20;
         const Gdiplus::RectF pill{b.X + 24, b.Y + 22, categoryWidth, 22};
@@ -62,8 +69,10 @@ void NewsView::draw(Gdiplus::Graphics& g, const NewsModel& m, const ControlVisua
             Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
         drawDisplayText(g, item.title, {b.X + 24, b.Y + 52, b.Width - 200, 28}, 18, Theme::TextPrimary);
         drawText(g, item.description, {b.X + 24, b.Y + 84, b.Width - 200, 44}, 13, Gdiplus::FontStyleRegular, Theme::TextSecondary);
+        auto link = Layout::newsLink(static_cast<int>(slot));
+        link.Y += rise(m.entrance, static_cast<int>(slot));
         if (!item.url.empty())
-            Buttons::draw(g, Layout::newsLink(static_cast<int>(slot)), L"Abrir", visuals(LauncherConstants::NewsLinkFirstId + static_cast<int>(slot)),
+            Buttons::draw(g, link, L"Abrir", visuals(LauncherConstants::NewsLinkFirstId + static_cast<int>(slot)),
                 Buttons::Style::Ghost, Icons::Icon::External);
     }
     if (count > Visible) {
@@ -178,7 +187,9 @@ void ModsView::draw(Gdiplus::Graphics& g, const ModsModel& m, const ControlVisua
             drawText(g, ModInventory::formatSize(mod.size) + (mod.enabled ? L" · Ativo" : L" · Desativado"),
                 {userBounds.X, top + 32, userBounds.Width - 130, 18}, 12, Gdiplus::FontStyleRegular, Theme::TextMuted);
             ControlVisual toggle{hovered && m.hoveredAction == 0 ? 1.0F : 0.0F, false, false, !m.locked};
-            Buttons::drawSwitch(g, {userBounds.GetRight() - 104, top + 17, 44, 26}, mod.enabled, toggle);
+            float knob = mod.enabled ? 1.0F : 0.0F;
+            if (m.knobs) if (const auto found = m.knobs->find(mod.name); found != m.knobs->end()) knob = found->second;
+            Buttons::drawSwitch(g, {userBounds.GetRight() - 104, top + 17, 44, 26}, knob, toggle);
             ControlVisual remove{hovered && m.hoveredAction == 1 ? 1.0F : 0.0F, false, false, !m.locked};
             const Gdiplus::Color removeHover(255, 52, 30, 40);
             Buttons::drawIcon(g, {userBounds.GetRight() - 44, top + 12, 36, 36}, Icons::Icon::Trash, remove, false, 17, &removeHover);
@@ -203,7 +214,8 @@ void HelpView::draw(Gdiplus::Graphics& g, const HelpModel& m, const ControlVisua
         {Icons::Icon::Folder, L"Seus dados",
          L"Preferências, nickname, tempo de jogo e a instância do Minecraft ficam na pasta de dados do Eternal."}};
     for (int i = 0; i < 4; ++i) {
-        const auto b = Layout::helpCard(i);
+        auto b = Layout::helpCard(i);
+        b.Y += rise(m.entrance, i);
         card(g, b);
         fillRoundedRectangle(g, {b.X + 24, b.Y + 24, 36, 36}, 10, Theme::AccentTint);
         Icons::draw(g, cards[i].icon, {b.X + 33, b.Y + 33, 18, 18}, Theme::AccentLight, 1.8F);
@@ -213,14 +225,15 @@ void HelpView::draw(Gdiplus::Graphics& g, const HelpModel& m, const ControlVisua
     }
     auto repair = visuals(HelpRepairButtonId);
     repair.enabled = repair.enabled && m.repairAvailable;
-    Buttons::draw(g, Layout::helpButton(0, 0), L"Reparar instalação", repair, Buttons::Style::Primary, Icons::Icon::Wrench);
+    const auto button = [&](int which, int index) { auto b = Layout::helpButton(which, index); b.Y += rise(m.entrance, which); return b; };
+    Buttons::draw(g, button(0, 0), L"Reparar instalação", repair, Buttons::Style::Primary, Icons::Icon::Wrench);
     const struct { int id; const wchar_t* label; } logs[] = {
         {HelpInstallLogButtonId, L"Instalação"}, {HelpForgeLogButtonId, L"Forge"}, {HelpGameLogButtonId, L"Jogo"}, {HelpLogsFolderButtonId, L"Pasta"}};
     for (int i = 0; i < 4; ++i)
-        Buttons::draw(g, Layout::helpButton(1, i), logs[i].label, visuals(logs[i].id), Buttons::Style::Ghost, i == 3 ? Icons::Icon::Folder : Icons::Icon::File);
-    Buttons::draw(g, Layout::helpButton(2, 0), L"Copiar informações", visuals(HelpCopySupportButtonId), Buttons::Style::Secondary, Icons::Icon::Copy);
-    Buttons::draw(g, Layout::helpButton(2, 1), L"Relatar no GitHub", visuals(HelpReportIssueButtonId), Buttons::Style::Ghost, Icons::Icon::External);
-    Buttons::draw(g, Layout::helpButton(3, 0), L"Abrir pasta de dados", visuals(HelpDataFolderButtonId), Buttons::Style::Ghost, Icons::Icon::Folder);
+        Buttons::draw(g, button(1, i), logs[i].label, visuals(logs[i].id), Buttons::Style::Ghost, i == 3 ? Icons::Icon::Folder : Icons::Icon::File);
+    Buttons::draw(g, button(2, 0), L"Copiar informações", visuals(HelpCopySupportButtonId), Buttons::Style::Secondary, Icons::Icon::Copy);
+    Buttons::draw(g, button(2, 1), L"Relatar no GitHub", visuals(HelpReportIssueButtonId), Buttons::Style::Ghost, Icons::Icon::External);
+    Buttons::draw(g, button(3, 0), L"Abrir pasta de dados", visuals(HelpDataFolderButtonId), Buttons::Style::Ghost, Icons::Icon::Folder);
     if (!m.message.empty()) {
         if (!m.messageError) Icons::draw(g, Icons::Icon::Check, {Layout::HelpMessage.X, Layout::HelpMessage.Y + 11, 16, 16}, Theme::Success, 1.8F);
         drawText(g, m.message, {Layout::HelpMessage.X + (m.messageError ? 0.0F : 26.0F), Layout::HelpMessage.Y, Layout::HelpMessage.Width, 38},

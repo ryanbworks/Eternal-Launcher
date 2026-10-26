@@ -21,7 +21,7 @@ namespace
 }
 
 void ChromeView::draw(Gdiplus::Graphics& g, float width, float height, LauncherPage page, bool maximized,
-                      bool active, const ControlVisuals& visuals) const
+                      bool active, const ControlVisuals& visuals, float indicatorY) const
 {
     using namespace LauncherConstants;
     Gdiplus::SolidBrush background(Theme::Background);
@@ -69,7 +69,16 @@ void ChromeView::draw(Gdiplus::Graphics& g, float width, float height, LauncherP
         {NavNewsId, Icons::Icon::News, LauncherPage::News},
         {NavModsId, Icons::Icon::Mods, LauncherPage::Mods},
         {NavSettingsId, Icons::Icon::Settings, LauncherPage::Settings}};
-    for (int i = 0; i < 4; ++i)
-        Buttons::drawIcon(g, Layout::navButton(i), navigation[i].icon, visuals(navigation[i].id), page == navigation[i].page, 22);
-    Buttons::drawIcon(g, Layout::sidebarHelp(height), Icons::Icon::Help, visuals(NavHelpId), page == LauncherPage::Help, 22);
+    // One selection pill travels between the icons, with an accent bar on the rail edge.
+    const Gdiplus::RectF indicator{14, indicatorY, 48, 48};
+    DrawingUtils::fillRoundedRectangle(g, indicator, 14, Theme::AccentTint);
+    DrawingUtils::fillPill(g, {2, indicatorY + 12, 4, 24}, Theme::Accent);
+    const auto icon = [&](const Gdiplus::RectF& bounds, Icons::Icon glyph, int id, bool selected) {
+        auto visual = visuals(id);
+        if (selected) visual.hover = 0;  // the pill already marks it
+        Buttons::drawIcon(g, bounds, glyph, visual, false, 22);
+        if (selected) Icons::draw(g, glyph, {bounds.X + 13, bounds.Y + 13, 22, 22}, Theme::AccentLight, 1.8F);
+    };
+    for (int i = 0; i < 4; ++i) icon(Layout::navButton(i), navigation[i].icon, navigation[i].id, page == navigation[i].page);
+    icon(Layout::sidebarHelp(height), Icons::Icon::Help, NavHelpId, page == LauncherPage::Help);
 }

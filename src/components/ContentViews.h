@@ -7,6 +7,7 @@
 #include <objidl.h>
 #include <gdiplus.h>
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -18,6 +19,7 @@ struct NewsModel
     std::size_t first = 0;
     bool loading = false;
     std::wstring error;
+    float entrance = 1;  // 0..1 staggered rise of the entries
 };
 
 class NewsView
@@ -37,6 +39,8 @@ struct ModsModel
     std::wstring message;
     bool messageError = false;
     bool locked = false;
+    // Switch knob positions by mod name (0 off .. 1 on) while they slide.
+    const std::map<std::wstring, float>* knobs = nullptr;
 };
 
 class ModsView
@@ -59,6 +63,7 @@ struct HelpModel
     std::wstring message;
     bool messageError = false;
     bool repairAvailable = true;
+    float entrance = 1;
 };
 
 class HelpView
