@@ -416,6 +416,7 @@ public:
         page.installation_={};page.viewState_=initial;page.page_=LauncherPage::Home;page.pageFade_=1;
         page.portalEntrance_=1;page.portalBurst_=0;page.portalEnergy_=0;page.displayedProgress_=0;
         page.originalMode_=false;page.identitySelection_=0;
+        page.navIndicator_=page.navigationTarget();page.toastReveal_=0;page.playSweep_=1;page.playLight_=page.playLightTarget_;
         page.motionEnabled_=true;page.ambientMotion_=false;
         for(auto& entry:page.controls_) {entry.hover=0;entry.hovered=false;}
         ShowWindow(page.window_,SW_SHOWNOACTIVATE);page.redraw();page.prepareFrame();

@@ -869,7 +869,7 @@ void MainPage::redraw(bool animationFrame)
     for (const float pulse : completionPulse_) unsettled |= pulse > 0;
     const bool pressed = findControl(PlayButtonId) && findControl(PlayButtonId)->window &&
         (SendMessageW(findControl(PlayButtonId)->window, BM_GETSTATE, 0, 0) & BST_PUSHED) != 0;
-    unsettled |= std::abs(navIndicator_ - navigationTarget()) > .5F || std::abs(toastReveal_ - toastTarget()) > .01F;
+    unsettled |= std::abs(navIndicator_ - navigationTarget()) > .75F || std::abs(toastReveal_ - toastTarget()) > .01F;
     unsettled |= playSweep_ < 1 || playPulse_ > 0 || std::abs(playPress_ - (pressed ? 1.0F : 0.0F)) > .01F ||
         std::abs(playLight_ - playLightTarget_) > .005F;
     for (const auto& mod : mods_.user) {
@@ -949,7 +949,7 @@ void MainPage::animate()
         value += (goal - value) * (1 - std::exp(-dt / tau));
         if (std::abs(goal - value) < snap) value = goal;
     };
-    approach(navIndicator_, navigationTarget(), 60, .5F);
+    approach(navIndicator_, navigationTarget(), 50, .75F);
     approach(toastReveal_, toastTarget(), 90, .01F);
     if (toastVisible_ && page_ == LauncherPage::Home && !installation_.visible && GetForegroundWindow() == window_) {
         toastAge_ += dt;
