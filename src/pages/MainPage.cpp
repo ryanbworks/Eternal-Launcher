@@ -1149,6 +1149,8 @@ void MainPage::layoutControls()
 
 void MainPage::syncControls()
 {
+    // Hiding the focused child hands focus to the parent; remember where it was.
+    const HWND focused = GetFocus();
     for (auto& control : controls_) {
         if (!control.window) continue;
         const bool visible = controlVisible(control.id);
@@ -1165,8 +1167,7 @@ void MainPage::syncControls()
     }
     if (page_ == LauncherPage::Settings) settingsPage_.setLocked(!viewState_.playEnabled || gameRunning());
     // Never leave keyboard focus on a control that just disappeared.
-    const HWND focus = GetFocus();
-    if (focus && focus != window_ && IsChild(window_, focus) && !(GetWindowLongPtrW(focus, GWL_STYLE) & WS_VISIBLE)) {
+    if (focused && focused != window_ && IsChild(window_, focused) && !(GetWindowLongPtrW(focused, GWL_STYLE) & WS_VISIBLE)) {
         const int navigation[] = {NavHomeId, NavNewsId, NavModsId, NavSettingsId, NavHelpId};
         if (const auto* control = findControl(navigation[static_cast<int>(page_)]); control && control->window)
             SetFocus(control->window);
@@ -1235,6 +1236,7 @@ bool MainPage::handleKeyboard(MSG& message)
 void MainPage::showPage(LauncherPage page)
 {
     if (page_ == page) return;
+    const HWND focused = GetFocus();
     if (page_ == LauncherPage::Settings) settingsPage_.show(false);
     page_ = page;
     if (page == LauncherPage::Settings) {
@@ -1249,6 +1251,12 @@ void MainPage::showPage(LauncherPage page)
     modsHoverRow_ = modsHoverAction_ = -1;
     pageFade_ = motionEnabled_ ? 0.0F : 1.0F;
     redraw();
+    // Keyboard focus follows the page: a control of the previous page never keeps it.
+    if (focused && focused != window_ && IsChild(window_, focused) && !(GetWindowLongPtrW(focused, GWL_STYLE) & WS_VISIBLE)) {
+        const int navigation[] = {NavHomeId, NavNewsId, NavModsId, NavSettingsId, NavHelpId};
+        if (const auto* control = findControl(navigation[static_cast<int>(page_)]); control && control->window)
+            SetFocus(control->window);
+    }
 }
 
 void MainPage::handleCommand(int id, int)
