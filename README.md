@@ -52,9 +52,13 @@ alternative ([step by step](docs/AUTOUPDATE.md#two-click-wizard)).
 
 ## Features
 
-- Resizable native Windows interface with a dark theme and DPI scaling.
+- Resizable native Windows interface with a custom title bar, a navigation rail (Home, News, Mods, Settings, Help), a dark theme and DPI scaling.
+- Play time per session and in total; while Minecraft runs, an icon next to the clock keeps counting even if the window is closed.
+- News page fed by an optional `news.json` on the file server ([format](docs/ARCHITECTURE.md#news-feed)).
+- Mods page separating server mods from your own, with enable/disable, add and send to the Recycle Bin.
+- Help page with repair, logs and copyable support information.
 - Vector logo and custom icon, with the landscape and font embedded in the executable.
-- Portal opening, three-layer particles, a light that follows the cursor on the Play button, animated settings navigation and a transition into the installation view, all respecting the Windows animation preference. [Animation details](docs/ANIMATIONS.md).
+- Portal opening, three-layer particles, a light that follows the cursor on the Play button, page fades and eased hover feedback, all respecting the Windows animation preference. [Animation details](docs/ANIMATIONS.md).
 - Choice between a local nickname and an original Microsoft account login.
 - Nickname field validated to 3–16 letters, digits or `_`.
 - Asynchronous query of the configured HTTP server's manifest.
@@ -70,7 +74,7 @@ alternative ([step by step](docs/AUTOUPDATE.md#two-click-wizard)).
 - Real Forge launch with a technical log at `logs/launcher-console.log`.
 - Isolated instance at `%APPDATA%\.eternal-launcher\minecraft` or in a dedicated folder of your choice.
 - Persistent settings for RAM, resolution, fullscreen, Java and game folder.
-- Minimize while playing, return when the game exits, and shortcuts to the game, mods and logs folders.
+- Hide in the notification area while playing, return when the game exits, and shortcuts to the game, mods and logs folders.
 
 In **Nickname local** (local nickname) mode, the private server must accept offline
 sessions. In **Original** mode, the launcher gets the name, UUID and token of the

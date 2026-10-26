@@ -4,6 +4,32 @@ All notable changes to Eternal Launcher are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and versions use [SemVer](https://semver.org/) plus a codename.
 
+## [Unreleased]
+
+### Added
+- **New interface.** Custom title bar and a navigation rail with Home, News, Mods,
+  Settings and Help. The home screen brings the landscape, server/mods/installation
+  tiles, the latest news and a player card with avatar, sign-in mode, last session
+  and total play time.
+- **Play time that survives closing the window.** While Minecraft runs, an icon next
+  to the clock shows "Jogando · 1 h 12 min". Closing the launcher during a session
+  hides it there and keeps counting; it exits by itself when the game closes. Time
+  is saved every minute.
+- **News page.** Announcements published as `news.json` on the file server, plus the
+  launcher's own release notes. A toast on the home screen points to what is new
+  after an update.
+- **Mods page.** Lists the server's mods and the player's own mods separately; player
+  mods can be enabled, disabled, added or sent to the Recycle Bin.
+- **Help page.** Repair the installation without starting the game, open the
+  installation, Forge and game logs, and copy support information (with the
+  Windows account name hidden).
+- **Settings in tabs.** General (memory with a recommendation for this PC, window),
+  Advanced (exact memory, Java, instance folder) and About.
+
+### Changed
+- "Minimizar ao jogar" became "Esconder na bandeja ao jogar".
+- Page switches fade instead of sliding the native controls.
+
 ## [1.0.14] — Federation · 2026-10-25
 
 ### Fixed
