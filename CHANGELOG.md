@@ -4,7 +4,10 @@ All notable changes to Eternal Launcher are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and versions use [SemVer](https://semver.org/) plus a codename.
 
-## [Unreleased]
+## [2.0.0] — Horizon · 2026-10-26
+
+The biggest update so far: a new interface, play time that keeps counting in the
+notification area, news, mods and help pages, and playing without the file server.
 
 ### Added
 - **New interface.** Custom title bar and a navigation rail with Home, News, Mods,

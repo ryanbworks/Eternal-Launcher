@@ -65,9 +65,11 @@ same as soon as the game starts.
 
 ### News feed
 
-The launcher reads `news.json` from the root of the file server. A missing file
-(404) simply means nothing is published; the launcher's own release notes are
-always shown.
+The launcher reads `/launcher/news.json` from the file server. A missing file (404)
+simply means nothing is published; the launcher's own release notes are always
+shown. The file lives in the repository as [`news/news.json`](../news/news.json):
+the publishing workflow validates it and uploads it next to `latest.json` after the
+release is announced, so editing the news is a pull request away.
 
 ```json
 {

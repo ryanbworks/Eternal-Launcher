@@ -71,7 +71,8 @@ NewsFeedResult NewsFeed::fetch(std::wstring_view baseUrl, std::stop_token stop)
 {
     std::wstring url(baseUrl);
     if (!url.empty() && url.back() == L'/') url.pop_back();
-    url += L"/news.json";
+    // Lives next to the launcher releases, where the publishing workflow uploads it.
+    url += L"/launcher/news.json";
     const auto response = HttpDownloadClient{}.getText(url, stop);
     if (response.success) return parse(response.content);
     NewsFeedResult result;
@@ -88,9 +89,10 @@ NewsItem NewsFeed::releaseNotes()
 {
     NewsItem item;
     item.category = L"ATUALIZAÇÃO";
-    item.title = L"Federation: seus mods agora ficam";
-    item.description = L"O launcher passou a lembrar quais mods ele mesmo instalou e só remove esses quando o servidor "
-                       L"deixa de usá-los. Mods que você coloca na pasta continuam lá.";
+    item.title = L"Horizon: o launcher de cara nova";
+    item.description = L"Visual novo com menu lateral, tempo de jogo que continua contando na bandeja, páginas de "
+                       L"notícias, mods e ajuda, configurações em abas, animações e a opção de jogar mesmo com o "
+                       L"servidor de arquivos fora do ar.";
     item.date = L"Versão " + std::wstring(LauncherConfig::LauncherVersion);
     item.url = L"https://github.com/ryanbworks/Eternal-Launcher/blob/master/CHANGELOG.md";
     item.local = true;

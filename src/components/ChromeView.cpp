@@ -12,7 +12,7 @@ namespace
 {
     std::wstring versionPill()
     {
-        // "1.0.14-Federation" becomes "Federation · 1.0.14".
+        // "2.0.0-Horizon" becomes "Horizon · 2.0.0".
         const std::wstring version(LauncherConfig::LauncherVersion);
         const auto dash = version.find(L'-');
         if (dash == std::wstring::npos) return version;
