@@ -29,6 +29,8 @@ struct PlayerCardModel
     float phase = 0;
     std::wstring updateWarning;
     bool installationVisible = false;
+    // The file server is unreachable; offer to try again next to the status.
+    bool serverOffline = false;
     // "This installation" summary: game version, memory and mod counts.
     std::wstring versionSummary;
     std::wstring memorySummary;

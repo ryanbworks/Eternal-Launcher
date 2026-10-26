@@ -402,6 +402,29 @@ public:
         ShowWindow(page.window_,SW_HIDE);
     }
 
+    static void offlinePlay(MainPage& page,const LauncherViewState& initial,InstallationTestLauncher& fake) {
+        page.viewState_=initial;page.installation_={};fake.running=false;
+        page.newsRequested_=true; // never reach the real news feed from tests
+        FileServerManifestResponse down;down.success=false;down.errorMessage=L"Tempo esgotado";
+        page.applyFileServerResult(down);page.redraw();
+        check(page.viewState_.operation==LauncherOperation::OfflineReady && page.viewState_.playEnabled &&
+              page.viewState_.primaryActionLabel==L"JOGAR ASSIM MESMO" && page.serverOffline_,
+            "a server outage with a complete installation still lets the player play");
+        check(shown(control(page,RetryServerButtonId)) && page.viewState_.statusCards[2].tone==StatusTone::Warning,
+            "the outage is shown as a warning with a retry link");
+        const int launches=fake.launches;
+        SendMessageW(page.window_,WM_COMMAND,MAKEWPARAM(PlayButtonId,BN_CLICKED),reinterpret_cast<LPARAM>(control(page,PlayButtonId)));
+        check(fake.launches==launches+1 && !page.installation_.visible && !page.installation_.running &&
+              page.viewState_.operation==LauncherOperation::MinecraftRunning,"offline play launches the local files without preparing");
+        fake.running=false;page.pollGameProcess();
+        check(page.viewState_.playEnabled && page.serverOffline_,"after the session the launcher stays in offline mode");
+        FileServerManifestResponse up;up.success=true;up.content=L"{\"files\":[]}";
+        page.applyFileServerResult(up);page.redraw();
+        check(!page.serverOffline_ && page.viewState_.operation==LauncherOperation::ReadyToPlay && !shown(control(page,RetryServerButtonId)),
+            "when the server answers again the launcher returns to normal");
+        page.fileServerManifest_.clear();page.viewState_=initial;page.redraw();
+    }
+
     static void motion(MainPage& page,const LauncherViewState& initial) {
         Gdiplus::Bitmap source(32,32,PixelFormat32bppPARGB),destination(128,128,PixelFormat32bppPARGB);
         {Gdiplus::Graphics fill(&source);fill.Clear(Gdiplus::Color(255,100,50,200));}
@@ -544,6 +567,7 @@ public:
         page.minecraftLauncherService_=std::move(fake);
         installationFlow(page,initial,fakeLauncher);
         playtimeAndTray(page,fakeLauncher);
+        offlinePlay(page,initial,fakeLauncher);
         motion(page,initial);
         closeDuringPreparation(page,fakeLauncher);
         release(page,L"EternalPaintingRegressionHost");

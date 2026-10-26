@@ -99,6 +99,11 @@ private:
     // Play flow.
     void handlePrimaryAction();
     void beginPlay(bool repairOnly = false);
+    // Plays offline when the file server is down and the installation is complete,
+    // otherwise prepares the game (or retries the server first).
+    void startGame();
+    void retryServer();
+    bool offlineReady() const;
     void startRepair();
     void startMicrosoftSignIn();
     void pollGameProcess();
@@ -110,7 +115,8 @@ private:
     void applyFileServerResult(const FileServerManifestResponse& response);
     void cancelInstallation();
     void consumeInstallationProgress();
-    void launchPreparedMinecraft(const InstallationResult& result);
+    void launchPreparedMinecraft(const InstallationResult& result, bool offline = false);
+    void showOfflineState(std::wstring message);
     void updateInstallationState(const MinecraftLaunchResult& installation);
     bool gameRunning() const;
     bool canRepair() const;
@@ -248,6 +254,8 @@ private:
     MinecraftIdentity pendingIdentity_;
     bool originalMode_ = false;
     bool refreshBeforePlay_ = false;
+    bool serverOffline_ = false;
+    bool fileServerPending_ = false;
     bool updatingLauncher_ = false;
     std::wstring updateWarning_;
     std::jthread newsThread_;

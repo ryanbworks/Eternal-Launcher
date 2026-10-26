@@ -28,6 +28,11 @@ and versions use [SemVer](https://semver.org/) plus a codename.
   sign-in choice slides between its cards, the Play button breathes, shines and
   ripples, status dots pulse while work is in progress and the avatar blinks. All of
   it follows the Windows "Show animations" preference.
+- **Play even when the file server is down.** If the installation is complete, the
+  launcher shows a warning and a "JOGAR ASSIM MESMO" button that starts the game
+  with the files already on disk. It retries the server every minute, has a
+  "Tentar conectar" link, and returns to normal as soon as the server answers. A
+  first installation still needs the server.
 - **Settings in tabs.** General (memory with a recommendation for this PC, window),
   Advanced (exact memory, Java, instance folder) and About.
 

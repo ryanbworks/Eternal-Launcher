@@ -18,6 +18,7 @@ namespace
     {
         if (playing) return Theme::Success;
         if (isLauncherError(state.operation)) return Theme::Error;
+        if (state.operation == LauncherOperation::OfflineReady) return Theme::Warning;
         if (state.operation == LauncherOperation::NeedsInstallation) return Theme::Warning;
         return state.playEnabled ? Theme::Success : Theme::Accent;
     }
@@ -288,10 +289,14 @@ void HomeView::drawPlayerCard(Gdiplus::Graphics& g, const PlayerCardModel& m, co
         Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
     const std::wstring message = !m.updateWarning.empty() && state.playEnabled ? m.updateWarning : state.operationMessage;
     drawText(g, message, Layout::StatusMessage, 12.5F, Gdiplus::FontStyleRegular,
-        isLauncherError(state.operation) ? Theme::Danger : Theme::TextSecondary);
+        isLauncherError(state.operation) ? Theme::Danger :
+        state.operation == LauncherOperation::OfflineReady ? Theme::Warning : Theme::TextSecondary);
     if (!m.updateWarning.empty() && state.playEnabled)
         Buttons::draw(g, Layout::UpdateLink, L"Baixar launcher", visuals(UpdateDownloadButtonId), Buttons::Style::Link,
             Icons::Icon::Download, false, 12.5F);
+    else if (m.serverOffline && state.playEnabled)
+        Buttons::draw(g, Layout::UpdateLink, L"Tentar conectar", visuals(RetryServerButtonId), Buttons::Style::Link,
+            Icons::Icon::Refresh, false, 12.5F);
 
     drawPlayButton(g, m, visuals);
 
@@ -308,7 +313,8 @@ void HomeView::drawPlayButton(Gdiplus::Graphics& g, const PlayerCardModel& m, co
     const auto playVisual = visuals(PlayButtonId);
     const auto menuVisual = visuals(PlayMenuButtonId);
     const bool enabled = state.playEnabled;
-    const bool ready = enabled && (state.operation == LauncherOperation::ReadyToPlay || state.operation == LauncherOperation::NeedsInstallation);
+    const bool ready = enabled && (state.operation == LauncherOperation::ReadyToPlay || state.operation == LauncherOperation::NeedsInstallation ||
+        state.operation == LauncherOperation::OfflineReady);
     const float hover = enabled ? std::max(playVisual.hover, playVisual.focused ? 1.0F : 0.0F) : 0.0F;
 
     // A soft violet halo breathes around the split button while it waits for a click.
