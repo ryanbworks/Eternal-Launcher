@@ -1,0 +1,71 @@
+name: Redesign preview
+
+# Temporary workflow for the redesign branch: builds, runs the tests, renders the
+# interface previews and publishes logs + images to the `ci-report` branch.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: redesign-preview
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Build, test and render previews
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $report = Join-Path $PWD 'out/ci-report'
+          New-Item -ItemType Directory -Force $report | Out-Null
+          "commit: $env:GITHUB_SHA" | Out-File "$report/status.txt"
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          Import-Module (Join-Path $vs 'Common7/Tools/Microsoft.VisualStudio.DevShell.dll')
+          Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' | Out-Null
+          $cmake = Join-Path $vs 'Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
+          $ctest = Join-Path (Split-Path $cmake) 'ctest.exe'
+          $build = 'out/build/preview'
+          & $cmake -S . -B $build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON "-DETERNAL_POWERSHELL:FILEPATH=$(Join-Path $PSHOME 'pwsh.exe')" *>&1 | Out-File "$report/configure.log"
+          "configure exit: $LASTEXITCODE" | Add-Content "$report/status.txt"
+          & $cmake --build $build -- -k 0 *>&1 | Out-File "$report/build.log"
+          "build exit: $LASTEXITCODE" | Add-Content "$report/status.txt"
+          & $ctest --test-dir $build --output-on-failure --timeout 240 *>&1 | Out-File "$report/ctest.log"
+          "ctest exit: $LASTEXITCODE" | Add-Content "$report/status.txt"
+          $exe = Join-Path $build 'EternalLauncher.exe'
+          if (Test-Path $exe) {
+            $render = Start-Process -FilePath $exe -ArgumentList @('--render-preview', "$report/previews") -Wait -PassThru
+            "preview exit: $($render.ExitCode)" | Add-Content "$report/status.txt"
+            New-Item -ItemType Directory -Force 'out/test-build' | Out-Null
+            Copy-Item $exe 'out/test-build/EternalLauncher.exe'
+          }
+          $painting = Join-Path $build 'WindowPaintingTests.exe'
+          if (Test-Path $painting) {
+            $live = Start-Process -FilePath $painting -ArgumentList @('--capture-installation', "$report/live") -Wait -PassThru -NoNewWindow -RedirectStandardOutput "$report/live.log" -RedirectStandardError "$report/live-errors.log"
+            "live capture exit: $($live.ExitCode)" | Add-Content "$report/status.txt"
+          }
+          Get-Content "$report/status.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-build
+          path: out/test-build/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Publish report
+        if: always()
+        shell: bash
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          cd out/ci-report
+          git init -q
+          git checkout -q -b ci-report
+          git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "Preview report for ${GITHUB_SHA}"
+          git push -q -f "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ci-report
