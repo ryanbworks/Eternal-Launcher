@@ -57,13 +57,13 @@ void Buttons::draw(Gdiplus::Graphics& g, const Gdiplus::RectF& b, std::wstring_v
     if (icon) {
         const float iconSize = 16;
         const float textWidth = label.empty() ? 0 : DrawingUtils::measureText(g, label, labelSize, fontStyle);
-        const float gap = label.empty() ? 0 : 8;
+        const float gap = label.empty() ? 0.0F : 8.0F;
         const float total = iconSize + gap + textWidth;
         float x = b.X + (b.Width - total) / 2;
         if (style == Style::Link) x = b.X;
         Icons::draw(g, *icon, {x, b.Y + (b.Height - iconSize) / 2, iconSize, iconSize}, ink, 1.8F);
         if (!label.empty())
-            DrawingUtils::drawText(g, label, {x + iconSize + gap, b.Y, textWidth + 4, b.Height}, labelSize, fontStyle, ink,
+            DrawingUtils::drawText(g, label, {x + iconSize + gap, b.Y, std::max(textWidth + 4, b.GetRight() - x - iconSize - gap), b.Height}, labelSize, fontStyle, ink,
                 Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
     } else {
         DrawingUtils::drawText(g, label, b, labelSize, fontStyle, ink,

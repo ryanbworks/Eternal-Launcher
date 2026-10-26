@@ -39,6 +39,7 @@ namespace Layout
     inline const Rect OfflineMode{940, 216, 143, 98};
     inline const Rect OriginalMode{1089, 216, 143, 98};
     inline Rect stat(int index) { return {940 + static_cast<float>(index) * 149, 330, 143, 60}; }
+    inline const Rect InstallSummary{940, 406, 292, 108};
     inline const Rect StatusLine{940, 532, 292, 24};
     inline const Rect StatusMessage{940, 560, 292, 46};
     inline const Rect UpdateLink{940, 606, 180, 24};

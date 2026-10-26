@@ -199,6 +199,22 @@ void HomeView::drawPlayerCard(Gdiplus::Graphics& g, const PlayerCardModel& m, co
         drawText(g, statValues[i], {b.X + 12, b.Y + 28, b.Width - 24, 22}, 14, Gdiplus::FontStyleBold, Theme::TextPrimary);
     }
 
+    {
+        const auto& box = Layout::InstallSummary;
+        drawRoundedRectangle(g, {box.X + .5F, box.Y + .5F, box.Width - 1, box.Height - 1}, 12, Theme::OutlineSubtle);
+        const wchar_t* labels[] = {L"Versão", L"Memória", L"Mods"};
+        const std::wstring values[] = {m.versionSummary, m.memorySummary, m.modsSummary.empty() ? std::wstring(L"—") : m.modsSummary};
+        Gdiplus::Pen line(Theme::Divider);
+        for (int i = 0; i < 3; ++i) {
+            const float y = box.Y + 4 + static_cast<float>(i) * 33.3F;
+            if (i > 0) g.DrawLine(&line, box.X + 14, y, box.GetRight() - 14, y);
+            drawText(g, labels[i], {box.X + 14, y, 90, 33}, 12, Gdiplus::FontStyleRegular, Theme::TextMuted,
+                Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+            drawText(g, values[i], {box.X + 90, y, box.Width - 104, 33}, 12.5F, Gdiplus::FontStyleBold, Theme::TextPrimary,
+                Gdiplus::StringAlignmentFar, Gdiplus::StringAlignmentCenter);
+        }
+    }
+
     dot(g, Layout::StatusLine.X, Layout::StatusLine.Y + 8, tone);
     drawText(g, m.playing ? L"Jogando agora" : state.headline, {Layout::StatusLine.X + 16, Layout::StatusLine.Y,
         Layout::StatusLine.Width - 16, Layout::StatusLine.Height}, 14, Gdiplus::FontStyleBold, Theme::TextPrimary,
@@ -232,14 +248,14 @@ void HomeView::drawPlayerCard(Gdiplus::Graphics& g, const PlayerCardModel& m, co
     }
     std::wstring label = state.primaryActionLabel.empty() ? L"JOGAR" : state.primaryActionLabel;
     if (!enabled && m.progress > 0 && label.find(L'%') == std::wstring::npos)
-        label += L" " + std::to_wstring(static_cast<int>(std::round(m.progress))) + L"%";
+        label += L" " + std::to_wstring(static_cast<int>(std::floor(m.progress))) + L"%";
     const auto ink = enabled ? Theme::AccentInk : Gdiplus::Color(255, 230, 225, 255);
     const bool showPlayIcon = enabled && (state.operation == LauncherOperation::ReadyToPlay || state.operation == LauncherOperation::NeedsInstallation);
     const float labelWidth = measureText(g, label, 15, Gdiplus::FontStyleBold);
     const float iconWidth = showPlayIcon ? 26.0F : 0.0F;
     const float startX = Layout::Play.X + (Layout::Play.Width - labelWidth - iconWidth) / 2;
     if (showPlayIcon) Icons::draw(g, Icons::Icon::Play, {startX, Layout::Play.Y + 21, 16, 16}, ink);
-    drawText(g, label, {startX + iconWidth, Layout::Play.Y, labelWidth + 6, Layout::Play.Height}, 15, Gdiplus::FontStyleBold, ink,
+    drawText(g, label, {startX + iconWidth, Layout::Play.Y, Layout::Play.GetRight() - startX - iconWidth, Layout::Play.Height}, 15, Gdiplus::FontStyleBold, ink,
         Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
     if (playVisual.focused) drawFocusRing(g, Layout::Play, 12, Theme::AccentInk);
     const auto menuFill = menuVisual.enabled ? blend(Theme::Accent, Theme::AccentLight, menuVisual.pressed ? 1.0F : menuVisual.hover) :

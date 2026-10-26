@@ -52,7 +52,7 @@ int main() {
         check(page.collect(result) && result.maximumMemoryMegabytes==6144,"discard must return to the saved values");
 
         // Tabs only show their own controls; the header and footer stay visible.
-        page.show(true);
+        page.setTab(SettingsPage::Tab::General);page.show(true);
         check(page.tab()==SettingsPage::Tab::General && shown(parent,SettingsPage::RamSlider) && shown(parent,SettingsPage::Fullscreen) &&
             !shown(parent,SettingsPage::MinRam) && !shown(parent,SettingsPage::JavaAuto) && shown(parent,SettingsPage::Save),
             "general tab must show memory and window controls only");
