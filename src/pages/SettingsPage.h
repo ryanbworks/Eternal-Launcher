@@ -9,18 +9,21 @@ class SettingsPage
 {
 public:
     enum Id {
-        Back=1200, MinRam, MaxRam, Width, Height, Fullscreen, Minimize,
+        TabGeneral=1200, TabAdvanced, TabAbout,
+        MinRam, MaxRam, Width, Height, Fullscreen, Minimize,
         JavaAuto, JavaCustom, JavaPath, JavaBrowse, GamePath, GameBrowse,
         OpenGame, OpenMods, OpenLogs, Restore, Cancel, Save,
-        RamSlider, Ram4, Ram6, Ram8, ControlEnd
+        RamSlider, Ram4, Ram6, Ram8, OpenChangelog, OpenRepository, OpenDataFolder, ControlEnd
     };
+    enum class Tab { General, Advanced, About };
     ~SettingsPage();
     bool create(HWND parent,HINSTANCE instance);
     void open(const LauncherSettings& settings,std::wstring_view warning);
     void show(bool visible);
     void layout(float scale,float offsetX,float offsetY);
-    void setTransitionOffset(int pixels);
     void setLocked(bool locked);
+    void setTab(Tab tab);
+    [[nodiscard]] Tab tab() const { return tab_; }
     void invalidateButtons() const;
     void draw(Gdiplus::Graphics& graphics,bool preview=false) const;
     void handle(int id,int notification);
@@ -28,16 +31,21 @@ public:
     bool collect(LauncherSettings& settings);
     void setMessage(std::wstring message,bool error=false);
     int focusedControlId() const;
-    static bool containsId(int id) { return id>=Back && id<ControlEnd; }
+    // Physical-memory based suggestion: 4, 6 or 8 GB.
+    static int recommendedMemory();
+    static bool containsId(int id) { return id>=TabGeneral && id<ControlEnd; }
 private:
     static Gdiplus::RectF bounds(int id);
     static bool isEdit(int id);
+    static Tab tabOf(int id);
+    static bool isAlwaysVisible(int id);
     static LRESULT CALLBACK controlProcedure(HWND window,UINT message,WPARAM wParam,
         LPARAM lParam,UINT_PTR id,DWORD_PTR data);
-    HWND control(int id) const { return controls_[static_cast<std::size_t>(id-Back)]; }
+    HWND control(int id) const { return controls_[static_cast<std::size_t>(id-TabGeneral)]; }
     void populate(const LauncherSettings& settings);
     void syncMemoryControls(int megabytes);
     void selectMemory(int megabytes);
+    void applyVisibility();
     void drawMemorySlider(Gdiplus::Graphics& graphics,const Gdiplus::RectF& bounds,bool focused) const;
     static std::wstring memoryLabel(int megabytes);
     void browseJava();
@@ -48,9 +56,8 @@ private:
     HWND parent_=nullptr;
     HINSTANCE instance_=nullptr;
     HFONT font_=nullptr;
-    std::array<HWND,ControlEnd-Back> controls_{};
-    std::array<bool,ControlEnd-Back> hover_{};
-    std::array<RECT,ControlEnd-Back> layoutBounds_{};
+    std::array<HWND,ControlEnd-TabGeneral> controls_{};
+    std::array<bool,ControlEnd-TabGeneral> hover_{};
     LauncherSettings saved_;
     LauncherSettings draft_;
     std::wstring message_;
@@ -61,4 +68,5 @@ private:
     bool updatingMemory_=false;
     int sliderMaximumSteps_=32;
     float controlScale_=1;
+    Tab tab_=Tab::General;
 };

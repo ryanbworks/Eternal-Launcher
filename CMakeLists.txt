@@ -81,24 +81,32 @@ add_executable(EternalLauncher WIN32
     src/pages/MainPage.h
     src/pages/SettingsPage.cpp
     src/pages/SettingsPage.h
-    src/components/HeaderComponent.cpp
-    src/components/HeaderComponent.h
+    src/app/TrayIcon.cpp
+    src/app/TrayIcon.h
+    src/components/Buttons.cpp
+    src/components/Buttons.h
+    src/components/ChromeView.cpp
+    src/components/ChromeView.h
+    src/components/ContentViews.cpp
+    src/components/ContentViews.h
     src/components/HeroComponent.cpp
     src/components/HeroComponent.h
-    src/components/StatusPanelComponent.cpp
-    src/components/StatusPanelComponent.h
+    src/components/HomeView.cpp
+    src/components/HomeView.h
     src/components/InstallationPanelComponent.cpp
+    src/components/InstallationPanelComponent.h
+    src/components/Layout.h
     src/services/InstallationCoordinator.cpp
-    src/components/NewsPanelComponent.cpp
-    src/components/NewsPanelComponent.h
-    src/components/PlayerProfileComponent.cpp
-    src/components/PlayerProfileComponent.h
-    src/components/PlayPanelComponent.cpp
-    src/components/PlayPanelComponent.h
-    src/components/ProgressComponent.cpp
-    src/components/ProgressComponent.h
+    src/services/ModInventory.cpp
+    src/services/ModInventory.h
+    src/services/NewsFeed.cpp
+    src/services/NewsFeed.h
+    src/services/PlaytimeStore.cpp
+    src/services/PlaytimeStore.h
     src/utils/DrawingUtils.cpp
     src/utils/DrawingUtils.h
+    src/utils/Icons.cpp
+    src/utils/Icons.h
     src/utils/ArchiveExtractor.cpp
     src/utils/ArchiveExtractor.h
     src/utils/FileHash.cpp
@@ -237,7 +245,9 @@ if(BUILD_TESTING)
         src/pages/SettingsPage.cpp
         src/config/LauncherSettings.cpp
         src/utils/JsonValue.cpp
-        src/utils/DrawingUtils.cpp)
+        src/utils/DrawingUtils.cpp
+        src/utils/Icons.cpp
+        src/components/Buttons.cpp)
     target_compile_features(SettingsPageTests PRIVATE cxx_std_20)
     target_compile_definitions(SettingsPageTests PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_include_directories(SettingsPageTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -279,4 +289,18 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME InstallationTrackingTests COMMAND InstallationTrackingTests)
     set_tests_properties(InstallationTrackingTests PROPERTIES TIMEOUT 60)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(LauncherServicesTests tests/LauncherServicesTests.cpp
+        src/services/PlaytimeStore.cpp src/services/NewsFeed.cpp src/services/ModInventory.cpp
+        src/services/HttpDownloadClient.cpp src/utils/JsonValue.cpp)
+    target_compile_features(LauncherServicesTests PRIVATE cxx_std_20)
+    target_compile_definitions(LauncherServicesTests PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_include_directories(LauncherServicesTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    target_link_libraries(LauncherServicesTests PRIVATE winhttp shell32)
+    if(MSVC)
+        target_compile_options(LauncherServicesTests PRIVATE /W4 /permissive- /utf-8)
+    endif()
+    add_test(NAME LauncherServicesTests COMMAND LauncherServicesTests)
 endif()

@@ -66,6 +66,9 @@ struct NewsItem
     std::wstring title;
     std::wstring description;
     std::wstring date;
+    std::wstring url;
+    // Written into the launcher itself (release notes), not published by the server.
+    bool local = false;
 };
 
 struct LauncherViewState
@@ -78,5 +81,5 @@ struct LauncherViewState
     bool progressVisible = false;
     bool playEnabled = true;
     std::vector<StatusCardData> statusCards;
-    NewsItem featuredNews;
+    std::vector<NewsItem> news;
 };

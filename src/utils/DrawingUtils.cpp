@@ -16,9 +16,30 @@ DrawingUtils::DisplayTypeface::DisplayTypeface()
     if (!data || !size || collection_.AddMemoryFont(data, static_cast<INT>(size)) != Gdiplus::Ok) return;
     INT found = 0;
     if (collection_.GetFamilies(1, &family_, &found) == Gdiplus::Ok && found == 1) DisplayFamily = &family_;
+    DWORD installed = 0;
+    gdiFont_ = AddFontMemResourceEx(data, size, nullptr, &installed);
 }
 
-DrawingUtils::DisplayTypeface::~DisplayTypeface() { DisplayFamily = nullptr; }
+DrawingUtils::DisplayTypeface::~DisplayTypeface()
+{
+    DisplayFamily = nullptr;
+    if (gdiFont_) RemoveFontMemResourceEx(gdiFont_);
+}
+
+const wchar_t* DrawingUtils::displayFontFamily()
+{
+    return DisplayFamily ? L"Sora" : Theme::FontFamily;
+}
+
+float DrawingUtils::measureText(Gdiplus::Graphics& g, std::wstring_view text, float size, int style)
+{
+    Gdiplus::Font font(Theme::FontFamily, size, style, Gdiplus::UnitPixel);
+    Gdiplus::RectF measured;
+    Gdiplus::StringFormat format(Gdiplus::StringFormat::GenericTypographic());
+    format.SetFormatFlags(format.GetFormatFlags() | Gdiplus::StringFormatFlagsMeasureTrailingSpaces);
+    g.MeasureString(text.data(), static_cast<INT>(text.size()), &font, Gdiplus::PointF(0, 0), &format, &measured);
+    return measured.Width;
+}
 
 void DrawingUtils::drawCachedImage(Gdiplus::Graphics& g,Gdiplus::Bitmap& source,
     std::unique_ptr<Gdiplus::Bitmap>& cache,const Gdiplus::RectF& bounds,const Gdiplus::RectF& crop)
@@ -51,12 +72,15 @@ void DrawingUtils::drawCachedImage(Gdiplus::Graphics& g,Gdiplus::Bitmap& source,
 }
 
 void DrawingUtils::drawDisplayText(Gdiplus::Graphics& g, std::wstring_view text,
-                                   const Gdiplus::RectF& bounds, float size, const Gdiplus::Color& color)
+                                   const Gdiplus::RectF& bounds, float size, const Gdiplus::Color& color,
+                                   Gdiplus::StringAlignment horizontal, Gdiplus::StringAlignment vertical)
 {
-    if (!DisplayFamily) { drawText(g,text,bounds,size,Gdiplus::FontStyleBold,color); return; }
+    if (!DisplayFamily) { drawText(g,text,bounds,size,Gdiplus::FontStyleBold,color,horizontal,vertical); return; }
     Gdiplus::Font font(DisplayFamily,size,Gdiplus::FontStyleBold,Gdiplus::UnitPixel);
     Gdiplus::SolidBrush brush(color);
     Gdiplus::StringFormat format;
+    format.SetAlignment(horizontal);
+    format.SetLineAlignment(vertical);
     format.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
     g.DrawString(text.data(),static_cast<INT>(text.size()),&font,bounds,&format,&brush);
 }
@@ -76,6 +100,42 @@ std::unique_ptr<Gdiplus::GraphicsPath> DrawingUtils::createRoundedPath(
     path->AddArc(bounds.X, bounds.GetBottom() - diameter, diameter, diameter, 90.0F, 90.0F);
     path->CloseFigure();
     return path;
+}
+
+std::unique_ptr<Gdiplus::GraphicsPath> DrawingUtils::createRoundedPath(
+    const Gdiplus::RectF& b, float topLeft, float topRight, float bottomRight, float bottomLeft)
+{
+    auto path = std::make_unique<Gdiplus::GraphicsPath>();
+    if (b.Width <= 0.0F || b.Height <= 0.0F) return path;
+    const float limit = std::min(b.Width, b.Height);
+    const auto corner = [&](float radius) { return std::clamp(radius * 2.0F, 0.0F, limit); };
+    const float tl = corner(topLeft), tr = corner(topRight), br = corner(bottomRight), bl = corner(bottomLeft);
+    if (tl > 0) path->AddArc(b.X, b.Y, tl, tl, 180.0F, 90.0F); else path->AddLine(b.X, b.Y, b.X, b.Y);
+    if (tr > 0) path->AddArc(b.GetRight() - tr, b.Y, tr, tr, 270.0F, 90.0F); else path->AddLine(b.GetRight(), b.Y, b.GetRight(), b.Y);
+    if (br > 0) path->AddArc(b.GetRight() - br, b.GetBottom() - br, br, br, 0.0F, 90.0F);
+    else path->AddLine(b.GetRight(), b.GetBottom(), b.GetRight(), b.GetBottom());
+    if (bl > 0) path->AddArc(b.X, b.GetBottom() - bl, bl, bl, 90.0F, 90.0F); else path->AddLine(b.X, b.GetBottom(), b.X, b.GetBottom());
+    path->CloseFigure();
+    return path;
+}
+
+void DrawingUtils::fillRoundedRectangle(Gdiplus::Graphics& graphics, const Gdiplus::RectF& bounds,
+    float topLeft, float topRight, float bottomRight, float bottomLeft, const Gdiplus::Color& color)
+{
+    auto path = createRoundedPath(bounds, topLeft, topRight, bottomRight, bottomLeft);
+    Gdiplus::SolidBrush brush(color);
+    graphics.FillPath(&brush, path.get());
+}
+
+void DrawingUtils::drawFocusRing(Gdiplus::Graphics& graphics, const Gdiplus::RectF& b, float radius,
+                                 const Gdiplus::Color& color)
+{
+    drawRoundedRectangle(graphics, {b.X + 2, b.Y + 2, b.Width - 4, b.Height - 4}, std::max(2.0F, radius - 2), color, 2);
+}
+
+void DrawingUtils::fillPill(Gdiplus::Graphics& graphics, const Gdiplus::RectF& bounds, const Gdiplus::Color& color)
+{
+    fillRoundedRectangle(graphics, bounds, bounds.Height / 2, color);
 }
 
 void DrawingUtils::fillRoundedRectangle(Gdiplus::Graphics& graphics, const Gdiplus::RectF& bounds,
