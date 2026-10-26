@@ -95,7 +95,6 @@ void HomeView::drawAvatar(Gdiplus::Graphics& g, const Gdiplus::RectF& b, const G
 void HomeView::draw(Gdiplus::Graphics& g, const HomeModel& model, const HeroComponent& hero,
                     const ControlVisuals& visuals, bool drawLeftColumn) const
 {
-    const auto& state = *model.player.state;
     if (drawLeftColumn) {
         hero.draw(g, Layout::Hero, model.reveal, model.energy, model.phase, model.drift, model.chips);
         if (model.toast && model.toastReveal > .01F) {
