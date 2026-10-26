@@ -716,6 +716,16 @@ HomeModel MainPage::homeModel(bool preview) const
     player.installationVisible = installation_.visible;
 
     const int serverMods = mods_.manifestKnown ? static_cast<int>(mods_.server.size()) : -1;
+    player.versionSummary = std::wstring(LauncherConfig::MinecraftVersion) + L" · Forge " + std::wstring(LauncherConfig::ForgeVersion);
+    {
+        const int memory = settings_.maximumMemoryMegabytes;
+        std::wstring gigabytes = memory % 1024 == 0 ? std::to_wstring(memory / 1024) : std::to_wstring(memory / 1024) + L"," + std::to_wstring(memory % 1024 * 10 / 1024);
+        player.memorySummary = gigabytes + L" GB" + (settings_.javaExecutable.empty() ? L" · Java automático" : L" · Java próprio");
+    }
+    if (serverMods >= 0) {
+        player.modsSummary = std::to_wstring(serverMods) + L" do servidor";
+        if (modsScanned_ && !mods_.user.empty()) player.modsSummary += L" · " + std::to_wstring(mods_.user.size()) + (mods_.user.size() == 1 ? L" seu" : L" seus");
+    }
     model.chips = {L"Minecraft " + std::wstring(LauncherConfig::MinecraftVersion), L"Forge " + std::wstring(LauncherConfig::ForgeVersion),
         serverMods >= 0 ? std::to_wstring(serverMods) + L" mods" : std::wstring(L"Modpack do grupo")};
     model.reveal = preview ? 1 : portalEntrance_;
