@@ -42,6 +42,7 @@ namespace LauncherConstants
     inline constexpr int NewsCardCount = 3;
     inline constexpr int NewsAllButtonId = 1129;
     inline constexpr int ToastNewsButtonId = 1130;
+    inline constexpr int RetryServerButtonId = 1131;
     // News page.
     inline constexpr int NewsLinkFirstId = 1141;
     inline constexpr int NewsLinkCount = 4;
@@ -71,6 +72,7 @@ namespace LauncherConstants
     inline constexpr UINT_PTR AnimationTimerId = 2002;
     inline constexpr UINT_PTR InstallationProgressTimerId = 2003;
     inline constexpr UINT_PTR PlaytimeTimerId = 2004;
+    inline constexpr UINT_PTR ServerRetryTimerId = 2005;
 
     inline constexpr UINT FileServerResultMessage = WM_APP + 1;
     inline constexpr UINT JavaRuntimeProgressMessage = WM_APP + 2;

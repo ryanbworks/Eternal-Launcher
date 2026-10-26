@@ -48,6 +48,7 @@ namespace
         {OfflineButtonId, false, true, L"Nickname"},
         {OriginalButtonId, false, true, L"Conta original"},
         {UpdateDownloadButtonId, false, true, L"Baixar launcher"},
+        {RetryServerButtonId, false, true, L"Tentar conectar ao servidor"},
         {PlayButtonId, false, true, L"Jogar"},
         {PlayMenuButtonId, false, true, L"Mais ações"},
         {QuickFolderButtonId, false, true, L"Pasta do jogo"},
@@ -419,6 +420,11 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         else if (wParam == AnimationTimerId) animate();
         else if (wParam == InstallationProgressTimerId) consumeInstallationProgress();
         else if (wParam == PlaytimeTimerId) { flushPlaytime(); updateTrayTooltip(); redraw(); }
+        else if (wParam == ServerRetryTimerId) {
+            // Quietly check whether the file server came back; the state only changes on an answer.
+            if (serverOffline_ && !fileServerPending_ && viewState_.playEnabled && !updatingLauncher_ &&
+                !installation_.running && !gameRunning()) checkFileServerAsync();
+        }
         return 0;
     case TrayIconMessage:
         switch (LOWORD(lParam)) {
@@ -513,6 +519,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
     {
         // Ownership of the result moves to the UI thread at this point.
         std::unique_ptr<FileServerManifestResponse> response(reinterpret_cast<FileServerManifestResponse*>(lParam));
+        fileServerPending_ = false;
         if (response) applyFileServerResult(*response);
         return 0;
     }
@@ -534,7 +541,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             pendingIdentity_ = microsoftIdentity_;
             pendingNickname_ = microsoftIdentity_.name;
             redraw();
-            beginPlay();
+            startGame();
         } else {
             viewState_.operation = LauncherOperation::AuthenticationError;
             viewState_.headline = L"Falha no login Microsoft";
@@ -587,6 +594,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         KillTimer(window_, AnimationTimerId);
         KillTimer(window_, InstallationProgressTimerId);
         KillTimer(window_, PlaytimeTimerId);
+        KillTimer(window_, ServerRetryTimerId);
         trayIcon_.hide();
         fileServerThread_.request_stop();
         installationThread_.request_stop();
@@ -721,6 +729,7 @@ HomeModel MainPage::homeModel(bool preview) const
     player.playPress = preview ? 0.0F : playPress_;
     player.updateWarning = updateWarning_;
     player.installationVisible = installation_.visible;
+    player.serverOffline = serverOffline_;
 
     const int serverMods = mods_.manifestKnown ? static_cast<int>(mods_.server.size()) : -1;
     player.versionSummary = std::wstring(LauncherConfig::MinecraftVersion) + L" · Forge " + std::wstring(LauncherConfig::ForgeVersion);
@@ -1065,7 +1074,9 @@ Gdiplus::RectF MainPage::controlBounds(int id) const
     case EditNicknameButtonId: return Layout::EditNickname;
     case OfflineButtonId: return Layout::OfflineMode;
     case OriginalButtonId: return Layout::OriginalMode;
-    case UpdateDownloadButtonId: return Layout::UpdateLink;
+    case UpdateDownloadButtonId:
+    case RetryServerButtonId:
+        return Layout::UpdateLink;
     case PlayButtonId: return Layout::Play;
     case PlayMenuButtonId: return Layout::PlayMenu;
     case QuickFolderButtonId: return Layout::quickAction(0);
@@ -1112,6 +1123,8 @@ bool MainPage::controlVisible(int id) const
         return home;
     case UpdateDownloadButtonId:
         return home && !updateWarning_.empty() && viewState_.playEnabled;
+    case RetryServerButtonId:
+        return home && serverOffline_ && updateWarning_.empty() && viewState_.playEnabled && !installation_.visible;
     case ToastNewsButtonId:
         return leftColumn && toastVisible_;
     case NewsAllButtonId:
@@ -1412,6 +1425,7 @@ void MainPage::handleCommand(int id, int)
         showPage(LauncherPage::News);
         break;
     case CancelInstallationButtonId: cancelInstallation(); break;
+    case RetryServerButtonId: retryServer(); break;
     case InstallationLogButtonId:
     case HelpInstallLogButtonId:
         openLog(logs / L"installation.log");
@@ -1678,7 +1692,7 @@ void MainPage::handlePrimaryAction()
         if (!microsoftIdentity_.online()) { startMicrosoftSignIn(); return; }
         pendingIdentity_ = microsoftIdentity_;
         pendingNickname_ = microsoftIdentity_.name;
-        beginPlay();
+        startGame();
         return;
     }
     pendingNickname_ = nicknameText();
@@ -1696,7 +1710,53 @@ void MainPage::handlePrimaryAction()
         MessageBox(window_, L"Não foi possível salvar o nickname. O jogo ainda pode iniciar, "
                    L"mas talvez você precise digitá-lo novamente na próxima abertura.", L"Nickname", MB_OK | MB_ICONWARNING);
     }
+    startGame();
+}
+
+bool MainPage::offlineReady() const
+{
+    return serverOffline_ && minecraftLauncherService_ && minecraftLauncherService_->validateInstallation().success;
+}
+
+void MainPage::startGame()
+{
+    if (offlineReady()) {
+        launchPreparedMinecraft(InstallationResult{InstallationOutcome::Success}, true);
+        redraw();
+        return;
+    }
+    if (serverOffline_) {
+        // Nothing installed yet: the server is required, so try it again and play if it answers.
+        refreshBeforePlay_ = true;
+        retryServer();
+        return;
+    }
     beginPlay();
+}
+
+void MainPage::retryServer()
+{
+    if (fileServerPending_ || installation_.running || gameRunning() || updatingLauncher_) return;
+    viewState_.operation = LauncherOperation::CheckingUpdates;
+    viewState_.headline = L"Conectando ao servidor";
+    viewState_.operationMessage = L"Procurando o servidor de arquivos do grupo...";
+    viewState_.primaryActionLabel = L"CONECTANDO";
+    viewState_.playEnabled = false;
+    redraw();
+    checkFileServerAsync();
+}
+
+void MainPage::showOfflineState(std::wstring message)
+{
+    serverOffline_ = true;
+    viewState_.operation = LauncherOperation::OfflineReady;
+    viewState_.headline = L"Servidor de arquivos fora do ar";
+    viewState_.operationMessage = std::move(message);
+    viewState_.primaryActionLabel = L"JOGAR ASSIM MESMO";
+    viewState_.playEnabled = true;
+    if (viewState_.statusCards.size() >= 3)
+        viewState_.statusCards[2] = {L"SERVIDOR", L"Fora do ar", L"Jogando com os arquivos locais", StatusTone::Warning};
+    if (window_) SetTimer(window_, ServerRetryTimerId, 60 * 1000, nullptr);
 }
 
 void MainPage::startRepair()
@@ -1778,6 +1838,11 @@ void MainPage::pollGameProcess()
         L". Você pode jogar de novo quando quiser." : std::wstring(L"Você pode iniciar uma nova sessão quando quiser.");
     viewState_.primaryActionLabel = L"JOGAR";
     viewState_.playEnabled = true;
+    if (serverOffline_) {
+        // Still without the file server: the next session also uses the local files.
+        viewState_.operation = LauncherOperation::OfflineReady;
+        viewState_.primaryActionLabel = L"JOGAR ASSIM MESMO";
+    }
     refreshMods();
     if (exitAfterGame_) {
         // The window was closed during the session: finish closing now that the time is saved.
@@ -1821,6 +1886,7 @@ void MainPage::checkFileServerAsync()
     // The HTTP call never runs on the window thread, keeping the
     // nickname field, drawing and other controls responsive.
     if (fileServerThread_.joinable()) fileServerThread_.join();
+    fileServerPending_ = true;
     fileServerThread_ = std::jthread([this](std::stop_token stopToken) {
         auto response = fileServerService_->fetchManifest(stopToken);
         if (stopToken.stop_requested()) return;
@@ -1899,6 +1965,11 @@ void MainPage::applyLauncherUpdateProgress(const LauncherUpdateProgress& progres
 void MainPage::applyFileServerResult(const FileServerManifestResponse& response)
 {
     fetchNewsAsync();
+    if (gameRunning() || installation_.running) {
+        // A background retry answered while playing or preparing: keep the current state.
+        if (response.success) { fileServerManifest_ = response.content; serverOffline_ = false; KillTimer(window_, ServerRetryTimerId); }
+        return;
+    }
     if (installation_.visible) return;
     if (viewState_.statusCards.size() < 3) return;
     const auto installation = minecraftLauncherService_->validateInstallation();
@@ -1907,6 +1978,8 @@ void MainPage::applyFileServerResult(const FileServerManifestResponse& response)
     auto& serverCard = viewState_.statusCards[2];
     if (response.success) {
         fileServerManifest_ = response.content;
+        serverOffline_ = false;
+        if (window_) KillTimer(window_, ServerRetryTimerId);
         refreshMods();
         serverCard.value = L"Online";
         serverCard.detail = L"Respondeu em " + std::to_wstring(response.elapsedMilliseconds) + L" ms";
@@ -1938,15 +2011,22 @@ void MainPage::applyFileServerResult(const FileServerManifestResponse& response)
         viewState_.primaryActionLabel = installation.success ? L"JOGAR" : L"INSTALAR E JOGAR";
         viewState_.playEnabled = true;
     } else {
-        serverCard.value = L"Indisponível";
-        serverCard.detail = response.errorMessage.empty() ? L"Não foi possível obter o manifesto" : response.errorMessage;
-        serverCard.tone = StatusTone::Error;
         refreshBeforePlay_ = false;
-        viewState_.operation = LauncherOperation::ServerUnavailable;
-        viewState_.headline = L"Servidor indisponível";
-        viewState_.operationMessage = L"Não foi possível atualizar a lista de mods.";
-        viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
-        viewState_.playEnabled = true;
+        if (installation.success) {
+            showOfflineState(L"Dá para jogar com os arquivos que você já tem. Novidades do servidor chegam quando ele voltar.");
+        } else {
+            serverOffline_ = true;
+            serverCard.value = L"Fora do ar";
+            serverCard.detail = response.errorMessage.empty() ? L"Não foi possível obter o manifesto" : response.errorMessage;
+            serverCard.tone = StatusTone::Error;
+            viewState_.operation = LauncherOperation::ServerUnavailable;
+            viewState_.headline = L"Servidor indisponível";
+            viewState_.operationMessage = installation.issue == MinecraftLaunchIssue::InvalidConfiguration ? installation.message :
+                L"A primeira instalação precisa do servidor. O launcher tenta de novo a cada minuto.";
+            viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
+            viewState_.playEnabled = true;
+            if (window_) SetTimer(window_, ServerRetryTimerId, 60 * 1000, nullptr);
+        }
     }
     redraw();
 }
@@ -2002,6 +2082,11 @@ void MainPage::consumeInstallationProgress()
             helpMessageError_ = false;
         } else if (result.outcome == InstallationOutcome::Success) {
             launchPreparedMinecraft(result);
+        } else if ((result.failure == InstallationFailure::Network || result.failure == InstallationFailure::Http) &&
+                   minecraftLauncherService_->validateInstallation().success) {
+            // The server dropped during the check, but the game on disk is complete: offer it.
+            installation_.visible = false;
+            showOfflineState(L"Não deu para falar com o servidor agora. Dá para jogar com os arquivos que você já tem.");
         } else {
             const bool cancelled = result.outcome == InstallationOutcome::Cancelled;
             viewState_.operation = cancelled ? LauncherOperation::NeedsInstallation : LauncherOperation::LaunchError;
@@ -2016,13 +2101,15 @@ void MainPage::consumeInstallationProgress()
     redraw();
 }
 
-void MainPage::launchPreparedMinecraft(const InstallationResult& result)
+void MainPage::launchPreparedMinecraft(const InstallationResult& result, bool offline)
 {
     updateInstallationState({true, L"Instalação pronta."});
-    auto& modsCard = viewState_.statusCards[1];
-    modsCard.value = L"Sincronizados";
-    modsCard.detail = std::to_wstring(result.synchronizedFiles) + L" arquivos conferidos";
-    modsCard.tone = StatusTone::Success;
+    if (!offline) {
+        auto& modsCard = viewState_.statusCards[1];
+        modsCard.value = L"Sincronizados";
+        modsCard.detail = std::to_wstring(result.synchronizedFiles) + L" arquivos conferidos";
+        modsCard.tone = StatusTone::Success;
+    }
     refreshMods();
     viewState_.operation = LauncherOperation::LaunchingMinecraft;
     viewState_.headline = L"Iniciando Minecraft";
@@ -2047,8 +2134,10 @@ void MainPage::launchPreparedMinecraft(const InstallationResult& result)
     installation_.visible = false;
     viewState_.operation = LauncherOperation::MinecraftRunning;
     viewState_.headline = L"Jogando agora";
-    viewState_.operationMessage = L"Forge " + std::wstring(LauncherConfig::ForgeVersion) + L" iniciado para " + pendingNickname_ +
-        L". O tempo de jogo é contado mesmo com a janela fechada.";
+    viewState_.operationMessage = offline
+        ? L"Jogando com os arquivos locais, sem sincronizar com o servidor. O tempo de jogo continua sendo contado."
+        : L"Forge " + std::wstring(LauncherConfig::ForgeVersion) + L" iniciado para " + pendingNickname_ +
+          L". O tempo de jogo é contado mesmo com a janela fechada.";
     viewState_.primaryActionLabel = L"JOGANDO";
     SetTimer(window_, GameProcessTimerId, 1000, nullptr);
     startPlaySession();
@@ -2230,6 +2319,7 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
         originalMode_ = false; updatingLauncher_ = false; updateWarning_.clear();
         installation_ = {};
         toastVisible_ = false;
+        serverOffline_ = false;
         page_ = LauncherPage::Home;
         newsFirst_ = 0; newsLoading_ = false; newsError_.clear();
         modsMessage_.clear(); helpMessage_.clear();
@@ -2253,6 +2343,9 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
     viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
     viewState_.statusCards[2] = {L"SERVIDOR", L"Indisponível", L"Falha ao consultar o manifesto", StatusTone::Error};
     if (!save(L"error.png", 1)) return false;
+    ready();
+    showOfflineState(L"Dá para jogar com os arquivos que você já tem. Novidades do servidor chegam quando ele voltar.");
+    if (!save(L"server-offline.png", 1)) return false;
     ready();
     viewState_.operation = LauncherOperation::NeedsInstallation;
     viewState_.headline = L"Pronto para instalar";

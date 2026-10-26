@@ -34,6 +34,9 @@ enum class LauncherOperation
     DownloadError,
     CorruptedFile,
     ServerUnavailable,
+    // The file server is down but the local installation is complete: playing is allowed
+    // with the files already on disk.
+    OfflineReady,
     UpdateAvailable,
     UpdateCompleted,
     LaunchingMinecraft,
