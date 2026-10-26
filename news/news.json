@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "items": [
+    {
+      "category": "ATUALIZAÇÃO",
+      "title": "Chegou o Eternal 2.0 Horizon",
+      "date": "2026-10-26",
+      "body": "O launcher ganhou cara nova: menu lateral, tela inicial com o status do servidor, dos mods e da instalação, configurações em abas e animações por toda parte. Clique em Abrir para ver tudo o que mudou.",
+      "url": "https://github.com/ryanbworks/Eternal-Launcher/releases/tag/v2.0.0"
+    },
+    {
+      "category": "NOVIDADE",
+      "title": "Seu tempo de jogo agora fica salvo",
+      "date": "2026-10-26",
+      "body": "Enquanto o Minecraft roda, um ícone perto do relógio mostra há quanto tempo você está jogando. Pode fechar a janela do launcher: ele continua contando e fecha sozinho quando o jogo acabar. O total aparece no seu card na tela inicial."
+    },
+    {
+      "category": "NOVIDADE",
+      "title": "Servidor de arquivos fora do ar? Dá para jogar",
+      "date": "2026-10-26",
+      "body": "Se o servidor de arquivos cair e o jogo já estiver instalado, o botão vira Jogar assim mesmo e o Minecraft abre com os arquivos que você já tem. O launcher tenta reconectar sozinho a cada minuto."
+    },
+    {
+      "category": "MODS",
+      "title": "Seus mods, do seu jeito",
+      "date": "2026-10-26",
+      "body": "A nova página de Mods separa os mods do servidor dos seus. Os seus você pode ativar, desativar, adicionar ou mandar para a Lixeira, e o launcher nunca apaga nenhum deles."
+    },
+    {
+      "category": "AJUDA",
+      "title": "Algo deu errado? Veja a página de Ajuda",
+      "date": "2026-10-26",
+      "body": "Reparar a instalação sem abrir o jogo, abrir os logs e copiar as informações para pedir ajuda no grupo agora ficam todos num lugar só."
+    }
+  ]
+}

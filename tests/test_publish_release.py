@@ -176,5 +176,32 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual(self.latest.read_bytes(), self.old)
 
 
+    def test_news_is_validated_and_published_atomically(self):
+        news = Path(self.temp.name) / "news.json"
+        news.write_text(json.dumps({"schemaVersion": 1, "items": [
+            {"category": "AVISO", "title": "Olá", "date": "2026-10-26", "url": "https://example.test"}]}), encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()):
+            publisher.publish_news(self.sftp, news, "/files/launcher", check_only=True)
+        self.assertFalse((self.remote / "news.json").exists())
+        with contextlib.redirect_stdout(io.StringIO()):
+            publisher.publish_news(self.sftp, news, "/files/launcher")
+        self.assertEqual((self.remote / "news.json").read_bytes(), news.read_bytes())
+        self.assertEqual(sorted(path.name for path in self.remote.iterdir()), ["latest.json", "news.json"])
+
+    def test_invalid_news_is_rejected_before_upload(self):
+        news = Path(self.temp.name) / "news.json"
+        for document in ({"schemaVersion": 1, "items": []},
+                         {"schemaVersion": 1, "items": [{"title": "x", "url": "http://insecure.test"}]},
+                         {"schemaVersion": 1, "items": [{"title": "x", "date": "26/10/2026"}]},
+                         {"schemaVersion": 2, "items": [{"title": "x"}]}):
+            news.write_text(json.dumps(document), encoding="utf-8")
+            with self.assertRaises(ValueError):
+                publisher.publish_news(self.sftp, news, "/files/launcher")
+        self.assertFalse((self.remote / "news.json").exists())
+
+    def test_repository_news_is_valid(self):
+        repository = Path(__file__).resolve().parents[1] / "news" / "news.json"
+        self.assertGreater(len(publisher.validate_news(repository.read_bytes())["items"]), 0)
+
 if __name__ == "__main__":
     unittest.main()

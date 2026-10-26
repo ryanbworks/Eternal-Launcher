@@ -15,7 +15,7 @@ struct NewsFeedResult
     std::wstring errorMessage;
 };
 
-// Optional announcements published as /news.json on the file server:
+// Optional announcements published as /launcher/news.json on the file server:
 // {"schemaVersion":1,"items":[{"category":"EVENTO","title":"...","date":"2026-10-25","body":"...","url":"https://..."}]}
 class NewsFeed
 {

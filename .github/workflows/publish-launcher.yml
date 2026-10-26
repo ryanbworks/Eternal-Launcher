@@ -115,7 +115,7 @@ jobs:
         run: |
           args=()
           if [ "$CHECK_ONLY" = "true" ]; then args+=(--check-only); fi
-          python3 tools/publish_release.py --package out/package "${args[@]}"
+          python3 tools/publish_release.py --package out/package --news news/news.json "${args[@]}"
       - name: Record the result
         if: success()
         env:

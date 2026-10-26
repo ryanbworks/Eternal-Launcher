@@ -21,6 +21,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 MAX_MANIFEST = 65536
+MAX_NEWS = 65536
 MAX_EXECUTABLE = 268435456
 USER_AGENT = "EternalLauncher-Publisher/1.0 (+https://github.com/ryanbworks/Eternal-Launcher)"
 
@@ -203,6 +204,52 @@ def publish(sftp, package: Path, remote_root: str, base_url: str, key, *, check_
         sftp.rmdir(lock)
 
 
+def validate_news(raw: bytes) -> dict:
+    """Checks news.json against what the launcher accepts before anyone sees it."""
+    if len(raw) > MAX_NEWS:
+        raise ValueError("news.json exceeds 64 KiB")
+    document = json.loads(raw.decode("utf-8"))
+    if not isinstance(document, dict) or document.get("schemaVersion") != 1:
+        raise ValueError("news.json needs schemaVersion 1")
+    items = document.get("items")
+    if not isinstance(items, list) or not items:
+        raise ValueError("news.json needs a non-empty items list")
+    for index, item in enumerate(items):
+        if not isinstance(item, dict) or not isinstance(item.get("title"), str) or not item["title"].strip():
+            raise ValueError(f"News item {index} needs a title")
+        for field in ("category", "date", "body", "url"):
+            if field in item and not isinstance(item[field], str):
+                raise ValueError(f"News item {index}: {field} must be text")
+        if item.get("url") and not item["url"].startswith("https://"):
+            raise ValueError(f"News item {index}: links must use https://")
+        if item.get("date") and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", item["date"]):
+            raise ValueError(f"News item {index}: dates use YYYY-MM-DD")
+    return document
+
+
+def publish_news(sftp, news: Path, remote_root: str, *, check_only=False):
+    """Uploads news.json next to latest.json with an atomic rename."""
+    raw = news.read_bytes()
+    count = len(validate_news(raw)["items"])
+    if check_only:
+        print(f"news.json verified: {count} items. Not uploaded.")
+        return
+    root = PurePosixPath(remote_root)
+    target = str(root / "news.json")
+    temporary = str(root / f"news.{uuid.uuid4().hex}.json.upload")
+    try:
+        with sftp.open(temporary, "wb") as stream:
+            stream.write(raw)
+        sftp.chmod(temporary, 0o644)
+        sftp.posix_rename(temporary, target)
+    finally:
+        try:
+            sftp.remove(temporary)
+        except FileNotFoundError:
+            pass
+    print(f"News published: {count} items.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", type=Path, required=True)
@@ -213,6 +260,7 @@ def main():
     parser.add_argument("--base-url", default="https://eternalfast.aplot.cloud")
     parser.add_argument("--public-key", type=Path, default=Path(__file__).resolve().parents[1] / "src/config/UpdatePublicKey.h")
     parser.add_argument("--check-only", action="store_true")
+    parser.add_argument("--news", type=Path, help="news.json to publish next to latest.json")
     args = parser.parse_args()
     if args.base_url != "https://eternalfast.aplot.cloud":
         parser.error("Publishing must be verified on the configured production domain")
@@ -238,6 +286,8 @@ def main():
         with client.open_sftp() as sftp:
             sftp.get_channel().settimeout(60)
             publish(sftp, args.package, args.remote_root, args.base_url, public_key(args.public_key), check_only=args.check_only)
+            if args.news:
+                publish_news(sftp, args.news, args.remote_root, check_only=args.check_only)
     finally:
         client.close()
 

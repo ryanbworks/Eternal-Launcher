@@ -32,7 +32,7 @@ accents, smooth transitions and native controls with keyboard navigation.
 
 ## Download and use
 
-Download [Eternal Launcher v1.0.14-Federation](https://eternalfast.aplot.cloud/launcher/releases/1.0.14/EternalLauncher.exe)
+Download [Eternal Launcher v2.0.0-Horizon](https://eternalfast.aplot.cloud/launcher/releases/2.0.0/EternalLauncher.exe)
 (see [what's new](https://github.com/ryanbworks/Eternal-Launcher/releases/latest)).
 The distribution is a single portable executable for Windows x64. Open
 `EternalLauncher.exe`. The launcher ships with the C++ runtime and sets up Java 17
