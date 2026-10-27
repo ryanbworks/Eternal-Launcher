@@ -204,6 +204,10 @@ private:
     // frameDirty_ re-renders everything; otherwise only `dirty_` (client pixels) is redrawn.
     bool frameDirty_ = true;
     std::vector<RECT> dirty_;
+    // What still has to be shown on screen. Kept apart from dirty_: a button can repaint
+    // synchronously (WM_SETTEXT, EnableWindow) and render the frame before redraw() runs.
+    bool invalidateAll_ = true;
+    std::vector<RECT> invalid_;
     float playProgressShown_ = -1;
     std::chrono::steady_clock::time_point previousFrame_{};
     LauncherViewState viewState_;

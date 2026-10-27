@@ -3,6 +3,13 @@
   "items": [
     {
       "category": "ATUALIZAÇÃO",
+      "title": "Eternal 2.0.1: tudo mais fluido",
+      "date": "2026-10-27",
+      "body": "As animações agora rodam lisinhas, sem engasgar, e o botão Jogar ganhou uma animação nova enquanto carrega, com um anel girando e a barra deslizando entre as etapas. Também corrigimos um pedaço do painel de instalação que podia ficar na tela depois de reparar.",
+      "url": "https://github.com/ryanbworks/Eternal-Launcher/releases/tag/v2.0.1"
+    },
+    {
+      "category": "ATUALIZAÇÃO",
       "title": "Chegou o Eternal 2.0 Horizon",
       "date": "2026-10-26",
       "body": "O launcher ganhou cara nova: menu lateral, tela inicial com o status do servidor, dos mods e da instalação, configurações em abas e animações por toda parte. Clique em Abrir para ver tudo o que mudou.",

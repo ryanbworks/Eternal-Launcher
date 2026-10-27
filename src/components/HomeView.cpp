@@ -413,9 +413,9 @@ void HomeView::drawPlayButton(Gdiplus::Graphics& g, const PlayerCardModel& m, co
     if (working) {
         // Spinner: an arc that turns while its length breathes, like a native progress ring.
         const Gdiplus::RectF ring{startX + 1, play.Y + play.Height / 2 - 7, 14, 14};
-        Gdiplus::Pen track(Gdiplus::Color(55, ink.GetR(), ink.GetG(), ink.GetB()), 2);
+        Gdiplus::Pen track(Gdiplus::Color(40, ink.GetR(), ink.GetG(), ink.GetB()), 2.2F);
         g.DrawEllipse(&track, ring);
-        Gdiplus::Pen arc(Gdiplus::Color(235, ink.GetR(), ink.GetG(), ink.GetB()), 2);
+        Gdiplus::Pen arc(Gdiplus::Color(255, ink.GetR(), ink.GetG(), ink.GetB()), 2.2F);
         arc.SetStartCap(Gdiplus::LineCapRound);
         arc.SetEndCap(Gdiplus::LineCapRound);
         const float head = std::fmod(m.time * 420, 360.0F);

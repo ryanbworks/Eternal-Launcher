@@ -4,6 +4,22 @@ All notable changes to Eternal Launcher are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and versions use [SemVer](https://semver.org/) plus a codename.
 
+## [2.0.1] — Horizon · 2026-10-27
+
+### Improved
+- **Much smoother animations.** Each animation frame used to repaint the whole window
+  and copy it to every button with a slow GDI+ call, which could drop to about 5 fps
+  on screens scaled to 125–150%. Frames now repaint only what moves, are presented
+  with a plain pixel copy, and reuse a cached landscape and cached fonts: an
+  animation frame takes under 1 ms on the build machine.
+- **New loading animation on the Play button.** A spinner next to the label, a fill
+  that brightens toward a glowing edge with a travelling glint, progress that glides
+  between stages, and soft comets when the duration is unknown.
+
+### Fixed
+- After a repair or installation finished, part of the progress panel could stay on
+  screen until the pointer moved over it.
+
 ## [2.0.0] — Horizon · 2026-10-26
 
 The biggest update so far: a new interface, play time that keeps counting in the
