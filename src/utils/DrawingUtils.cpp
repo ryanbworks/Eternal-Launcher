@@ -5,10 +5,30 @@
 #include <algorithm>
 #include <cmath>
 
-namespace { const Gdiplus::FontFamily* DisplayFamily = nullptr; }
+namespace
+{
+    const Gdiplus::FontFamily* DisplayFamily = nullptr;
+    DrawingUtils::DisplayTypeface* Typeface = nullptr;
+}
+
+const Gdiplus::Font* DrawingUtils::cachedFont(bool display, float size, int style, std::unique_ptr<Gdiplus::Font>& owned)
+{
+    display = display && DisplayFamily;
+    const auto create = [&] {
+        return display ? std::make_unique<Gdiplus::Font>(DisplayFamily, size, style, Gdiplus::UnitPixel)
+                       : std::make_unique<Gdiplus::Font>(Theme::FontFamily, size, style, Gdiplus::UnitPixel);
+    };
+    if (!Typeface) { owned = create(); return owned.get(); }
+    const auto key = (static_cast<std::uint64_t>(display) << 48) | (static_cast<std::uint64_t>(style & 0xFFFF) << 32) |
+        static_cast<std::uint32_t>(std::lround(size * 100));
+    auto& font = Typeface->fonts_[key];
+    if (!font) font = create();
+    return font.get();
+}
 
 DrawingUtils::DisplayTypeface::DisplayTypeface()
 {
+    Typeface = this;
     const auto resource = FindResource(nullptr, MAKEINTRESOURCE(103), RT_RCDATA);
     if (!resource) return;
     const auto data = LockResource(LoadResource(nullptr, resource));
@@ -23,6 +43,8 @@ DrawingUtils::DisplayTypeface::DisplayTypeface()
 DrawingUtils::DisplayTypeface::~DisplayTypeface()
 {
     DisplayFamily = nullptr;
+    Typeface = nullptr;
+    fonts_.clear();
     if (gdiFont_) RemoveFontMemResourceEx(gdiFont_);
 }
 
@@ -33,11 +55,12 @@ const wchar_t* DrawingUtils::displayFontFamily()
 
 float DrawingUtils::measureText(Gdiplus::Graphics& g, std::wstring_view text, float size, int style)
 {
-    Gdiplus::Font font(Theme::FontFamily, size, style, Gdiplus::UnitPixel);
+    std::unique_ptr<Gdiplus::Font> owned;
+    const auto* font = cachedFont(false, size, style, owned);
     Gdiplus::RectF measured;
     Gdiplus::StringFormat format(Gdiplus::StringFormat::GenericTypographic());
     format.SetFormatFlags(format.GetFormatFlags() | Gdiplus::StringFormatFlagsMeasureTrailingSpaces);
-    g.MeasureString(text.data(), static_cast<INT>(text.size()), &font, Gdiplus::PointF(0, 0), &format, &measured);
+    g.MeasureString(text.data(), static_cast<INT>(text.size()), font, Gdiplus::PointF(0, 0), &format, &measured);
     return measured.Width;
 }
 
@@ -67,7 +90,16 @@ void DrawingUtils::drawCachedImage(Gdiplus::Graphics& g,Gdiplus::Bitmap& source,
     }
     const auto saved=g.Save();
     g.SetInterpolationMode(Gdiplus::InterpolationModeNearestNeighbor);
-    g.DrawImage(cache.get(),bounds,0,0,static_cast<float>(width),static_cast<float>(height),Gdiplus::UnitPixel);
+    if(std::abs(elements[1])<1e-4F && std::abs(elements[2])<1e-4F) {
+        // Axis-aligned: blit 1:1 at whole device pixels, which GDI+ copies without resampling.
+        const int x=static_cast<int>(std::lround(elements[4]+bounds.X*elements[0]));
+        const int y=static_cast<int>(std::lround(elements[5]+bounds.Y*elements[3]));
+        g.ResetTransform();
+        g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+        g.DrawImage(cache.get(),Gdiplus::Rect(x,y,width,height),0,0,width,height,Gdiplus::UnitPixel);
+    } else {
+        g.DrawImage(cache.get(),bounds,0,0,static_cast<float>(width),static_cast<float>(height),Gdiplus::UnitPixel);
+    }
     g.Restore(saved);
 }
 
@@ -76,13 +108,14 @@ void DrawingUtils::drawDisplayText(Gdiplus::Graphics& g, std::wstring_view text,
                                    Gdiplus::StringAlignment horizontal, Gdiplus::StringAlignment vertical)
 {
     if (!DisplayFamily) { drawText(g,text,bounds,size,Gdiplus::FontStyleBold,color,horizontal,vertical); return; }
-    Gdiplus::Font font(DisplayFamily,size,Gdiplus::FontStyleBold,Gdiplus::UnitPixel);
+    std::unique_ptr<Gdiplus::Font> owned;
+    const auto* font = cachedFont(true, size, Gdiplus::FontStyleBold, owned);
     Gdiplus::SolidBrush brush(color);
     Gdiplus::StringFormat format;
     format.SetAlignment(horizontal);
     format.SetLineAlignment(vertical);
     format.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
-    g.DrawString(text.data(),static_cast<INT>(text.size()),&font,bounds,&format,&brush);
+    g.DrawString(text.data(),static_cast<INT>(text.size()),font,bounds,&format,&brush);
 }
 
 std::unique_ptr<Gdiplus::GraphicsPath> DrawingUtils::createRoundedPath(
@@ -160,13 +193,14 @@ void DrawingUtils::drawText(Gdiplus::Graphics& graphics, std::wstring_view text,
                             Gdiplus::StringAlignment horizontal,
                             Gdiplus::StringAlignment vertical)
 {
-    Gdiplus::Font font(Theme::FontFamily, size, style, Gdiplus::UnitPixel);
+    std::unique_ptr<Gdiplus::Font> owned;
+    const auto* font = cachedFont(false, size, style, owned);
     Gdiplus::SolidBrush brush(color);
     Gdiplus::StringFormat format;
     format.SetAlignment(horizontal);
     format.SetLineAlignment(vertical);
     format.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
-    graphics.DrawString(text.data(), static_cast<INT>(text.size()), &font, bounds, &format, &brush);
+    graphics.DrawString(text.data(), static_cast<INT>(text.size()), font, bounds, &format, &brush);
 }
 
 Gdiplus::Color DrawingUtils::colorForTone(StatusTone tone)

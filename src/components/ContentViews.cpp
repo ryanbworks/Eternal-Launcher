@@ -136,7 +136,7 @@ void ModsView::draw(Gdiplus::Graphics& g, const ModsModel& m, const ControlVisua
     const auto serverBounds = serverList();
     {
         const auto saved = g.Save();
-        g.SetClip(serverBounds);
+        g.SetClip(serverBounds, Gdiplus::CombineModeIntersect);
         if (server == 0)
             drawText(g, inventory && inventory->manifestKnown ? L"O servidor não lista nenhum mod." : L"A lista aparece quando o servidor responder.",
                 {serverBounds.X, serverBounds.Y + 8, serverBounds.Width, 40}, 13, Gdiplus::FontStyleRegular, Theme::TextMuted);
@@ -167,7 +167,7 @@ void ModsView::draw(Gdiplus::Graphics& g, const ModsModel& m, const ControlVisua
     const auto userBounds = userList();
     {
         const auto saved = g.Save();
-        g.SetClip(userBounds);
+        g.SetClip(userBounds, Gdiplus::CombineModeIntersect);
         if (user == 0) {
             Icons::draw(g, Icons::Icon::Mods, {userBounds.X + userBounds.Width / 2 - 18, userBounds.Y + 120, 36, 36}, Theme::TextMuted, 1.6F);
             drawText(g, L"Nenhum mod seu ainda", {userBounds.X, userBounds.Y + 168, userBounds.Width, 24}, 15, Gdiplus::FontStyleBold,

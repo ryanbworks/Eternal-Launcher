@@ -165,7 +165,7 @@ void InstallationPanelComponent::draw(Gdiplus::Graphics& g, const InstallationTr
                     if (value > 0) fillPill(g, {bar.X, bar.Y, std::max(6.0F, bar.Width * value / 100), bar.Height}, Theme::Accent);
                 } else {
                     const auto saved = g.Save();
-                    g.SetClip(bar);
+                    g.SetClip(bar, Gdiplus::CombineModeIntersect);
                     const float x = bar.X + (std::fmod(phase, 1.0F) * 1.35F - .35F) * bar.Width;
                     fillPill(g, {x, bar.Y, bar.Width * .35F, bar.Height}, Theme::Accent);
                     g.Restore(saved);
@@ -190,7 +190,7 @@ void InstallationPanelComponent::draw(Gdiplus::Graphics& g, const InstallationTr
                     const Gdiplus::RectF bar{inner, row.Y + 100, innerWidth, 6};
                     fillPill(g, bar, Theme::SurfaceHover);
                     const auto saved = g.Save();
-                    g.SetClip(bar);
+                    g.SetClip(bar, Gdiplus::CombineModeIntersect);
                     const float x = bar.X + (std::fmod(phase, 1.0F) * 1.35F - .35F) * bar.Width;
                     fillPill(g, {x, bar.Y, bar.Width * .35F, bar.Height}, Theme::Accent);
                     g.Restore(saved);

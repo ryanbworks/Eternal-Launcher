@@ -27,11 +27,11 @@ HeroComponent::HeroComponent()
 }
 HeroComponent::~HeroComponent() {artwork_.reset(); if(stream_) stream_->Release();}
 
-void HeroComponent::draw(Gdiplus::Graphics& g,const Gdiplus::RectF& b,float reveal,float energy,float phase,float drift,
+void HeroComponent::drawStatic(Gdiplus::Graphics& g,const Gdiplus::RectF& b,float reveal,
     const std::vector<std::wstring>& chips) const
 {
     auto path=DrawingUtils::createRoundedPath(b,Theme::PanelRadius);
-    const auto saved=g.Save(); g.SetClip(path.get());
+    const auto saved=g.Save(); g.SetClip(path.get(),Gdiplus::CombineModeIntersect);
     Gdiplus::SolidBrush base(Theme::Surface); g.FillRectangle(&base,b);
     if(artwork_) {
         // The artwork opens around the portal side; copy and controls stay visible throughout.
@@ -56,6 +56,70 @@ void HeroComponent::draw(Gdiplus::Graphics& g,const Gdiplus::RectF& b,float reve
     const Gdiplus::Color colors[]={{120,14,15,27},{40,14,15,27},{0,14,15,27}};
     const Gdiplus::REAL stops[]={0,0.48F,1};
     shade.SetInterpolationColors(colors,stops,3); g.FillRectangle(&shade,b);
+    g.Restore(saved);
+    // Glass panel: a translucent dark plate keeps the copy legible over any part of the art.
+    const Gdiplus::RectF glass{b.X+20,b.GetBottom()-172,440,152};
+    DrawingUtils::fillRoundedRectangle(g,glass,16,Theme::Glass);
+    DrawingUtils::drawRoundedRectangle(g,{glass.X+.5F,glass.Y+.5F,glass.Width-1,glass.Height-1},16,Theme::GlassOutline);
+    DrawingUtils::drawText(g,L"ETERNAL REALMS",{glass.X+24,glass.Y+20,300,16},11,Gdiplus::FontStyleBold,Theme::AccentLight);
+    DrawingUtils::drawDisplayText(g,L"Sua próxima aventura\ncomeça aqui.",{glass.X+24,glass.Y+40,glass.Width-40,74},28,Theme::TextPrimary);
+    float x=glass.X+24;
+    for(const auto& chip:chips) {
+        if(chip.empty()) continue;
+        const float w=DrawingUtils::measureText(g,chip,12,Gdiplus::FontStyleBold)+22;
+        const Gdiplus::RectF pill{x,glass.GetBottom()-38,w,24};
+        DrawingUtils::fillPill(g,pill,Gdiplus::Color(22,255,255,255));
+        DrawingUtils::drawText(g,chip,pill,12,Gdiplus::FontStyleBold,Gdiplus::Color(255,230,231,239),
+            Gdiplus::StringAlignmentCenter,Gdiplus::StringAlignmentCenter);
+        x+=w+8;
+    }
+}
+
+bool HeroComponent::drawStaticCached(Gdiplus::Graphics& g,const Gdiplus::RectF& b,const std::vector<std::wstring>& chips) const
+{
+    Gdiplus::Matrix transform;g.GetTransform(&transform);
+    Gdiplus::REAL m[6]{};transform.GetElements(m);
+    if(std::abs(m[1])>1e-4F || std::abs(m[2])>1e-4F || m[0]<=0 || m[3]<=0) return false;
+    const int x=static_cast<int>(std::lround(m[4]+b.X*m[0])),y=static_cast<int>(std::lround(m[5]+b.Y*m[3]));
+    const int width=static_cast<int>(std::lround(b.Width*m[0])),height=static_cast<int>(std::lround(b.Height*m[3]));
+    if(width<=0 || height<=0 || width>8192 || height>8192) return false;
+    std::wstring key;
+    for(const auto& chip:chips) key+=chip+L"\n";
+    if(!staticLayer_ || staticLayer_->GetWidth()!=static_cast<UINT>(width) || staticLayer_->GetHeight()!=static_cast<UINT>(height) ||
+        staticKey_!=key) {
+        // Rendered once per size and content; every animation frame then only blits it.
+        auto layer=std::make_unique<Gdiplus::Bitmap>(width,height,PixelFormat32bppPARGB);
+        if(layer->GetLastStatus()!=Gdiplus::Ok) return false;
+        Gdiplus::Graphics prepare(layer.get());
+        prepare.Clear(Gdiplus::Color(0,0,0,0));
+        prepare.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+        prepare.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
+        prepare.SetTextRenderingHint(g.GetTextRenderingHint());
+        prepare.ScaleTransform(static_cast<float>(width)/b.Width,static_cast<float>(height)/b.Height);
+        prepare.TranslateTransform(-b.X,-b.Y);
+        drawStatic(prepare,b,1,chips);
+        prepare.Flush(Gdiplus::FlushIntentionSync);
+        staticLayer_=std::move(layer);
+        staticKey_=std::move(key);
+    }
+    const auto saved=g.Save();
+    g.ResetTransform();
+    g.SetInterpolationMode(Gdiplus::InterpolationModeNearestNeighbor);
+    g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+    g.DrawImage(staticLayer_.get(),Gdiplus::Rect(x,y,width,height),0,0,width,height,Gdiplus::UnitPixel);
+    g.Restore(saved);
+    return true;
+}
+
+void HeroComponent::draw(Gdiplus::Graphics& g,const Gdiplus::RectF& b,float reveal,float energy,float phase,float drift,
+    const std::vector<std::wstring>& chips) const
+{
+    reveal=std::clamp(reveal,0.0F,1.0F);
+    // The opening sequence changes the art itself; afterwards only the particles move.
+    if(reveal<1 || !drawStaticCached(g,b,chips)) drawStatic(g,b,reveal,chips);
+    if(energy<=.005F) return;
+    const auto saved=g.Save();
+    g.SetClip(b,Gdiplus::CombineModeIntersect);
     if(energy>.005F) {
         // Confine the authored energy to the actual portal side, clear of operational copy.
         const float cx=b.X+b.Width*.844F,cy=b.Y+b.Height*.62F;
@@ -102,22 +166,6 @@ void HeroComponent::draw(Gdiplus::Graphics& g,const Gdiplus::RectF& b,float reve
         }
     }
     g.Restore(saved);
-    // Glass panel: a translucent dark plate keeps the copy legible over any part of the art.
-    const Gdiplus::RectF glass{b.X+20,b.GetBottom()-172,440,152};
-    DrawingUtils::fillRoundedRectangle(g,glass,16,Theme::Glass);
-    DrawingUtils::drawRoundedRectangle(g,{glass.X+.5F,glass.Y+.5F,glass.Width-1,glass.Height-1},16,Theme::GlassOutline);
-    DrawingUtils::drawText(g,L"ETERNAL REALMS",{glass.X+24,glass.Y+20,300,16},11,Gdiplus::FontStyleBold,Theme::AccentLight);
-    DrawingUtils::drawDisplayText(g,L"Sua próxima aventura\ncomeça aqui.",{glass.X+24,glass.Y+40,glass.Width-40,74},28,Theme::TextPrimary);
-    float x=glass.X+24;
-    for(const auto& chip:chips) {
-        if(chip.empty()) continue;
-        const float w=DrawingUtils::measureText(g,chip,12,Gdiplus::FontStyleBold)+22;
-        const Gdiplus::RectF pill{x,glass.GetBottom()-38,w,24};
-        DrawingUtils::fillPill(g,pill,Gdiplus::Color(22,255,255,255));
-        DrawingUtils::drawText(g,chip,pill,12,Gdiplus::FontStyleBold,Gdiplus::Color(255,230,231,239),
-            Gdiplus::StringAlignmentCenter,Gdiplus::StringAlignmentCenter);
-        x+=w+8;
-    }
 }
 
 
