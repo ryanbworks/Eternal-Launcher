@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 
 # The launcher only uses C++; declaring the language avoids unnecessary
 # C compiler checks while configuring the project.
-project(EternalLauncher VERSION 2.0.0 LANGUAGES CXX)
+project(EternalLauncher VERSION 2.0.1 LANGUAGES CXX)
 set(ETERNAL_CODENAME "Horizon")
 configure_file(src/config/LauncherVersion.h.in generated/config/LauncherVersion.h @ONLY)
 include_directories("${CMAKE_CURRENT_BINARY_DIR}/generated")

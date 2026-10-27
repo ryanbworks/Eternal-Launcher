@@ -674,8 +674,14 @@ void MainPage::markRect(RECT rect)
     rect.bottom = std::min(static_cast<LONG>(clientHeight_), rect.bottom);
     if (rect.right <= rect.left || rect.bottom <= rect.top) return;
     // Many small pieces cost more than one full pass.
-    if (dirty_.size() >= 24) { frameDirty_ = true; dirty_.clear(); return; }
+    if (dirty_.size() >= 24 || invalid_.size() >= 24) {
+        frameDirty_ = invalidateAll_ = true;
+        dirty_.clear();
+        invalid_.clear();
+        return;
+    }
     dirty_.push_back(rect);
+    invalid_.push_back(rect);
 }
 
 void MainPage::markContent(const Gdiplus::RectF& b, float inflate)
@@ -950,8 +956,9 @@ void MainPage::redraw(bool animationFrame)
     }
     if (!animationFrame) {
         // State changes repaint everything; animation frames only what animate() marked.
-        frameDirty_ = true;
+        frameDirty_ = invalidateAll_ = true;
         dirty_.clear();
+        invalid_.clear();
         syncControls();
         const float progress = playProgressTarget();
         if (progress < 0) playProgressShown_ = -1;
@@ -1009,7 +1016,9 @@ void MainPage::redraw(bool animationFrame)
         animationTimer_ = false;
     }
     // Hover/focus changes the canvas and owner-drawn buttons, not the EDIT contents or caret.
-    if (frameDirty_) {
+    if (invalidateAll_) {
+        invalidateAll_ = false;
+        invalid_.clear();
         RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_NOCHILDREN);
         for (const auto& control : controls_)
             if (control.window && (GetWindowLongPtrW(control.window, GWL_STYLE) & WS_VISIBLE) &&
@@ -1018,14 +1027,15 @@ void MainPage::redraw(bool animationFrame)
         return;
     }
     // Animation frame: present only the pieces that moved, and only the buttons over them.
-    for (const auto& area : dirty_) RedrawWindow(window_, &area, nullptr, RDW_INVALIDATE | RDW_NOCHILDREN);
-    if (dirty_.empty()) return;
+    if (invalid_.empty()) return;
+    for (const auto& area : invalid_) RedrawWindow(window_, &area, nullptr, RDW_INVALIDATE | RDW_NOCHILDREN);
     for (const auto& control : controls_) {
         if (!control.window || control.id == NicknameInputId || !(GetWindowLongPtrW(control.window, GWL_STYLE) & WS_VISIBLE)) continue;
         RECT overlap{};
-        for (const auto& area : dirty_)
+        for (const auto& area : invalid_)
             if (IntersectRect(&overlap, &area, &control.rect)) { InvalidateRect(control.window, nullptr, FALSE); break; }
     }
+    invalid_.clear();
     if (page_ == LauncherPage::Settings) settingsPage_.invalidateButtons();
 }
 
@@ -1101,7 +1111,7 @@ void MainPage::animate()
     }
 
     // Mark the regions this frame changed.
-    if (pageFade_ != fadeBefore) frameDirty_ = true;
+    if (pageFade_ != fadeBefore) frameDirty_ = invalidateAll_ = true;
     if (navIndicator_ != navBefore) markChrome({0, TitleBarHeight, SidebarWidth, chromeHeight() - TitleBarHeight});
     for (std::size_t i = 0; i < controls_.size() && i < hoverBefore.size(); ++i)
         if (controls_[i].hover != hoverBefore[i]) markControl(controls_[i].id);

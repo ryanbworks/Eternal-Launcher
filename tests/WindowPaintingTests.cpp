@@ -374,9 +374,16 @@ public:
         // Repair runs the same preparation without starting the game.
         page.installation_={};page.viewState_=initial;page.redraw();
         page.repairOnly_=true;page.installation_.begin();page.installationMailbox_.begin(page.installation_.attempt);
-        page.viewState_.playEnabled=false;
+        page.viewState_.playEnabled=false;page.redraw();
         page.installationMailbox_.finish(page.installation_.attempt,{InstallationOutcome::Success,InstallationFailure::None,L"Pronto",{},3});
+        UpdateWindow(page.window_);  // nothing pending: what follows must invalidate by itself
         page.consumeInstallationProgress();
+        {
+            // Buttons repaint synchronously while their labels change; the window must still be
+            // fully invalidated, or the old installation panel stays on screen.
+            RECT update{},client{};GetUpdateRect(page.window_,&update,FALSE);GetClientRect(page.window_,&client);
+            check(EqualRect(&update,&client)!=FALSE,"leaving the installation panel repaints the whole window");
+        }
         check(fake.launches==0 && !page.installation_.visible && page.viewState_.playEnabled && !page.repairOnly_,
             "successful repair returns to the home screen without launching");
 
