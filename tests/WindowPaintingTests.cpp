@@ -13,6 +13,7 @@
 #include <ctime>
 #include <fstream>
 #include <iostream>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -63,10 +64,10 @@ public:
 class WindowPaintingTest {
 public:
     // Hidden test-owned host built from the production window procedure and controls.
-    static bool host(MainPage& page,const wchar_t* className,int width=1280,int height=800) {
+    static bool host(MainPage& page,const wchar_t* className,int width=1280,int height=800,WNDPROC procedure=MainPage::windowProcedure) {
         WNDCLASSW klass{};
         klass.hInstance=page.instance_;klass.lpszClassName=className;
-        klass.lpfnWndProc=MainPage::windowProcedure;klass.hbrBackground=page.backgroundBrush_;
+        klass.lpfnWndProc=procedure;klass.hbrBackground=page.backgroundBrush_;
         check(RegisterClassW(&klass)!=0,"test-owned window registration");
         page.window_=CreateWindowExW(0,className,L"Eternal — teste",WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
             0,0,width,height,nullptr,nullptr,page.instance_,&page);
@@ -92,6 +93,24 @@ public:
     static RECT childRect(MainPage& page,HWND child) {
         RECT bounds{};GetWindowRect(child,&bounds);
         MapWindowPoints(nullptr,page.window_,reinterpret_cast<POINT*>(&bounds),2);return bounds;
+    }
+    // Samples pixels where the incrementally updated frame differs from a fresh full render.
+    static int staleSamples(MainPage& page) {
+        page.prepareFrame();
+        const int width=static_cast<int>(page.frame_->GetWidth()),height=static_cast<int>(page.frame_->GetHeight());
+        Gdiplus::Bitmap reference(width,height,PixelFormat32bppPARGB);
+        {Gdiplus::Graphics g(&reference);page.render(g,static_cast<float>(width),static_cast<float>(height));}
+        int stale=0;
+        for(int y=1;y<height;y+=3) for(int x=1;x<width;x+=3) {
+            Gdiplus::Color current,fresh;page.frame_->GetPixel(x,y,&current);reference.GetPixel(x,y,&fresh);
+            const int difference=std::max({std::abs(current.GetR()-fresh.GetR()),std::abs(current.GetG()-fresh.GetG()),
+                std::abs(current.GetB()-fresh.GetB())});
+            if(difference>4) {
+                if(stale<5) std::cerr << "stale pixel at " << x << "," << y << '\n';
+                ++stale;
+            }
+        }
+        return stale;
     }
     static void tick(MainPage& page) {page.previousFrame_=std::chrono::steady_clock::now()-std::chrono::milliseconds(32);page.animate();}
 
@@ -480,6 +499,24 @@ public:
         SendMessageW(quick,WM_MOUSELEAVE,0,0);
         for(int i=0;i<24;++i) tick(page);
         check(entry && entry->hover==0 && !page.animationTimer_,"hover settles and stops the timer");
+
+        // Animation frames repaint only what moved, and the result must equal a full repaint.
+        page.redraw();page.prepareFrame();
+        page.originalMode_=true;page.redraw();page.prepareFrame();
+        SendMessageW(control(page,PlayButtonId),WM_MOUSEMOVE,0,MAKELPARAM(30,20));
+        SendMessageW(quick,WM_MOUSEMOVE,0,MAKELPARAM(4,4));
+        tick(page);
+        check(!page.frameDirty_ && !page.dirty_.empty(),"animation frames mark regions instead of the whole window");
+        for(int i=0;i<6;++i) {page.prepareFrame();tick(page);}
+        check(staleSamples(page)==0,"partial animation frames match a full repaint");
+        page.installation_.begin();page.viewState_.playEnabled=false;page.viewState_.progressVisible=true;page.redraw();
+        for(int i=0;i<5;++i) {page.prepareFrame();tick(page);}
+        check(staleSamples(page)==0,"installation frames match a full repaint");
+        page.installation_={};page.viewState_=initial;
+        SendMessageW(control(page,PlayButtonId),WM_MOUSELEAVE,0,0);SendMessageW(quick,WM_MOUSELEAVE,0,0);
+        page.originalMode_=false;page.redraw();
+        for(int i=0;i<40;++i) tick(page);
+        check(!page.animationTimer_,"everything settles after the partial-frame checks");
         page.showPage(LauncherPage::News);
         check(page.pageFade_==0 && page.animationTimer_,"page switches fade in");
         tick(page);
@@ -573,11 +610,17 @@ public:
         release(page,L"EternalPaintingRegressionHost");
     }
 
+    inline static int paints=0;
+    static LRESULT CALLBACK countingProcedure(HWND window,UINT message,WPARAM wParam,LPARAM lParam) {
+        if(message==WM_PAINT) ++paints;
+        return MainPage::windowProcedure(window,message,wParam,lParam);
+    }
     static void benchmark() {
         MainPage page(GetModuleHandleW(nullptr));
-        if(!host(page,L"EternalMotionBenchmarkHost")) return;
+        if(!host(page,L"EternalMotionBenchmarkHost",1280,800,countingProcedure)) return;
         page.motionEnabled_=true;page.viewState_.playEnabled=true;page.viewState_.operation=LauncherOperation::ReadyToPlay;
-        const auto measure=[](const char* name,auto work) {
+        page.viewState_.primaryActionLabel=L"JOGAR";page.portalEntrance_=1;page.portalBurst_=0;
+        const auto measure=[](const std::string& name,auto work) {
             std::vector<double> times;
             for(int i=0;i<48;++i) {
                 const auto start=std::chrono::steady_clock::now();work(i);
@@ -586,18 +629,42 @@ public:
             std::sort(times.begin(),times.end());
             std::cout << name << " median_ms=" << times[times.size()/2] << " p95_ms=" << times[times.size()*95/100] << std::endl;
         };
+        const auto screen=GetDC(nullptr);const auto memory=CreateCompatibleDC(screen);
+        const auto bitmap=CreateCompatibleBitmap(screen,1600,1000);ReleaseDC(nullptr,screen);
+        const auto old=SelectObject(memory,bitmap);
+        const Gdiplus::RectF playGroup{Layout::Play.X,Layout::Play.Y,Layout::PlayMenu.GetRight()-Layout::Play.X,Layout::Play.Height};
         for(const auto& size:{std::pair{1280,800},std::pair{1024,640}}) {
             resize(page,size.first,size.second);
-            measure("home",[&](int i) {page.particlePhase_=static_cast<float>(i)/48;page.frameDirty_=true;page.prepareFrame();});
-            page.installation_.begin();
-            measure("installation",[&](int) {page.frameDirty_=true;page.prepareFrame();});
-            page.installation_={};
+            const std::string tag="_"+std::to_string(size.first);
+            page.prepareFrame();
+            measure("home_full"+tag,[&](int i) {page.particlePhase_=static_cast<float>(i)/48;page.frameDirty_=true;page.prepareFrame();});
+            measure("home_animation_frame"+tag,[&](int i) {
+                page.particlePhase_=static_cast<float>(i)/48;page.time_=static_cast<float>(i)*.016F;
+                page.markContent(Layout::Hero,2);page.markContent(playGroup,16);page.markContent(Layout::Avatar,18);
+                page.prepareFrame();});
+            measure("present_full"+tag,[&](int) {SendMessageW(page.window_,WM_PRINTCLIENT,reinterpret_cast<WPARAM>(memory),PRF_CLIENT);});
+            page.installation_.begin();page.viewState_.playEnabled=false;page.redraw();
+            measure("installation_full"+tag,[&](int) {page.frameDirty_=true;page.prepareFrame();});
+            measure("installation_animation_frame"+tag,[&](int i) {
+                page.animationPhase_=static_cast<float>(i)/48;page.markContent(Layout::Installation,4);page.markContent(playGroup,16);
+                page.prepareFrame();});
+            page.installation_={};page.viewState_.playEnabled=true;page.redraw();
             for(const auto target:{LauncherPage::News,LauncherPage::Mods,LauncherPage::Settings,LauncherPage::Help}) {
                 page.showPage(target);
-                measure("page",[&](int) {page.frameDirty_=true;page.prepareFrame();});
+                measure("page_full"+tag,[&](int) {page.frameDirty_=true;page.prepareFrame();});
             }
-            page.showPage(LauncherPage::Home);
+            page.showPage(LauncherPage::Home);page.pageFade_=1;
+            // Real cadence: a visible window animating the portal, counted in WM_PAINT per second.
+            ShowWindow(page.window_,SW_SHOWNOACTIVATE);
+            page.portalHovered_=true;page.redraw();
+            paints=0;
+            const auto started=std::chrono::steady_clock::now();
+            pump(2000);
+            const double seconds=std::chrono::duration<double>(std::chrono::steady_clock::now()-started).count();
+            std::cout << "cadence"+tag << " fps=" << static_cast<double>(paints)/seconds << " timer=" << page.animationTimer_ << std::endl;
+            page.portalHovered_=false;ShowWindow(page.window_,SW_HIDE);page.redraw();
         }
+        SelectObject(memory,old);DeleteObject(bitmap);DeleteDC(memory);
         release(page,L"EternalMotionBenchmarkHost");
     }
 

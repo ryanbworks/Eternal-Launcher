@@ -51,6 +51,7 @@ private:
         bool chrome = false;
         bool hovered = false;
         float hover = 0;
+        RECT rect{};  // client pixels, refreshed on layout
     };
 
     static LRESULT CALLBACK windowProcedure(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
@@ -68,6 +69,12 @@ private:
     HomeModel homeModel(bool preview) const;
     ModsModel modsModel() const;
     void redraw(bool animationFrame = false);
+    void releaseFrame();
+    void markRect(RECT rect);
+    void markContent(const Gdiplus::RectF& bounds, float inflate = 0);
+    void markChrome(const Gdiplus::RectF& bounds, float inflate = 0);
+    void markControl(int id);
+    float playProgressTarget() const;
     void animate();
     void updateMotionPreference();
 
@@ -188,8 +195,16 @@ private:
     float clientHeight_ = 0;
     bool motionEnabled_ = true;
     bool animationTimer_ = false;
+    // The frame is a DIB section wrapped by GDI+: drawing uses GDI+, presenting the
+    // window and every owner-drawn child is a plain BitBlt from frameDc_.
     std::unique_ptr<Gdiplus::Bitmap> frame_;
+    HDC frameDc_ = nullptr;
+    HBITMAP frameBitmap_ = nullptr;
+    HGDIOBJ frameOldBitmap_ = nullptr;
+    // frameDirty_ re-renders everything; otherwise only `dirty_` (client pixels) is redrawn.
     bool frameDirty_ = true;
+    std::vector<RECT> dirty_;
+    float playProgressShown_ = -1;
     std::chrono::steady_clock::time_point previousFrame_{};
     LauncherViewState viewState_;
 

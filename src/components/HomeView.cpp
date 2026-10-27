@@ -342,14 +342,32 @@ void HomeView::drawPlayButton(Gdiplus::Graphics& g, const PlayerCardModel& m, co
         g.SetClip(clip.get(), Gdiplus::CombineModeIntersect);
         if (!enabled && m.progress >= 0) {
             const float fraction = std::clamp(m.progress, 0.0F, 100.0F) / 100;
-            Gdiplus::SolidBrush fill(Gdiplus::Color(255, 58, 47, 107));
             if (fraction > 0) {
-                g.FillRectangle(&fill, play.X, play.Y, play.Width * fraction, play.Height);
-                // A glint rides along the filled part so long downloads still feel alive.
-                if (m.motion) lightBand(g, play.X + play.Width * fraction * std::fmod(m.time / 1.6F, 1.0F), play.Y, play.Height, 50, 40);
+                // Filled part brightens toward its leading edge, which carries a soft glow.
+                const float edge = play.X + play.Width * fraction;
+                Gdiplus::LinearGradientBrush fill(Gdiplus::PointF(play.X - 1, 0), Gdiplus::PointF(edge + 1, 0),
+                    Gdiplus::Color(255, 52, 42, 98), Gdiplus::Color(255, 104, 80, 190));
+                g.FillRectangle(&fill, play.X, play.Y, edge - play.X, play.Height);
+                lightBand(g, edge - 10, play.Y, play.Height, 40, 70);
+                Gdiplus::SolidBrush line(Gdiplus::Color(210, 201, 182, 255));
+                g.FillRectangle(&line, edge - 2, play.Y, 2.0F, play.Height);
+                // A glint keeps travelling over the filled part so slow downloads still feel alive.
+                if (m.motion && edge - play.X > 40)
+                    lightBand(g, play.X + (edge - play.X) * easeInOut(std::fmod(m.time / 1.8F, 1.0F)), play.Y, play.Height, 46, 45);
             } else {
-                const float x = play.X + (std::fmod(m.phase, 1.0F) * 1.4F - .4F) * play.Width;
-                g.FillRectangle(&fill, x, play.Y, play.Width * .4F, play.Height);
+                // Unknown duration: two soft comets glide across, eased so they never look jerky.
+                for (int comet = 0; comet < 2; ++comet) {
+                    const float t = std::fmod(m.time / 1.7F + static_cast<float>(comet) * .5F, 1.0F);
+                    const float center = play.X - play.Width * .3F + play.Width * 1.6F * easeInOut(t);
+                    const float width = play.Width * (comet == 0 ? .55F : .35F);
+                    Gdiplus::LinearGradientBrush band(Gdiplus::PointF(center - width / 2, 0), Gdiplus::PointF(center + width / 2, 0),
+                        Gdiplus::Color(0, 98, 78, 186), Gdiplus::Color(0, 98, 78, 186));
+                    const Gdiplus::Color colors[] = {Gdiplus::Color(0, 98, 78, 186),
+                        Gdiplus::Color(static_cast<BYTE>(comet == 0 ? 190 : 120), 98, 78, 186), Gdiplus::Color(0, 98, 78, 186)};
+                    const Gdiplus::REAL positions[] = {0, .5F, 1};
+                    band.SetInterpolationColors(colors, positions, 3);
+                    g.FillRectangle(&band, center - width / 2, play.Y, width, play.Height);
+                }
             }
         }
         if (enabled) {
@@ -389,8 +407,21 @@ void HomeView::drawPlayButton(Gdiplus::Graphics& g, const PlayerCardModel& m, co
         label += L" " + std::to_wstring(static_cast<int>(std::floor(m.progress))) + L"%";
     const auto ink = enabled ? Theme::AccentInk : Gdiplus::Color(255, 230, 225, 255);
     const float labelWidth = measureText(g, label, 15, Gdiplus::FontStyleBold);
-    const float iconWidth = ready ? 26.0F : 0.0F;
+    const bool working = !enabled && m.progress >= 0;
+    const float iconWidth = ready || working ? 26.0F : 0.0F;
     const float startX = play.X + (play.Width - labelWidth - iconWidth) / 2;
+    if (working) {
+        // Spinner: an arc that turns while its length breathes, like a native progress ring.
+        const Gdiplus::RectF ring{startX + 1, play.Y + play.Height / 2 - 7, 14, 14};
+        Gdiplus::Pen track(Gdiplus::Color(55, ink.GetR(), ink.GetG(), ink.GetB()), 2);
+        g.DrawEllipse(&track, ring);
+        Gdiplus::Pen arc(Gdiplus::Color(235, ink.GetR(), ink.GetG(), ink.GetB()), 2);
+        arc.SetStartCap(Gdiplus::LineCapRound);
+        arc.SetEndCap(Gdiplus::LineCapRound);
+        const float head = std::fmod(m.time * 420, 360.0F);
+        const float sweep = 50 + 200 * (.5F + .5F * std::sin(m.time * 3.4F));
+        g.DrawArc(&arc, ring, head, sweep);
+    }
     // The play icon leans forward on hover, leaving a faint trail.
     if (ready) {
         const float nudge = 4 * easeOut(hover);

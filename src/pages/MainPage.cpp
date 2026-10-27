@@ -156,6 +156,7 @@ MainPage::~MainPage()
     if (newsThread_.joinable()) newsThread_.join();
     launcherUpdateThread_.request_stop();
     if (launcherUpdateThread_.joinable()) launcherUpdateThread_.join();
+    releaseFrame();
     for (auto* brush : {backgroundBrush_, surfaceBrush_, inputBrush_, sunkenBrush_})
         if (brush) DeleteObject(brush);
     if (inputFont_) DeleteObject(inputFont_);
@@ -292,12 +293,9 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         paint();
         return 0;
     case WM_PRINTCLIENT:
-        if (prepareFrame()) {
-            Gdiplus::Graphics output(reinterpret_cast<HDC>(wParam));
-            output.SetCompositingMode(Gdiplus::CompositingModeSourceCopy);
-            const int width = static_cast<int>(frame_->GetWidth()), height = static_cast<int>(frame_->GetHeight());
-            output.DrawImage(frame_.get(), Gdiplus::Rect(0, 0, width, height), 0, 0, width, height, Gdiplus::UnitPixel);
-        }
+        if (prepareFrame())
+            BitBlt(reinterpret_cast<HDC>(wParam), 0, 0, static_cast<int>(frame_->GetWidth()), static_cast<int>(frame_->GetHeight()),
+                frameDc_, 0, 0, SRCCOPY);
         return 0;
     case WM_ERASEBKGND:
         return 1;
@@ -409,10 +407,8 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         RECT button{};
         GetWindowRect(item->hwndItem, &button);
         MapWindowPoints(nullptr, window_, reinterpret_cast<POINT*>(&button), 2);
-        Gdiplus::Graphics output(item->hDC);
-        output.SetCompositingMode(Gdiplus::CompositingModeSourceCopy);
-        output.DrawImage(frame_.get(), Gdiplus::Rect(0, 0, button.right - button.left, button.bottom - button.top),
-            button.left, button.top, button.right - button.left, button.bottom - button.top, Gdiplus::UnitPixel);
+        // A plain pixel copy: the button shows exactly what the frame drew under it.
+        BitBlt(item->hDC, 0, 0, button.right - button.left, button.bottom - button.top, frameDc_, button.left, button.top, SRCCOPY);
         return TRUE;
     }
     case WM_TIMER:
@@ -649,13 +645,68 @@ void MainPage::paint()
     PAINTSTRUCT ps{};
     const HDC dc = BeginPaint(window_, &ps);
     if (prepareFrame()) {
-        Gdiplus::Graphics output(dc);
-        output.SetCompositingMode(Gdiplus::CompositingModeSourceCopy);
-        // Explicit pixel bounds prevent GDI+ from scaling the buffer again at 125%/150% DPI.
-        const int width = static_cast<int>(frame_->GetWidth()), height = static_cast<int>(frame_->GetHeight());
-        output.DrawImage(frame_.get(), Gdiplus::Rect(0, 0, width, height), 0, 0, width, height, Gdiplus::UnitPixel);
+        // Only the invalidated part is copied; the frame already holds finished pixels.
+        const auto& area = ps.rcPaint;
+        BitBlt(dc, area.left, area.top, area.right - area.left, area.bottom - area.top, frameDc_, area.left, area.top, SRCCOPY);
     }
     EndPaint(window_, &ps);
+}
+
+void MainPage::releaseFrame()
+{
+    frame_.reset();
+    if (frameDc_) {
+        if (frameOldBitmap_) SelectObject(frameDc_, frameOldBitmap_);
+        DeleteDC(frameDc_);
+    }
+    if (frameBitmap_) DeleteObject(frameBitmap_);
+    frameDc_ = nullptr;
+    frameBitmap_ = nullptr;
+    frameOldBitmap_ = nullptr;
+}
+
+void MainPage::markRect(RECT rect)
+{
+    if (frameDirty_) return;
+    rect.left = std::max(0L, rect.left);
+    rect.top = std::max(0L, rect.top);
+    rect.right = std::min(static_cast<LONG>(clientWidth_), rect.right);
+    rect.bottom = std::min(static_cast<LONG>(clientHeight_), rect.bottom);
+    if (rect.right <= rect.left || rect.bottom <= rect.top) return;
+    // Many small pieces cost more than one full pass.
+    if (dirty_.size() >= 24) { frameDirty_ = true; dirty_.clear(); return; }
+    dirty_.push_back(rect);
+}
+
+void MainPage::markContent(const Gdiplus::RectF& b, float inflate)
+{
+    const float s = viewScale_;
+    markRect({static_cast<LONG>(std::floor(offsetX_ + (b.X - inflate) * s)) - 1, static_cast<LONG>(std::floor(offsetY_ + (b.Y - inflate) * s)) - 1,
+              static_cast<LONG>(std::ceil(offsetX_ + (b.GetRight() + inflate) * s)) + 1,
+              static_cast<LONG>(std::ceil(offsetY_ + (b.GetBottom() + inflate) * s)) + 1});
+}
+
+void MainPage::markChrome(const Gdiplus::RectF& b, float inflate)
+{
+    const float s = viewScale_;
+    markRect({static_cast<LONG>(std::floor((b.X - inflate) * s)) - 1, static_cast<LONG>(std::floor((b.Y - inflate) * s)) - 1,
+              static_cast<LONG>(std::ceil((b.GetRight() + inflate) * s)) + 1, static_cast<LONG>(std::ceil((b.GetBottom() + inflate) * s)) + 1});
+}
+
+void MainPage::markControl(int id)
+{
+    // Room for focus rings, lift shadows and the Play halo around the control itself.
+    if (chromeControl(id)) markChrome(controlBounds(id), 3);
+    else markContent(controlBounds(id), 20);
+}
+
+float MainPage::playProgressTarget() const
+{
+    const bool busy = !viewState_.playEnabled && viewState_.operation != LauncherOperation::MinecraftRunning &&
+        viewState_.operation != LauncherOperation::UpdateAvailable;
+    if (installation_.visible && installation_.running) return InstallationPanelComponent::overallPercent(installation_, installationFill_);
+    if (busy) return viewState_.progressVisible ? displayedProgress_ : 0;
+    return -1;
 }
 
 bool MainPage::prepareFrame()
@@ -665,15 +716,36 @@ bool MainPage::prepareFrame()
     if (client.right <= 0 || client.bottom <= 0) return false;
     if (!frame_ || frame_->GetWidth() != static_cast<UINT>(client.right) ||
         frame_->GetHeight() != static_cast<UINT>(client.bottom)) {
-        frame_ = std::make_unique<Gdiplus::Bitmap>(client.right, client.bottom, PixelFormat32bppPARGB);
+        releaseFrame();
+        BITMAPINFO info{};
+        info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        info.bmiHeader.biWidth = client.right;
+        info.bmiHeader.biHeight = -client.bottom; // top-down, like GDI+ scan lines
+        info.bmiHeader.biPlanes = 1;
+        info.bmiHeader.biBitCount = 32;
+        info.bmiHeader.biCompression = BI_RGB;
+        void* bits = nullptr;
+        frameBitmap_ = CreateDIBSection(nullptr, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
+        frameDc_ = frameBitmap_ && bits ? CreateCompatibleDC(nullptr) : nullptr;
+        if (!frameDc_) { releaseFrame(); return false; }
+        frameOldBitmap_ = SelectObject(frameDc_, frameBitmap_);
+        frame_ = std::make_unique<Gdiplus::Bitmap>(client.right, client.bottom, client.right * 4, PixelFormat32bppPARGB,
+            static_cast<BYTE*>(bits));
         frameDirty_ = true;
     }
-    if (frameDirty_) {
-        // Finish the whole frame before any child copies its pixels. A child can paint before WM_PAINT.
+    if (frameDirty_ || !dirty_.empty()) {
+        // Finish the frame before any child copies its pixels. A child can paint before WM_PAINT.
         Gdiplus::Graphics graphics(frame_.get());
+        if (!frameDirty_) {
+            Gdiplus::Region region;
+            region.MakeEmpty();
+            for (const auto& r : dirty_) region.Union(Gdiplus::Rect(r.left, r.top, r.right - r.left, r.bottom - r.top));
+            graphics.SetClip(&region);
+        }
         render(graphics, static_cast<float>(client.right), static_cast<float>(client.bottom));
         graphics.Flush(Gdiplus::FlushIntentionSync);
         frameDirty_ = false;
+        dirty_.clear();
     }
     return true;
 }
@@ -716,9 +788,14 @@ HomeModel MainPage::homeModel(bool preview) const
     player.totalPlayed = record.totalSeconds > 0 || player.playing ? PlaytimeStore::formatDuration(record.totalSeconds) : std::wstring(L"—");
     const bool busy = !viewState_.playEnabled && viewState_.operation != LauncherOperation::MinecraftRunning &&
         viewState_.operation != LauncherOperation::UpdateAvailable;
-    if (installation_.visible && installation_.running)
-        player.progress = InstallationPanelComponent::overallPercent(installation_, preview ? -1 : installationFill_);
-    else if (busy) player.progress = viewState_.progressVisible ? (preview ? static_cast<float>(viewState_.progressPercent) : displayedProgress_) : 0;
+    if (preview) {
+        if (installation_.visible && installation_.running) player.progress = InstallationPanelComponent::overallPercent(installation_, -1);
+        else if (busy) player.progress = viewState_.progressVisible ? static_cast<float>(viewState_.progressPercent) : 0;
+    } else {
+        // The button shows an eased value so stage changes glide instead of jumping.
+        const float target = playProgressTarget();
+        player.progress = target < 0 ? -1 : (playProgressShown_ >= 0 ? playProgressShown_ : target);
+    }
     player.phase = animationPhase_;
     player.time = preview ? 1.2F : time_;
     player.motion = preview || motionEnabled_;
@@ -777,7 +854,13 @@ void MainPage::render(Gdiplus::Graphics& g, float width, float height, bool prev
     g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
     g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHighQuality);
     g.SetTextRenderingHint(Gdiplus::TextRenderingHintClearTypeGridFit);
-    g.Clear(Theme::Background);
+    {
+        // FillRectangle honours the clip of a partial repaint.
+        Gdiplus::SolidBrush background(Theme::Background);
+        g.SetCompositingMode(Gdiplus::CompositingModeSourceCopy);
+        g.FillRectangle(&background, 0.0F, 0.0F, width, height);
+        g.SetCompositingMode(Gdiplus::CompositingModeSourceOver);
+    }
     const ControlVisuals visuals = [this, preview](int id) { return visual(id, preview); };
     const float s = viewScale_;
 
@@ -865,8 +948,15 @@ void MainPage::redraw(bool animationFrame)
         installationFill_ = 0;
         fillAttempt_ = installation_.attempt; fillStage_ = transfer.stage; fillTransfer_ = transfer.transferId;
     }
-    frameDirty_ = true;
-    if (!animationFrame) syncControls();
+    if (!animationFrame) {
+        // State changes repaint everything; animation frames only what animate() marked.
+        frameDirty_ = true;
+        dirty_.clear();
+        syncControls();
+        const float progress = playProgressTarget();
+        if (progress < 0) playProgressShown_ = -1;
+        else if (playProgressShown_ < 0 || progress < playProgressShown_ - .5F) playProgressShown_ = progress;
+    }
 
     bool unsettled = std::abs(displayedProgress_ - static_cast<float>(viewState_.progressPercent)) > 0.1F || pageFade_ < 1;
     for (const auto& control : controls_) unsettled |= std::abs(control.hover - (control.hovered ? 1.0F : 0.0F)) > 0.005F;
@@ -886,7 +976,10 @@ void MainPage::redraw(bool animationFrame)
         unsettled |= knob != modKnobs_.end() && knob->second != (mod.enabled ? 1.0F : 0.0F);
     }
     if (page_ == LauncherPage::Settings) unsettled |= settingsPage_.advance(0);
+    const float progressTarget = playProgressTarget();
+    unsettled |= progressTarget >= 0 && std::abs(playProgressShown_ - progressTarget) > .05F;
     if (!motionEnabled_) {
+        playProgressShown_ = progressTarget;
         for (auto& control : controls_) control.hover = control.hovered ? 1.0F : 0.0F;
         displayedProgress_ = static_cast<float>(viewState_.progressPercent);
         identitySelection_ = selection;
@@ -902,8 +995,8 @@ void MainPage::redraw(bool animationFrame)
     const bool home = page_ == LauncherPage::Home;
     const bool busy = !viewState_.playEnabled && viewState_.operation != LauncherOperation::MinecraftRunning &&
         viewState_.operation != LauncherOperation::UpdateAvailable;
-    const bool indeterminate = home && (installation_.visible ? installation_.running && !installation_.cancelling :
-        busy && !viewState_.progressVisible);
+    // The Play spinner turns whenever work is in progress, with or without a percentage.
+    const bool indeterminate = home && (installation_.visible ? installation_.running && !installation_.cancelling : busy);
     const bool hero = home && !installation_.visible;
     const bool ambient = ambientMotion_ && hero && GetForegroundWindow() == window_;
     const bool running = motionEnabled_ && IsWindowVisible(window_) && !IsIconic(window_) && !closing_ &&
@@ -916,10 +1009,23 @@ void MainPage::redraw(bool animationFrame)
         animationTimer_ = false;
     }
     // Hover/focus changes the canvas and owner-drawn buttons, not the EDIT contents or caret.
-    RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_NOCHILDREN);
-    for (const auto& control : controls_)
-        if (control.window && (GetWindowLongPtrW(control.window, GWL_STYLE) & WS_VISIBLE) &&
-            control.id != NicknameInputId) InvalidateRect(control.window, nullptr, FALSE);
+    if (frameDirty_) {
+        RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_NOCHILDREN);
+        for (const auto& control : controls_)
+            if (control.window && (GetWindowLongPtrW(control.window, GWL_STYLE) & WS_VISIBLE) &&
+                control.id != NicknameInputId) InvalidateRect(control.window, nullptr, FALSE);
+        if (page_ == LauncherPage::Settings) settingsPage_.invalidateButtons();
+        return;
+    }
+    // Animation frame: present only the pieces that moved, and only the buttons over them.
+    for (const auto& area : dirty_) RedrawWindow(window_, &area, nullptr, RDW_INVALIDATE | RDW_NOCHILDREN);
+    if (dirty_.empty()) return;
+    for (const auto& control : controls_) {
+        if (!control.window || control.id == NicknameInputId || !(GetWindowLongPtrW(control.window, GWL_STYLE) & WS_VISIBLE)) continue;
+        RECT overlap{};
+        for (const auto& area : dirty_)
+            if (IntersectRect(&overlap, &area, &control.rect)) { InvalidateRect(control.window, nullptr, FALSE); break; }
+    }
     if (page_ == LauncherPage::Settings) settingsPage_.invalidateButtons();
 }
 
@@ -928,6 +1034,16 @@ void MainPage::animate()
     const auto now = std::chrono::steady_clock::now();
     const float dt = std::clamp(std::chrono::duration<float, std::milli>(now - previousFrame_).count(), 0.0F, 100.0F);
     previousFrame_ = now;
+    // Remember what is on screen so only what actually moves gets repainted.
+    const float fadeBefore = pageFade_, navBefore = navIndicator_, toastBefore = toastReveal_, selectionBefore = identitySelection_;
+    const float playBefore[] = {playSweep_, playPulse_, playPress_, playLight_, playProgressShown_, displayedProgress_};
+    const float fillBefore = installationFill_, entranceBefore = portalEntrance_;
+    const auto pulsesBefore = completionPulse_;
+    std::vector<float> hoverBefore;
+    hoverBefore.reserve(controls_.size());
+    for (const auto& control : controls_) hoverBefore.push_back(control.hover);
+    const auto knobsBefore = modKnobs_;
+    const bool settingsBefore = page_ == LauncherPage::Settings && settingsPage_.advance(0);
     particlePhase_ = std::fmod(particlePhase_ + dt / 8000, 1.0F);
     const float energyTarget = portalHovered_ && page_ == LauncherPage::Home && !installation_.visible ? 1.0F : 0.0F;
     portalEnergy_ += (energyTarget - portalEnergy_) * (1 - std::exp(-dt / 95));
@@ -975,8 +1091,54 @@ void MainPage::animate()
         const float goal = mod.enabled ? 1.0F : 0.0F;
         knob = knob < goal ? std::min(goal, knob + dt / 200) : std::max(goal, knob - dt / 200);
     }
-    if (page_ == LauncherPage::Settings) settingsPage_.advance(dt);
+    const bool settingsMoving = page_ == LauncherPage::Settings && settingsPage_.advance(dt);
     animationPhase_ = std::fmod(animationPhase_ + dt / 1600, 1.0F);
+    {
+        const float goal = playProgressTarget();
+        if (goal < 0) playProgressShown_ = -1;
+        else if (playProgressShown_ < 0 || goal < playProgressShown_ - .5F) playProgressShown_ = goal;
+        else approach(playProgressShown_, goal, 160, .05F);
+    }
+
+    // Mark the regions this frame changed.
+    if (pageFade_ != fadeBefore) frameDirty_ = true;
+    if (navIndicator_ != navBefore) markChrome({0, TitleBarHeight, SidebarWidth, chromeHeight() - TitleBarHeight});
+    for (std::size_t i = 0; i < controls_.size() && i < hoverBefore.size(); ++i)
+        if (controls_[i].hover != hoverBefore[i]) markControl(controls_[i].id);
+    if (page_ == LauncherPage::Home) {
+        const bool heroVisible = !installation_.visible;
+        const bool ambientNow = motionEnabled_ && ambientMotion_ && GetForegroundWindow() == window_;
+        const bool working = !viewState_.playEnabled && viewState_.operation != LauncherOperation::MinecraftRunning &&
+            viewState_.operation != LauncherOperation::UpdateAvailable;
+        const bool playing = playSession_.active() || viewState_.operation == LauncherOperation::MinecraftRunning;
+        if (heroVisible) {
+            markContent(Layout::Hero, 2);  // particles drift every frame
+            if (portalEntrance_ != entranceBefore) markContent(Layout::Installation, 24);  // tiles and cards rise
+        }
+        if (toastReveal_ != toastBefore) markContent(Layout::Hero, 2);
+        if (identitySelection_ != selectionBefore)
+            markContent({Layout::OfflineMode.X, Layout::OfflineMode.Y, Layout::OriginalMode.GetRight() - Layout::OfflineMode.X,
+                Layout::OfflineMode.Height}, 4);
+        const float playAfter[] = {playSweep_, playPulse_, playPress_, playLight_, playProgressShown_, displayedProgress_};
+        bool playMoved = working || ambientNow;
+        for (std::size_t i = 0; i < std::size(playAfter); ++i) playMoved |= playAfter[i] != playBefore[i];
+        if (playMoved)
+            markContent({Layout::Play.X, Layout::Play.Y, Layout::PlayMenu.GetRight() - Layout::Play.X, Layout::Play.Height}, 16);
+        if (ambientNow || playing) markContent(Layout::Avatar, 18);
+        if (working || playing) markContent({Layout::StatusLine.X - 12, Layout::StatusLine.Y - 4, 32, 32});
+        // Status dots pulse while their card is in an "in progress" tone.
+        if (heroVisible && motionEnabled_ && viewState_.statusCards.size() >= 3)
+            for (int i = 0; i < 3; ++i)
+                if (viewState_.statusCards[static_cast<std::size_t>(2 - i)].tone == StatusTone::Information) {
+                    const auto tile = Layout::tile(i);
+                    markContent({tile.X, tile.Y, 48, 48});
+                }
+        if (installation_.visible &&
+            (installation_.running || installationFill_ != fillBefore || completionPulse_ != pulsesBefore))
+            markContent(Layout::Installation, 4);
+    }
+    if (page_ == LauncherPage::Mods && modKnobs_ != knobsBefore) markContent(Layout::ModsUser, 4);
+    if (settingsBefore || settingsMoving) markContent(Layout::Content, 4);
     redraw(true);
 }
 
@@ -1209,7 +1371,7 @@ void MainPage::layoutControls()
     offsetX_ = std::floor((clientWidth_ - WindowWidth * viewScale_) / 2);
     offsetY_ = std::floor((clientHeight_ - WindowHeight * viewScale_) / 2);
     const float s = viewScale_;
-    for (const auto& control : controls_) {
+    for (auto& control : controls_) {
         if (!control.window) continue;
         auto bounds = controlBounds(control.id);
         const float ox = control.chrome ? 0 : offsetX_, oy = control.chrome ? 0 : offsetY_;
@@ -1222,6 +1384,7 @@ void MainPage::layoutControls()
         const int right = static_cast<int>(std::ceil(ox + bounds.GetRight() * s));
         const int bottom = static_cast<int>(std::ceil(oy + bounds.GetBottom() * s));
         SetWindowPos(control.window, nullptr, x, y, right - x, bottom - y, SWP_NOZORDER | SWP_NOACTIVATE);
+        control.rect = {x, y, right, bottom};
     }
     if (nicknameInput_) {
         const HFONT font = CreateFontW(-static_cast<int>(std::round(22 * s)), 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
@@ -1288,10 +1451,13 @@ LRESULT CALLBACK MainPage::controlProcedure(HWND control, UINT message, WPARAM w
         entry->hovered = true;
         TRACKMOUSEEVENT track{sizeof(TRACKMOUSEEVENT), TME_LEAVE, control, 0};
         TrackMouseEvent(&track);
-        page->redraw();
+        // Hover only changes this button's pixels; the easing marks it frame by frame.
+        page->markControl(id);
+        page->redraw(true);
     } else if (message == WM_MOUSELEAVE && entry) {
         entry->hovered = false;
-        page->redraw();
+        page->markControl(id);
+        page->redraw(true);
     } else if (message == WM_SETCURSOR && IsWindowEnabled(control)) {
         const bool caption = id == MinimizeButtonId || id == MaximizeButtonId || id == CloseButtonId;
         SetCursor(LoadCursor(nullptr, caption ? IDC_ARROW : IDC_HAND));
@@ -1301,7 +1467,10 @@ LRESULT CALLBACK MainPage::controlProcedure(HWND control, UINT message, WPARAM w
     }
     const auto result = DefSubclassProc(control, message, wParam, lParam);
     if (message == WM_SETFOCUS || message == WM_KILLFOCUS || message == WM_LBUTTONDOWN || message == WM_LBUTTONUP ||
-        message == WM_KEYDOWN || message == WM_KEYUP) page->redraw();
+        message == WM_KEYDOWN || message == WM_KEYUP) {
+        page->markControl(id);
+        page->redraw(true);
+    }
     return result;
 }
 

@@ -6,8 +6,10 @@
 #include <gdiplus.h>
 
 #include <windows.h>
+#include <cstdint>
 #include <string_view>
 #include <memory>
+#include <unordered_map>
 
 namespace DrawingUtils
 {
@@ -21,7 +23,13 @@ namespace DrawingUtils
         Gdiplus::FontFamily family_;
         // Also registered with GDI so native EDIT controls can use the display face.
         HANDLE gdiFont_ = nullptr;
+        // Fonts by face/size/style. Looking a family up by name on every DrawString was a
+        // large share of each frame; the cache lives (and dies) with GDI+ itself.
+        std::unordered_map<std::uint64_t, std::unique_ptr<Gdiplus::Font>> fonts_;
+        friend const Gdiplus::Font* cachedFont(bool display, float size, int style, std::unique_ptr<Gdiplus::Font>& owned);
     };
+    // Returns a cached font while a DisplayTypeface exists; otherwise fills `owned`.
+    const Gdiplus::Font* cachedFont(bool display, float size, int style, std::unique_ptr<Gdiplus::Font>& owned);
     // Family name for CreateFont when the embedded display face is available.
     const wchar_t* displayFontFamily();
     void drawDisplayText(Gdiplus::Graphics& graphics, std::wstring_view text,
