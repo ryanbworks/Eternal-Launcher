@@ -31,7 +31,7 @@ void ChromeView::draw(Gdiplus::Graphics& g, float width, float height, LauncherP
     g.DrawLine(&divider, 0.0F, TitleBarHeight - .5F, width, TitleBarHeight - .5F);
     g.DrawLine(&divider, SidebarWidth - .5F, TitleBarHeight, SidebarWidth - .5F, height);
 
-    DrawingUtils::drawLogo(g, {18, 11, 22, 22}, Theme::Accent);
+    emblem_.draw(g, {15, 8, 28, 28});
     DrawingUtils::drawDisplayText(g, L"eternal", {48, 10, 90, 24}, 15, active ? Theme::TextPrimary : Theme::TextSecondary,
         Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
     const auto pill = versionPill();

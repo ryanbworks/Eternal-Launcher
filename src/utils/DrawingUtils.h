@@ -62,6 +62,4 @@ namespace DrawingUtils
     Gdiplus::Color colorForTone(StatusTone tone);
     bool contains(const Gdiplus::RectF& bounds, float x, float y);
     Gdiplus::Color blend(const Gdiplus::Color& from, const Gdiplus::Color& to, float amount);
-    void drawLogo(Gdiplus::Graphics& graphics, const Gdiplus::RectF& bounds,
-                  const Gdiplus::Color& color);
 }

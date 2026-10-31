@@ -1,5 +1,6 @@
 #pragma once
 #include "config/LauncherSettings.h"
+#include "utils/BrandEmblem.h"
 #include <windows.h>
 #include <objidl.h>
 #include <gdiplus.h>
@@ -72,6 +73,7 @@ private:
     int sliderMaximumSteps_=32;
     float controlScale_=1;
     Tab tab_=Tab::General;
+    BrandEmblem emblem_;
     std::array<float,2> knobs_{};  // Fullscreen, tray
     float tabIndicator_=0;          // 0 General, 1 Advanced, 2 About
 };

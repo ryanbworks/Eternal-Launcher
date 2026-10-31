@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 
 # The launcher only uses C++; declaring the language avoids unnecessary
 # C compiler checks while configuring the project.
-project(EternalLauncher VERSION 2.0.1 LANGUAGES CXX)
+project(EternalLauncher VERSION 2.0.2 LANGUAGES CXX)
 set(ETERNAL_CODENAME "Horizon")
 configure_file(src/config/LauncherVersion.h.in generated/config/LauncherVersion.h @ONLY)
 include_directories("${CMAKE_CURRENT_BINARY_DIR}/generated")
@@ -107,6 +107,8 @@ add_executable(EternalLauncher WIN32
     src/utils/DrawingUtils.h
     src/utils/Icons.cpp
     src/utils/Icons.h
+    src/utils/BrandEmblem.cpp
+    src/utils/BrandEmblem.h
     src/utils/ArchiveExtractor.cpp
     src/utils/ArchiveExtractor.h
     src/utils/FileHash.cpp
@@ -247,6 +249,7 @@ if(BUILD_TESTING)
         src/utils/JsonValue.cpp
         src/utils/DrawingUtils.cpp
         src/utils/Icons.cpp
+        src/utils/BrandEmblem.cpp
         src/components/Buttons.cpp)
     target_compile_features(SettingsPageTests PRIVATE cxx_std_20)
     target_compile_definitions(SettingsPageTests PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)

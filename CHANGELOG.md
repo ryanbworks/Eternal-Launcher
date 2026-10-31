@@ -4,6 +4,15 @@ All notable changes to Eternal Launcher are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and versions use [SemVer](https://semver.org/) plus a codename.
 
+## [2.0.2] — Horizon · 2026-10-31
+
+### Fixed
+- The title bar and Settings › About showed the retired stepped-E monogram. They now
+  show the Eternal emblem, the same artwork as the application icon.
+
+### Removed
+- The old monogram assets and the script that generated them.
+
 ## [2.0.1] — Horizon · 2026-10-27
 
 ### Improved

@@ -1,1 +1,0 @@
-Origin: authored vector monogram in assets/eternal-logo.svg, rasterized with matching portal-E geometry by tools/generate_icon.py. Not AI-generated. Same coordinates are drawn natively by DrawingUtils::drawLogo.

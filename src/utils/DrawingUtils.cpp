@@ -235,14 +235,4 @@ Gdiplus::Color DrawingUtils::blend(const Gdiplus::Color& from,const Gdiplus::Col
     return {channel(from.GetA(),to.GetA()),channel(from.GetR(),to.GetR()),
             channel(from.GetG(),to.GetG()),channel(from.GetB(),to.GetB())};
 }
-void DrawingUtils::drawLogo(Gdiplus::Graphics& g,const Gdiplus::RectF& b,const Gdiplus::Color& color)
-{
-    const auto saved=g.Save();
-    g.TranslateTransform(b.X,b.Y); g.ScaleTransform(b.Width/48,b.Height/48);
-    const Gdiplus::PointF points[]={{8,4},{35,4},{43,12},{19,12},{13,18},{34,18},
-        {34,26},{13,26},{19,36},{43,36},{35,44},{8,44},{3,35},{3,13}};
-    Gdiplus::SolidBrush brush(color); g.FillPolygon(&brush,points,14);
-    const Gdiplus::PointF gate[]={{39,17},{46,24},{39,31},{35,27},{38,24},{35,21}};
-    g.FillPolygon(&brush,gate,6);
-    g.Restore(saved);
-}
+
