@@ -169,7 +169,7 @@ screen-reader announcements. See `docs/INSTALLATION_TRACKING.md` for scope.
 
 **Creative North Star: "Portal observation console"**
 
-Eternal uses graphite and indigo surfaces, violet active controls and a geometric portal E to give a private Minecraft launcher a dark, futuristic identity. A cinematic voxel landscape supplies atmosphere; a calm access console makes identity, installation readiness and the next action easy to read.
+Eternal uses graphite and indigo surfaces, violet active controls and the hexagon-and-star emblem to give a private Minecraft launcher a dark, futuristic identity. A cinematic voxel landscape supplies atmosphere; a calm access console makes identity, installation readiness and the next action easy to read.
 
 The system is a native Windows application built with Win32 and GDI+. Sora Bold gives the wordmark and hero a distinct voice, while Segoe UI keeps controls and operational copy familiar and compact. Tonal layers, precise hairlines and generous separation organize the information without shadows or ornamental motion.
 
@@ -259,7 +259,7 @@ Interface depth uses tonal layers, restrained hairlines and the landscape's atmo
 
 Panels use `panel` rounding; controls and the field use `control`; identity segments use `tab`; the progress rail uses `track`. Rounded geometry clamps its diameter to the available bounds. Resting field outlines and separators are one logical unit; field/tab/settings focus uses a two-unit lilac outline.
 
-The portal E, gear and play triangle are authored vector geometry, not text glyphs. The logo is reproduced in `assets/eternal-logo.svg` and the native ICO; the header uses the equivalent GDI+ polygon. The play mark appears only for the ready-to-play operation.
+Icons and the play triangle are authored vector geometry, not text glyphs. The logo is the emblem in `assets/lavender-cosmic-portal.png`, shared by the native ICO, the title bar and Settings › About. The play mark appears only for the ready-to-play operation.
 
 ## Components
 

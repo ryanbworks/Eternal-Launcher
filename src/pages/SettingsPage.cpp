@@ -602,7 +602,7 @@ void SettingsPage::draw(Gdiplus::Graphics& g,bool preview) const
             Gdiplus::FontStyleRegular,Theme::TextMuted);
     } else {
         card(g,AboutCard,L"",L"");
-        drawLogo(g,{124,252,44,44},Theme::Accent);
+        emblem_.draw(g,{120,248,52,52});
         drawDisplayText(g,L"Eternal Launcher",{182,250,460,30},22,Theme::TextPrimary);
         drawText(g,L"Versão "+std::wstring(LauncherConfig::LauncherVersion),{182,282,460,20},13,Gdiplus::FontStyleRegular,Theme::AccentLight);
         drawText(g,L"Minecraft "+std::wstring(LauncherConfig::MinecraftVersion)+L" · Forge "+std::wstring(LauncherConfig::ForgeVersion),

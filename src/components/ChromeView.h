@@ -1,6 +1,7 @@
 #pragma once
 
 #include "components/Buttons.h"
+#include "utils/BrandEmblem.h"
 
 #include <objidl.h>
 #include <gdiplus.h>
@@ -14,4 +15,6 @@ public:
     // `indicatorY` is the top of the sliding selection behind the current page's icon.
     void draw(Gdiplus::Graphics& graphics, float width, float height, LauncherPage page, bool maximized,
               bool active, const ControlVisuals& visuals, float indicatorY) const;
+private:
+    BrandEmblem emblem_;
 };
