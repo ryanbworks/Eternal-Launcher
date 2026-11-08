@@ -57,7 +57,6 @@ namespace
         {ToastNewsButtonId, false, true, L"Ver novidades"},
         {NewsCardFirstId, false, true, L"Notícia 1"},
         {NewsCardFirstId + 1, false, true, L"Notícia 2"},
-        {NewsCardFirstId + 2, false, true, L"Notícia 3"},
         {NewsAllButtonId, false, true, L"Ver todas as notícias"},
         {InstallationLogButtonId, false, true, L"Abrir log"},
         {CancelInstallationButtonId, false, true, L"Cancelar instalação"},
@@ -154,6 +153,10 @@ MainPage::~MainPage()
     if (fileServerThread_.joinable()) fileServerThread_.join();
     if (microsoftAuthThread_.joinable()) microsoftAuthThread_.join();
     if (newsThread_.joinable()) newsThread_.join();
+    leaderboardThread_.request_stop();
+    playtimeSyncThread_.request_stop();
+    if (leaderboardThread_.joinable()) leaderboardThread_.join();
+    if (playtimeSyncThread_.joinable()) playtimeSyncThread_.join();
     launcherUpdateThread_.request_stop();
     if (launcherUpdateThread_.joinable()) launcherUpdateThread_.join();
     releaseFrame();
@@ -416,6 +419,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         else if (wParam == AnimationTimerId) animate();
         else if (wParam == InstallationProgressTimerId) consumeInstallationProgress();
         else if (wParam == PlaytimeTimerId) { flushPlaytime(); updateTrayTooltip(); redraw(); }
+        else if (wParam == LeaderboardTimerId) fetchLeaderboardAsync();
         else if (wParam == ServerRetryTimerId) {
             // Quietly check whether the file server came back; the state only changes on an answer.
             if (serverOffline_ && !fileServerPending_ && viewState_.playEnabled && !updatingLauncher_ &&
@@ -451,6 +455,33 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             items.push_back(NewsFeed::releaseNotes());
             viewState_.news = std::move(items);
             newsFirst_ = 0;
+        }
+        redraw();
+        return 0;
+    }
+    case PlaytimeSyncMessage:
+    {
+        std::unique_ptr<PlaytimeSyncUpdate> update(reinterpret_cast<PlaytimeSyncUpdate*>(lParam));
+        if (!update) return 0;
+        if (update->totalSeconds) { serverTotalSeconds_ = update->totalSeconds; serverTotalName_ = update->name; }
+        if (update->finished && !playSession_.active()) {
+            if (playtimeSyncThread_.joinable()) playtimeSyncThread_.join();
+            fetchLeaderboardAsync();
+        }
+        redraw();
+        return 0;
+    }
+    case LeaderboardResultMessage:
+    {
+        std::unique_ptr<LeaderboardResult> result(reinterpret_cast<LeaderboardResult*>(lParam));
+        if (leaderboardThread_.joinable()) leaderboardThread_.join();
+        leaderboardPending_ = false;
+        if (result && result->success) {
+            leaderboard_ = std::move(*result);
+            rankingState_ = RankingState::Ready;
+            if (leaderboard_.hasYou) { serverTotalSeconds_ = leaderboard_.yourSeconds; serverTotalName_ = leaderboard_.playerName; }
+        } else if (rankingState_ == RankingState::Loading) {
+            rankingState_ = RankingState::Unavailable;
         }
         redraw();
         return 0;
@@ -591,11 +622,14 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         KillTimer(window_, InstallationProgressTimerId);
         KillTimer(window_, PlaytimeTimerId);
         KillTimer(window_, ServerRetryTimerId);
+        KillTimer(window_, LeaderboardTimerId);
         trayIcon_.hide();
         fileServerThread_.request_stop();
         installationThread_.request_stop();
         microsoftAuthThread_.request_stop();
         newsThread_.request_stop();
+        leaderboardThread_.request_stop();
+        playtimeSyncThread_.request_stop();
         PostQuitMessage(0);
         return 0;
     default:
@@ -614,6 +648,8 @@ void MainPage::shutdown()
     if (fileServerThread_.joinable()) fileServerThread_.join();
     if (microsoftAuthThread_.joinable()) microsoftAuthThread_.join();
     if (newsThread_.joinable()) newsThread_.join();
+    leaderboardThread_.request_stop();
+    if (leaderboardThread_.joinable()) leaderboardThread_.join();
     launcherUpdateThread_.request_stop();
     if (launcherUpdateThread_.joinable()) launcherUpdateThread_.join();
     // Drain ownership-bearing messages before the HWND disappears.
@@ -633,6 +669,12 @@ void MainPage::shutdown()
     const auto nickname = nicknameText();
     if (NicknameStore::isValid(nickname)) (void)NicknameStore::save(LauncherSettingsStore::dataDirectory(), nickname);
     finishPlaySession();
+    // The worker closes the server session within a couple of seconds at most.
+    if (playtimeSyncThread_.joinable()) playtimeSyncThread_.join();
+    while (PeekMessageW(&pending, window_, PlaytimeSyncMessage, LeaderboardResultMessage, PM_REMOVE)) {
+        if (pending.message == PlaytimeSyncMessage) delete reinterpret_cast<PlaytimeSyncUpdate*>(pending.lParam);
+        else delete reinterpret_cast<LeaderboardResult*>(pending.lParam);
+    }
     DestroyWindow(window_);
 }
 
@@ -792,6 +834,9 @@ HomeModel MainPage::homeModel(bool preview) const
     player.playing = playSession_.active() || viewState_.operation == LauncherOperation::MinecraftRunning;
     player.lastPlayed = player.playing ? std::wstring(L"Agora") : PlaytimeStore::formatLastPlayed(record.lastPlayed, now);
     player.totalPlayed = record.totalSeconds > 0 || player.playing ? PlaytimeStore::formatDuration(record.totalSeconds) : std::wstring(L"—");
+    // The server's number wins; the local counter is only a fallback while it is unknown.
+    const auto account = originalMode_ ? microsoftIdentity_.name : nickname;
+    if (!preview && serverTotalSeconds_ && serverTotalName_ == account) player.totalPlayed = PlaytimeStore::formatDuration(*serverTotalSeconds_);
     const bool busy = !viewState_.playEnabled && viewState_.operation != LauncherOperation::MinecraftRunning &&
         viewState_.operation != LauncherOperation::UpdateAvailable;
     if (preview) {
@@ -837,6 +882,21 @@ HomeModel MainPage::homeModel(bool preview) const
     model.entrance = preview ? 1.0F : std::min(pageFade_, portalEntrance_);
     model.serverMods = serverMods;
     model.userMods = modsScanned_ ? static_cast<int>(mods_.user.size()) : -1;
+    if (preview) {
+        model.ranking = {{1, L"Aurora_", L"182 h", true, false}, {2, L"Pedrinho", L"147 h", false, false}, {3, L"Steve", L"96 h 20 min", true, true},
+            {4, L"LunaCraft", L"71 h 5 min", false, false}, {5, L"Tico_BR", L"44 h", false, false}};
+        model.rankingYou = L"Você · #3 · 96 h 20 min";
+    } else if (rankingState_ == RankingState::Ready) {
+        for (const auto& entry : leaderboard_.players)
+            model.ranking.push_back({entry.rank, entry.name, PlaytimeStore::formatDuration(entry.totalSeconds), entry.online,
+                !account.empty() && _wcsicmp(entry.name.c_str(), account.c_str()) == 0});
+        model.rankingNotice = L"Ninguém no ranking ainda. Seja o primeiro!";
+        model.rankingYou = leaderboard_.hasYou && leaderboard_.playerName == account
+            ? L"Você · #" + std::to_wstring(leaderboard_.yourRank) + L" · " + PlaytimeStore::formatDuration(leaderboard_.yourSeconds)
+            : std::wstring(L"Jogue para entrar no ranking");
+    } else {
+        model.rankingNotice = rankingState_ == RankingState::Loading ? L"Carregando ranking…" : L"Ranking indisponível no momento.";
+    }
     return model;
 }
 
@@ -2088,6 +2148,37 @@ void MainPage::fetchNewsAsync()
     });
 }
 
+std::wstring MainPage::rankingName() const
+{
+    return originalMode_ ? microsoftIdentity_.name : nicknameText();
+}
+
+void MainPage::fetchLeaderboardAsync()
+{
+    if (!playtimeSyncEnabled_ || leaderboardPending_) return;
+    leaderboardPending_ = true;
+    SetTimer(window_, LeaderboardTimerId, 5 * 60 * 1000, nullptr);
+    leaderboardThread_ = std::jthread([window = window_, name = rankingName()](std::stop_token stop) {
+        auto result = PlaytimeApi::fetchLeaderboard(LauncherConfig::FileServerBaseUrl, name, 5, stop);
+        if (stop.stop_requested()) return;
+        auto* transferred = new LeaderboardResult(std::move(result));
+        if (!PostMessageW(window, LeaderboardResultMessage, 0, reinterpret_cast<LPARAM>(transferred))) delete transferred;
+    });
+}
+
+void MainPage::startPlaytimeSync(const PlaytimeRecord& local)
+{
+    if (!playtimeSyncEnabled_ || !NicknameStore::isValid(pendingNickname_)) return;
+    auto update = [window = window_, name = pendingNickname_](std::optional<std::uint64_t> total, bool finished) {
+        auto* transferred = new PlaytimeSyncUpdate{name, total, finished};
+        if (!PostMessageW(window, PlaytimeSyncMessage, 0, reinterpret_cast<LPARAM>(transferred))) delete transferred;
+    };
+    playtimeSyncThread_ = std::jthread([name = pendingNickname_, local, directory = LauncherSettingsStore::dataDirectory(),
+                                           update = std::move(update)](std::stop_token stop) {
+        PlaytimeApi::runSession(LauncherConfig::FileServerBaseUrl, name, local, directory, update, stop);
+    });
+}
+
 void MainPage::checkLauncherUpdateAsync(bool confirmed)
 {
     updatingLauncher_ = true;
@@ -2144,6 +2235,7 @@ void MainPage::applyLauncherUpdateProgress(const LauncherUpdateProgress& progres
 void MainPage::applyFileServerResult(const FileServerManifestResponse& response)
 {
     fetchNewsAsync();
+    fetchLeaderboardAsync();
     if (gameRunning() || installation_.running) {
         // A background retry answered while playing or preparing: keep the current state.
         if (response.success) { fileServerManifest_ = response.content; serverOffline_ = false; KillTimer(window_, ServerRetryTimerId); }
@@ -2349,6 +2441,8 @@ void MainPage::updateInstallationState(const MinecraftLaunchResult& installation
 void MainPage::startPlaySession()
 {
     playtime_ = PlaytimeStore::load(LauncherSettingsStore::dataDirectory());
+    // The counter as it was before this session is what a first import may bring over.
+    startPlaytimeSync(playtime_);
     playSession_.start(playtime_, PlaySession::Clock::now(), wallClock());
     flushPlaytime();
     SetTimer(window_, PlaytimeTimerId, 60 * 1000, nullptr);
@@ -2372,6 +2466,7 @@ void MainPage::finishPlaySession()
         playSession_.stop();
     }
     if (window_) KillTimer(window_, PlaytimeTimerId);
+    playtimeSyncThread_.request_stop();
     trayIcon_.hide();
     hiddenToTray_ = false;
 }

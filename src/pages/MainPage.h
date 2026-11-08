@@ -16,6 +16,7 @@
 #include "services/LauncherUpdateService.h"
 #include "services/MicrosoftAuthService.h"
 #include "services/ModInventory.h"
+#include "services/PlaytimeApi.h"
 #include "services/PlaytimeStore.h"
 #include "types/LauncherState.h"
 
@@ -132,6 +133,9 @@ private:
     // Play time and the notification-area icon.
     void startPlaySession();
     void flushPlaytime();
+    void startPlaytimeSync(const PlaytimeRecord& local);
+    void fetchLeaderboardAsync();
+    std::wstring rankingName() const;
     void finishPlaySession();
     void updateTrayTooltip();
     void hideToTray(bool closedByUser);
@@ -259,6 +263,15 @@ private:
     bool forceExit_ = false;
     bool trayNoticeShown_ = false;
 
+    // Server-side play time and leaderboard. Tests turn the network side off.
+    enum class RankingState { Loading, Ready, Unavailable };
+    bool playtimeSyncEnabled_ = true;
+    bool leaderboardPending_ = false;
+    RankingState rankingState_ = RankingState::Loading;
+    LeaderboardResult leaderboard_;
+    std::optional<std::uint64_t> serverTotalSeconds_;
+    std::wstring serverTotalName_;
+
     // The service is accessed through the generic interface to keep the page
     // independent of WinHTTP and of the web server used in the infrastructure.
     std::unique_ptr<IFileServerService> fileServerService_;
@@ -278,6 +291,8 @@ private:
     bool updatingLauncher_ = false;
     std::wstring updateWarning_;
     std::jthread newsThread_;
+    std::jthread leaderboardThread_;
+    std::jthread playtimeSyncThread_;
     // Last member: destruction joins before any state captured by the worker is destroyed.
     std::jthread launcherUpdateThread_;
     // Last: all captured services, tracking state and HWND outlive this worker.

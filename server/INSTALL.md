@@ -52,6 +52,37 @@ curl -f http://10.0.0.13/manifest.json
 curl -f https://eternalfast.aplot.cloud/manifest.json
 ```
 
+## Play time and leaderboard
+
+`install.sh` also installs the `eternal-playtime` service, which listens on
+`127.0.0.1:8765` and keeps its database in `/var/lib/eternal-playtime/playtime.db`.
+Include that file in your backups. Re-running the installer preserves it. To check:
+
+```sh
+systemctl status eternal-playtime --no-pager
+curl -f 'https://eternalfast.aplot.cloud/api/playtime/leaderboard?limit=5'
+```
+
+The launcher sends `POST` requests to `/api/playtime/*`. If Cloudflare answers 403,
+allow that path in a WAF rule, as described for `/launcher/*` in
+[GITHUB_ACTIONS.md](GITHUB_ACTIONS.md).
+
+To change the import limits, set `ETERNAL_PLAYTIME_IMPORT_CAP_HOURS` (default 200)
+in the unit. Administration, for suspicious cases:
+
+```sh
+cd /usr/local/lib/eternal-launcher
+sudo -u eternal-playtime ETERNAL_PLAYTIME_DB=/var/lib/eternal-playtime/playtime.db python3 playtime_api.py top
+sudo -u eternal-playtime ETERNAL_PLAYTIME_DB=/var/lib/eternal-playtime/playtime.db python3 playtime_api.py set-imported NICK 12.5
+sudo -u eternal-playtime ETERNAL_PLAYTIME_DB=/var/lib/eternal-playtime/playtime.db python3 playtime_api.py remove NICK
+sudo -u eternal-playtime ETERNAL_PLAYTIME_DB=/var/lib/eternal-playtime/playtime.db python3 playtime_api.py import-window 0
+```
+
+`set-imported` replaces the imported hours of a player, `remove` deletes the player
+from the ranking and `import-window N` closes the import N days from now.
+
+## Troubleshooting
+
 The manifest service is `oneshot`: showing `inactive (dead)` after finishing
 successfully is expected; the timer should stay `active (waiting)`.
 If the local URL works and the domain returns 502, check the tunnel target on

@@ -103,6 +103,8 @@ add_executable(EternalLauncher WIN32
     src/services/NewsFeed.h
     src/services/PlaytimeStore.cpp
     src/services/PlaytimeStore.h
+    src/services/PlaytimeApi.cpp
+    src/services/PlaytimeApi.h
     src/utils/DrawingUtils.cpp
     src/utils/DrawingUtils.h
     src/utils/Icons.cpp
@@ -296,7 +298,7 @@ endif()
 
 if(BUILD_TESTING)
     add_executable(LauncherServicesTests tests/LauncherServicesTests.cpp
-        src/services/PlaytimeStore.cpp src/services/NewsFeed.cpp src/services/ModInventory.cpp
+        src/services/PlaytimeStore.cpp src/services/PlaytimeApi.cpp src/services/NewsFeed.cpp src/services/ModInventory.cpp
         src/services/HttpDownloadClient.cpp src/utils/JsonValue.cpp)
     target_compile_features(LauncherServicesTests PRIVATE cxx_std_20)
     target_compile_definitions(LauncherServicesTests PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)

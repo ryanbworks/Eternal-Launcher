@@ -1,0 +1,21 @@
+[Unit]
+Description=Eternal Launcher play time and leaderboard API
+After=network.target
+
+[Service]
+Type=simple
+User=eternal-playtime
+Group=eternal-playtime
+StateDirectory=eternal-playtime
+StateDirectoryMode=0750
+Environment=ETERNAL_PLAYTIME_DB=/var/lib/eternal-playtime/playtime.db
+ExecStart=/usr/bin/python3 /usr/local/lib/eternal-launcher/playtime_api.py serve
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

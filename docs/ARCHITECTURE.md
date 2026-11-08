@@ -53,6 +53,7 @@ Components only draw the data they receive. They never touch the network or disk
 - `ModInventory`: separates server mods from the player's own and enables, disables or
   recycles player mods.
 - `PlaytimeStore` / `PlaySession`: total and last play time in `playtime.json`.
+- `PlaytimeApi`: server-side play time session, one-time import and leaderboard.
 
 ### Notification area and play time
 
@@ -62,6 +63,24 @@ the game exits and when Windows ends the session. Closing the window during a
 session hides it to the notification area; the launcher exits on its own when the
 game closes. "Hide in the notification area while playing" in Settings does the
 same as soon as the game starts.
+
+### Server-side play time and leaderboard
+
+`PlaytimeApi` talks to `server/playtime_api.py`, published by NGINX under
+`/api/playtime/`. The launcher never reports a duration: while the game runs it
+opens a session and sends a heartbeat every minute, and the server adds up the time
+with its own clock. A gap longer than 150 seconds earns nothing and each player has
+one session at a time. `playtime.json` remains as the fallback shown while the
+server is unknown and keeps counting when it is unreachable, but that time does not
+reach the leaderboard.
+
+The only number a client sends is the one-time import of the old local counter:
+once per nickname, capped (200 h by default) and closed after a deadline (60 days
+after the service first runs). `playtime-imported.marker` keeps an installation from
+importing again under a second nickname. Nickname mode has no login, so a nickname
+can be used by anyone and a script could imitate the launcher in real time; the
+server rules limit that but cannot rule it out. See [server/INSTALL.md](../server/INSTALL.md)
+for the administration commands.
 
 ### News feed
 

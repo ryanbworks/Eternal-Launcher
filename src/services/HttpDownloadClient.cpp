@@ -63,9 +63,10 @@ namespace {
         if(error) result.errorMessage+=L" (erro Windows "+std::to_wstring(error)+L").";
     }
     HttpDownloadResult fetch(std::wstring_view url,const std::filesystem::path* destination,
-        std::stop_token stop,const HttpDownloadProgressCallback& progress) {
+        std::stop_token stop,const HttpDownloadProgressCallback& progress,const std::string* postBody=nullptr,DWORD waitLimit=0) {
         HttpDownloadResult result;
         if(stop.stop_requested()) {result.cancelled=true;result.errorMessage=L"Download cancelado.";return result;}
+        const auto waitFor=[waitLimit](DWORD normal) {return waitLimit ? waitLimit : normal;};
         URL_COMPONENTS parts{};parts.dwStructSize=sizeof(parts);
         parts.dwHostNameLength=parts.dwUrlPathLength=parts.dwExtraInfoLength=static_cast<DWORD>(-1);
         const std::wstring ownedUrl(url);
@@ -85,7 +86,7 @@ namespace {
         std::array<char,64*1024> buffer{}; // Outlives every callback, including cancellation.
         Request request;
         if(!request.ready || !request.closed) {fail(result,InstallationFailure::Network,L"Não foi possível preparar a conexão.");return result;}
-        request.handle=WinHttpOpenRequest(connection.value,L"GET",path.c_str(),nullptr,WINHTTP_NO_REFERER,
+        request.handle=WinHttpOpenRequest(connection.value,postBody ? L"POST" : L"GET",path.c_str(),nullptr,WINHTTP_NO_REFERER,
             WINHTTP_DEFAULT_ACCEPT_TYPES,parts.nScheme==INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0);
         if(!request.handle) {fail(result,InstallationFailure::Network,L"Não foi possível preparar o download.",GetLastError());return result;}
         DWORD_PTR context=reinterpret_cast<DWORD_PTR>(&request);
@@ -98,11 +99,13 @@ namespace {
             result.cancelled=stop.stop_requested();
             fail(result,InstallationFailure::Network,result.cancelled ? L"Download cancelado." : L"A conexão foi interrompida. Confira sua internet e tente novamente.",request.error.load());
         };
-        if(!pending(WinHttpSendRequest(request.handle,WINHTTP_NO_ADDITIONAL_HEADERS,0,nullptr,0,0,context)) ||
-            !request.wait(WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE,stop,15000)) {networkFailure();return result;}
+        const DWORD bodySize=postBody ? static_cast<DWORD>(postBody->size()) : 0;
+        if(!pending(WinHttpSendRequest(request.handle,postBody ? L"Content-Type: application/json\r\n" : WINHTTP_NO_ADDITIONAL_HEADERS,
+            postBody ? static_cast<DWORD>(-1L) : 0,postBody ? const_cast<char*>(postBody->data()) : nullptr,bodySize,bodySize,context)) ||
+            !request.wait(WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE,stop,waitFor(15000))) {networkFailure();return result;}
         request.reset();
         if(!pending(WinHttpReceiveResponse(request.handle,nullptr)) ||
-            !request.wait(WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE,stop,30000)) {networkFailure();return result;}
+            !request.wait(WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE,stop,waitFor(30000))) {networkFailure();return result;}
         DWORD status=0,size=sizeof(status);
         if(!WinHttpQueryHeaders(request.handle,WINHTTP_QUERY_STATUS_CODE|WINHTTP_QUERY_FLAG_NUMBER,nullptr,&status,&size,nullptr)) {
             networkFailure();return result;
@@ -123,12 +126,12 @@ namespace {
         while(!stop.stop_requested()) {
             request.reset();
             if(!pending(WinHttpQueryDataAvailable(request.handle,nullptr)) ||
-                !request.wait(WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE,stop,30000)) {networkFailure();break;}
+                !request.wait(WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE,stop,waitFor(30000))) {networkFailure();break;}
             const auto available=std::min<DWORD>(request.availableBytes,static_cast<DWORD>(buffer.size()));
             if(!available) {result.success=true;break;}
             request.reset();
             if(!pending(WinHttpReadData(request.handle,buffer.data(),available,nullptr)) ||
-                !request.wait(WINHTTP_CALLBACK_STATUS_READ_COMPLETE,stop,30000)) {networkFailure();break;}
+                !request.wait(WINHTTP_CALLBACK_STATUS_READ_COMPLETE,stop,waitFor(30000))) {networkFailure();break;}
             const DWORD bytes=request.readBytes;
             if(!bytes) {result.success=true;break;}
             if(destination) {
@@ -151,6 +154,10 @@ namespace {
 HttpDownloadResult HttpDownloadClient::getText(std::wstring_view url,std::stop_token stop) const {
     try { return fetch(url,nullptr,stop,{}); }
     catch(const std::exception&) {HttpDownloadResult r;fail(r,InstallationFailure::Disk,L"Não foi possível preparar os metadados.");return r;}
+}
+HttpDownloadResult HttpDownloadClient::postJson(std::wstring_view url,const std::string& body,std::stop_token stop,unsigned long waitMilliseconds) const {
+    try { return fetch(url,nullptr,stop,{},&body,waitMilliseconds); }
+    catch(const std::exception&) {HttpDownloadResult r;fail(r,InstallationFailure::Network,L"Não foi possível enviar os dados.");return r;}
 }
 HttpDownloadResult HttpDownloadClient::downloadFile(std::wstring_view url,const std::filesystem::path& destination,
     std::stop_token stop,const HttpDownloadProgressCallback& progress) const {

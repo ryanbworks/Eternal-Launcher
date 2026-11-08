@@ -27,6 +27,9 @@ class HttpDownloadClient
 {
 public:
     [[nodiscard]] HttpDownloadResult getText(std::wstring_view url, std::stop_token stopToken = {}) const;
+    // Each network step waits at most `waitMilliseconds`, so a caller can bound a best-effort call.
+    [[nodiscard]] HttpDownloadResult postJson(std::wstring_view url, const std::string& body,
+        std::stop_token stopToken = {}, unsigned long waitMilliseconds = 15000) const;
     [[nodiscard]] HttpDownloadResult downloadFile(
         std::wstring_view url,
         const std::filesystem::path& destination,

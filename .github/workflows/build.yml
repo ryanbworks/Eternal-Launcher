@@ -57,3 +57,4 @@ jobs:
         run: |
           python3 -m unittest discover -s tests -p test_publish_release.py -v
           python3 -m unittest discover -s server -p test_refresh_manifest.py -v
+          python3 -m unittest discover -s server -p test_playtime_api.py -v

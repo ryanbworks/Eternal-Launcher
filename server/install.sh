@@ -8,7 +8,7 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-for source_file in server/refresh_manifest.py server/eternal-manifest.service server/eternal-manifest.timer infrastructure/nginx/eternal-launcher.conf; do
+for source_file in server/refresh_manifest.py server/eternal-manifest.service server/eternal-manifest.timer server/playtime_api.py server/eternal-playtime.service infrastructure/nginx/eternal-launcher.conf; do
     test -f "$project_root/$source_file"
 done
 command -v apt-get >/dev/null
@@ -36,6 +36,8 @@ backup_root="$(mktemp -d /root/eternal-launcher-backup.XXXXXXXX)"
 for target in /usr/local/lib/eternal-launcher/refresh_manifest.py \
     /etc/systemd/system/eternal-manifest.service \
     /etc/systemd/system/eternal-manifest.timer \
+    /usr/local/lib/eternal-launcher/playtime_api.py \
+    /etc/systemd/system/eternal-playtime.service \
     /etc/nginx/sites-available/eternal-launcher; do
     if [ -e "$target" ]; then
         cp --parents -a -- "$target" "$backup_root/"
@@ -45,12 +47,21 @@ done
 install -m 0644 "$project_root/server/refresh_manifest.py" /usr/local/lib/eternal-launcher/refresh_manifest.py
 install -m 0644 "$project_root/server/eternal-manifest.service" /etc/systemd/system/eternal-manifest.service
 install -m 0644 "$project_root/server/eternal-manifest.timer" /etc/systemd/system/eternal-manifest.timer
+install -m 0644 "$project_root/server/playtime_api.py" /usr/local/lib/eternal-launcher/playtime_api.py
+install -m 0644 "$project_root/server/eternal-playtime.service" /etc/systemd/system/eternal-playtime.service
 install -m 0644 "$project_root/infrastructure/nginx/eternal-launcher.conf" /etc/nginx/sites-available/eternal-launcher
 # Normalize files copied from Windows checkouts.
 sed -i 's/\r$//' /usr/local/lib/eternal-launcher/refresh_manifest.py \
     /etc/systemd/system/eternal-manifest.service \
     /etc/systemd/system/eternal-manifest.timer \
+    /usr/local/lib/eternal-launcher/playtime_api.py \
+    /etc/systemd/system/eternal-playtime.service \
     /etc/nginx/sites-available/eternal-launcher
+
+# The play time database belongs to a dedicated user without login.
+if ! id eternal-playtime >/dev/null 2>&1; then
+    useradd --system --no-create-home --shell /usr/sbin/nologin eternal-playtime
+fi
 
 if [ ! -L "$site_link" ]; then
     ln -s /etc/nginx/sites-available/eternal-launcher "$site_link"
@@ -63,12 +74,17 @@ if [ ! -e "$files_root/manifest.json" ]; then
 fi
 
 python3 -m py_compile /usr/local/lib/eternal-launcher/refresh_manifest.py
+python3 -m py_compile /usr/local/lib/eternal-launcher/playtime_api.py
 nginx -t
 systemctl daemon-reload
 systemctl start eternal-manifest.service
-systemctl enable --now eternal-manifest.timer nginx
+systemctl enable --now eternal-manifest.timer eternal-playtime nginx
+systemctl restart eternal-playtime
 systemctl reload nginx
 # reload returns before the new workers start serving.
 curl --fail --silent --show-error --retry 5 --retry-delay 1 --retry-all-errors \
     --max-time 10 -H 'Host: eternalfast.aplot.cloud' http://127.0.0.1/manifest.json
+printf '\n'
+curl --fail --silent --show-error --retry 5 --retry-delay 1 --retry-all-errors \
+    --max-time 10 -H 'Host: eternalfast.aplot.cloud' 'http://127.0.0.1/api/playtime/leaderboard?limit=1'
 printf '\nInstallation complete. Upload files over SFTP to %s.\nBackup: %s\n' "$files_root" "$backup_root"

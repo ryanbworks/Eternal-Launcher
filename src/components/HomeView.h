@@ -46,6 +46,15 @@ struct PlayerCardModel
     float playPress = 0;   // 0..1 pressed compression
 };
 
+struct RankingRowModel
+{
+    int rank = 0;
+    std::wstring name;
+    std::wstring time;
+    bool online = false;
+    bool you = false;
+};
+
 struct HomeModel
 {
     PlayerCardModel player;
@@ -57,6 +66,9 @@ struct HomeModel
     int userMods = -1;
     float entrance = 1;    // 0..1 staggered rise of tiles and news cards
     float toastReveal = 1; // 0..1 slide of the update toast
+    std::vector<RankingRowModel> ranking;
+    std::wstring rankingNotice; // shown instead of the rows while there are none
+    std::wstring rankingYou;
 };
 
 class HeroComponent;
@@ -72,6 +84,7 @@ public:
 private:
     static void drawPlayButton(Gdiplus::Graphics& graphics, const PlayerCardModel& model, const ControlVisuals& visuals);
     void drawTiles(Gdiplus::Graphics& graphics, const HomeModel& model) const;
+    void drawRanking(Gdiplus::Graphics& graphics, const HomeModel& model) const;
     void drawNews(Gdiplus::Graphics& graphics, const HomeModel& model, const HeroComponent& hero,
                   const ControlVisuals& visuals) const;
 };

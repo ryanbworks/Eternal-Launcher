@@ -25,9 +25,12 @@ namespace Layout
     inline const Rect Hero{100, 68, 792, 356};
     inline const Rect HeroGlass{120, 252, 440, 152};
     inline Rect tile(int index) { return {100 + static_cast<float>(index) * (764.0F / 3 + 14), 444, 764.0F / 3, 92}; }
-    inline const Rect NewsHeading{100, 556, 600, 26};
-    inline const Rect NewsAll{792, 554, 100, 30};
+    inline const Rect NewsHeading{100, 556, 400, 26};
+    inline const Rect NewsAll{764.0F * 2 / 3 + 14, 554, 100, 30};
     inline Rect newsCard(int index) { return {100 + static_cast<float>(index) * (764.0F / 3 + 14), 590, 764.0F / 3, 186}; }
+    // The leaderboard takes the slot after the two news cards.
+    inline Rect rankingCard() { return newsCard(2); }
+    inline const Rect RankingHeading{rankingCard().X, 556, rankingCard().Width, 26};
     inline const Rect Aside{916, 68, 340, 708};
     inline const Rect Avatar{940, 92, 68, 68};
     inline const Rect NicknameKicker{1024, 94, 208, 16};

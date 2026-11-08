@@ -171,7 +171,7 @@ public:
         for(int i=0;i<6;++i) page.viewState_.news.push_back({L"AVISO",L"Notícia "+std::to_wstring(i),L"Texto",L"25 out 2026",
             i%2==0 ? L"https://example.com/"+std::to_wstring(i) : L"",false});
         page.syncControls();
-        check(shown(control(page,NewsCardFirstId+2)),"home shows three news cards");
+        check(shown(control(page,NewsCardFirstId+1)),"home shows two news cards next to the leaderboard");
         SendMessageW(control(page,NewsCardFirstId+1),BM_CLICK,0,0);
         check(page.page_==LauncherPage::News && page.newsFirst_==1,"a news card opens the list at that item");
         const Gdiplus::PointF inside{600,400};
@@ -595,7 +595,7 @@ public:
     }
 
     static void run() {
-        MainPage page(GetModuleHandleW(nullptr));
+        MainPage page(GetModuleHandleW(nullptr));page.playtimeSyncEnabled_=false; // never reach the real API from tests
         if(!host(page,L"EternalPaintingRegressionHost")) return;
         ShowWindow(page.window_,SW_SHOWNOACTIVATE);
         page.viewState_.playEnabled=true;
@@ -623,7 +623,7 @@ public:
         return MainPage::windowProcedure(window,message,wParam,lParam);
     }
     static void benchmark() {
-        MainPage page(GetModuleHandleW(nullptr));
+        MainPage page(GetModuleHandleW(nullptr));page.playtimeSyncEnabled_=false; // never reach the real API from tests
         if(!host(page,L"EternalMotionBenchmarkHost",1280,800,countingProcedure)) return;
         page.motionEnabled_=true;page.viewState_.playEnabled=true;page.viewState_.operation=LauncherOperation::ReadyToPlay;
         page.viewState_.primaryActionLabel=L"JOGAR";page.portalEntrance_=1;page.portalBurst_=0;
@@ -678,7 +678,7 @@ public:
     // Live captures include the native EDIT and owner-drawn buttons as Windows presents them.
     static void captureLive(const std::filesystem::path& directory) {
         std::filesystem::create_directories(directory);
-        MainPage page(GetModuleHandleW(nullptr));
+        MainPage page(GetModuleHandleW(nullptr));page.playtimeSyncEnabled_=false; // never reach the real API from tests
         if(!host(page,L"EternalLiveCaptureHost")) return;
         page.viewState_.operation=LauncherOperation::ReadyToPlay;page.viewState_.playEnabled=true;
         page.viewState_.headline=L"Pronto para jogar";page.viewState_.operationMessage=L"Os arquivos do grupo são conferidos a cada Jogar.";

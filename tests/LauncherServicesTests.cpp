@@ -1,5 +1,6 @@
 #include "services/ModInventory.h"
 #include "services/NewsFeed.h"
+#include "services/PlaytimeApi.h"
 #include "services/PlaytimeStore.h"
 
 #include <windows.h>
@@ -41,6 +42,23 @@ namespace {
         check(PlaytimeStore::load(directory).totalSeconds==0,"a corrupt file never blocks the launcher");
         session.stop();
         check(!session.active() && session.elapsedSeconds(start+std::chrono::seconds(5))==0,"stopped session counts nothing");
+    }
+
+    void leaderboard() {
+        const auto parsed=PlaytimeApi::parseLeaderboard(R"({"players":[
+            {"rank":1,"name":"Aurora_","totalSeconds":7200,"online":true},
+            {"rank":2,"name":"<script>","totalSeconds":3600,"online":false},
+            {"rank":3,"name":"Steve","totalSeconds":60}],
+            "you":{"rank":3,"totalSeconds":60,"lastPlayed":5}})");
+        check(parsed.success && parsed.players.size()==2,"names that are not valid nicknames are dropped");
+        if(parsed.players.size()==2) {
+            check(parsed.players[0].name==L"Aurora_" && parsed.players[0].rank==1 && parsed.players[0].totalSeconds==7200 && parsed.players[0].online,
+                "leaderboard fields are read");
+            check(!parsed.players[1].online,"a missing online flag means offline");
+        }
+        check(parsed.hasYou && parsed.yourRank==3 && parsed.yourSeconds==60,"the player's own position is read");
+        check(!PlaytimeApi::parseLeaderboard(R"({"players":[],"you":null})").hasYou,"an unknown player has no position");
+        check(!PlaytimeApi::parseLeaderboard("{oops").success && !PlaytimeApi::parseLeaderboard("{\"players\":3}").success,"malformed leaderboards are rejected");
     }
 
     void news() {
@@ -105,6 +123,7 @@ int main()
     std::filesystem::remove_all(root,ignored);
     std::filesystem::create_directories(root);
     playtime(root);
+    leaderboard();
     news();
     mods(root);
     std::filesystem::remove_all(root,ignored);

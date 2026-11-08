@@ -39,7 +39,7 @@ namespace LauncherConstants
     inline constexpr int QuickRepairButtonId = 1124;
     inline constexpr int QuickLogsButtonId = 1125;
     inline constexpr int NewsCardFirstId = 1126;
-    inline constexpr int NewsCardCount = 3;
+    inline constexpr int NewsCardCount = 2;
     inline constexpr int NewsAllButtonId = 1129;
     inline constexpr int ToastNewsButtonId = 1130;
     inline constexpr int RetryServerButtonId = 1131;
@@ -73,6 +73,7 @@ namespace LauncherConstants
     inline constexpr UINT_PTR InstallationProgressTimerId = 2003;
     inline constexpr UINT_PTR PlaytimeTimerId = 2004;
     inline constexpr UINT_PTR ServerRetryTimerId = 2005;
+    inline constexpr UINT_PTR LeaderboardTimerId = 2006;
 
     inline constexpr UINT FileServerResultMessage = WM_APP + 1;
     inline constexpr UINT JavaRuntimeProgressMessage = WM_APP + 2;
@@ -87,4 +88,6 @@ namespace LauncherConstants
     inline constexpr UINT InstallationProgressMessage = WM_APP + 11;
     inline constexpr UINT NewsResultMessage = WM_APP + 12;
     inline constexpr UINT TrayIconMessage = WM_APP + 13;
+    inline constexpr UINT PlaytimeSyncMessage = WM_APP + 14;
+    inline constexpr UINT LeaderboardResultMessage = WM_APP + 15;
 }

@@ -117,6 +117,7 @@ void HomeView::draw(Gdiplus::Graphics& g, const HomeModel& model, const HeroComp
         }
         drawTiles(g, model);
         drawNews(g, model, hero, visuals);
+        drawRanking(g, model);
     }
     drawPlayerCard(g, model.player, visuals);
 }
@@ -188,6 +189,39 @@ void HomeView::drawNews(Gdiplus::Graphics& g, const HomeModel& model, const Hero
         drawText(g, item.date, {b.X + 14, b.Y + 156, b.Width - 28, 18}, 11.5F, Gdiplus::FontStyleRegular, Theme::TextMuted);
         if (visual.focused) drawFocusRing(g, b, Theme::CardRadius, Theme::AccentLight);
     }
+}
+
+void HomeView::drawRanking(Gdiplus::Graphics& g, const HomeModel& model) const
+{
+    drawDisplayText(g, L"Top jogadores", Layout::RankingHeading, 17, Theme::TextPrimary, Gdiplus::StringAlignmentNear,
+        Gdiplus::StringAlignmentCenter);
+    auto b = Layout::rankingCard();
+    b.Y += std::round(22 * (1 - easeOut((model.entrance - .41F) / .5F)));
+    fillRoundedRectangle(g, b, Theme::CardRadius, Theme::Surface);
+    drawRoundedRectangle(g, {b.X + .5F, b.Y + .5F, b.Width - 1, b.Height - 1}, Theme::CardRadius, Theme::Divider);
+    if (model.ranking.empty()) {
+        drawText(g, model.rankingNotice, {b.X + 20, b.Y, b.Width - 40, b.Height}, 12.5F, Gdiplus::FontStyleRegular, Theme::TextMuted,
+            Gdiplus::StringAlignmentCenter, Gdiplus::StringAlignmentCenter);
+        return;
+    }
+    const float left = b.X + 8, width = b.Width - 16;
+    const std::size_t rows = std::min<std::size_t>(model.ranking.size(), 5);
+    for (std::size_t i = 0; i < rows; ++i) {
+        const auto& row = model.ranking[i];
+        const float y = b.Y + 8 + static_cast<float>(i) * 27;
+        if (row.you) fillRoundedRectangle(g, {left, y, width, 26}, 8, Theme::AccentTint);
+        drawText(g, std::to_wstring(row.rank), {left + 10, y, 20, 26}, 12.5F, Gdiplus::FontStyleBold,
+            i < 3 ? Theme::AccentLight : Theme::TextMuted, Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+        if (row.online) dot(g, left + 30, y + 9, Theme::Success);
+        drawText(g, row.name, {left + 44, y, width - 44 - 80, 26}, 12.5F, Gdiplus::FontStyleBold, Theme::TextPrimary,
+            Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+        drawText(g, row.time, {left + width - 84, y, 76, 26}, 12, Gdiplus::FontStyleRegular, Theme::TextSecondary,
+            Gdiplus::StringAlignmentFar, Gdiplus::StringAlignmentCenter);
+    }
+    Gdiplus::Pen line(Theme::Divider);
+    g.DrawLine(&line, b.X + 16, b.Y + 147, b.GetRight() - 16, b.Y + 147);
+    drawText(g, model.rankingYou, {b.X + 18, b.Y + 150, b.Width - 36, 30}, 12, Gdiplus::FontStyleRegular, Theme::TextSecondary,
+        Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
 }
 
 void HomeView::drawPlayerCard(Gdiplus::Graphics& g, const PlayerCardModel& m, const ControlVisuals& visuals)
