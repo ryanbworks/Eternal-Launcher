@@ -4,6 +4,22 @@ All notable changes to Eternal Launcher are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and versions use [SemVer](https://semver.org/) plus a codename.
 
+## [2.1.0] — Horizon · 2026-11-08
+
+### Added
+- **Play time on the server.** While the game runs the launcher sends heartbeats and
+  the server measures the time with its own clock, so the total cannot be edited on
+  the player's computer. Previous local time is imported once per nickname, up to
+  200 hours.
+- **Top players** on the home page, with who is online and your own position.
+- **Versions page.** Choose between the Eternal modpack and an unmodified
+  Minecraft 1.8.9 with its own folder and Java 8. Time on 1.8.9 does not count.
+
+### Changed
+- The home page shows two news cards next to the leaderboard.
+- The server's manifest script in the repository now matches the deployed one and
+  publishes configs, resource packs and shader packs.
+
 ## [2.0.2] — Horizon · 2026-10-31
 
 ### Fixed

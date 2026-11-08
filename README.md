@@ -32,7 +32,7 @@ accents, smooth transitions and native controls with keyboard navigation.
 
 ## Download and use
 
-Download [Eternal Launcher v2.0.2-Horizon](https://eternalfast.aplot.cloud/launcher/releases/2.0.2/EternalLauncher.exe)
+Download [Eternal Launcher v2.1.0-Horizon](https://eternalfast.aplot.cloud/launcher/releases/2.1.0/EternalLauncher.exe)
 (see [what's new](https://github.com/ryanbworks/Eternal-Launcher/releases/latest)).
 The distribution is a single portable executable for Windows x64. Open
 `EternalLauncher.exe`. The launcher ships with the C++ runtime and sets up Java 17
@@ -52,8 +52,10 @@ alternative ([step by step](docs/AUTOUPDATE.md#two-click-wizard)).
 
 ## Features
 
-- Resizable native Windows interface with a custom title bar, a navigation rail (Home, News, Mods, Settings, Help), a dark theme and DPI scaling.
-- Play time per session and in total; while Minecraft runs, an icon next to the clock keeps counting even if the window is closed.
+- Resizable native Windows interface with a custom title bar, a navigation rail (Home, Versions, News, Mods, Settings, Help), a dark theme and DPI scaling.
+- Play time measured on the server and a **Top jogadores** (top players) leaderboard on the home page; see [Play time and leaderboard](#play-time-and-leaderboard).
+- **Versões** (Versions) page to choose between the Eternal modpack and an unmodified Minecraft 1.8.9; see [Minecraft 1.8.9](#minecraft-189).
+- Play time per session; while Minecraft runs, an icon next to the clock keeps counting even if the window is closed.
 - News page fed by an optional `news.json` on the file server ([format](docs/ARCHITECTURE.md#news-feed)).
 - Mods page separating server mods from your own, with enable/disable, add and send to the Recycle Bin.
 - Help page with repair, logs and copyable support information.
@@ -80,6 +82,26 @@ In **Nickname local** (local nickname) mode, the private server must accept offl
 sessions. In **Original** mode, the launcher gets the name, UUID and token of the
 authenticated account's Minecraft: Java Edition profile. The session lives only in
 memory and is requested again when the launcher is reopened.
+
+### Play time and leaderboard
+
+While the modpack runs, the launcher tells the server every minute that the session
+is still open, and the server adds up the time with its own clock. The launcher never
+sends a duration, so editing a local file changes nothing. The only exception is the
+one-time import of the time saved by older versions: once per nickname, up to
+200 hours, for 60 days after the service went live. Nickname mode has no login, so a
+nickname can be used by anyone. The service runs on the file server; see
+[server/INSTALL.md](server/INSTALL.md#play-time-and-leaderboard).
+
+### Minecraft 1.8.9
+
+The **Versões** (Versions) page has a card for each game. **Usar esta versão** (use
+this version) selects it and **Jogar** (Play) starts it. The 1.8.9 is unmodified, for
+public minigame servers such as Bedwars, and uses its own folder
+(`%APPDATA%\.eternal-launcher\minecraft-1.8.9`) and a portable Java 8, without
+touching the modpack. Its time does not count on the leaderboard. Nickname mode only
+reaches servers that accept it; servers such as Hypixel require the original account.
+Details are in [Minecraft launch](docs/MINECRAFT_LAUNCH.md#minecraft-189-without-mods).
 
 ### Minecraft settings
 
