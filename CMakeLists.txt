@@ -105,6 +105,8 @@ add_executable(EternalLauncher WIN32
     src/services/PlaytimeStore.h
     src/services/PlaytimeApi.cpp
     src/services/PlaytimeApi.h
+    src/services/VanillaMinecraftService.cpp
+    src/services/VanillaMinecraftService.h
     src/utils/DrawingUtils.cpp
     src/utils/DrawingUtils.h
     src/utils/Icons.cpp

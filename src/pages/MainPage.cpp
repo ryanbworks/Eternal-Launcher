@@ -10,6 +10,7 @@
 #include "services/JavaRuntimeService.h"
 #include "services/MinecraftLauncherService.h"
 #include "services/NewsFeed.h"
+#include "services/VanillaMinecraftService.h"
 #include "styles/Theme.h"
 #include "utils/DrawingUtils.h"
 
@@ -1649,6 +1650,9 @@ void MainPage::handleCommand(int id, int)
         openPath(gameDirectory() / L"mods", true);
         break;
     case QuickRepairButtonId:
+    case MenuPlayVanilla:
+        handlePrimaryAction(true);
+        break;
     case MenuRepair:
     case HelpRepairButtonId:
         startRepair();
@@ -1699,6 +1703,9 @@ void MainPage::showPlayMenu()
     if (!button || !button->window) return;
     HMENU menu = CreatePopupMenu();
     if (!menu) return;
+    const bool canPlay = viewState_.playEnabled && !installation_.running && !gameRunning() && !updatingLauncher_;
+    AppendMenuW(menu, MF_STRING | (canPlay ? 0U : MF_GRAYED), MenuPlayVanilla, L"Jogar Minecraft 1.8.9 (sem mods)");
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, MenuOpenGameFolder, L"Abrir pasta do jogo");
     AppendMenuW(menu, MF_STRING, MenuOpenModsFolder, L"Abrir pasta de mods");
     AppendMenuW(menu, MF_STRING, MenuOpenLogs, L"Abrir logs");
@@ -1918,9 +1925,10 @@ bool MainPage::canRepair() const
     return viewState_.playEnabled && !updatingLauncher_ && !installation_.running && !gameRunning();
 }
 
-void MainPage::handlePrimaryAction()
+void MainPage::handlePrimaryAction(bool vanilla)
 {
     if (!viewState_.playEnabled) return;
+    playingVanilla_ = vanilla;
     std::wstring settingsError;
     if (!LauncherSettingsStore::validate(settings_, settingsError)) {
         showPage(LauncherPage::Settings);
@@ -1959,6 +1967,8 @@ bool MainPage::offlineReady() const
 
 void MainPage::startGame()
 {
+    // The 1.8.9 only needs Mojang, so the state of the group's file server does not matter.
+    if (playingVanilla_) { beginPlay(); return; }
     if (offlineReady()) {
         launchPreparedMinecraft(InstallationResult{InstallationOutcome::Success}, true);
         redraw();
@@ -2001,6 +2011,7 @@ void MainPage::showOfflineState(std::wstring message)
 void MainPage::startRepair()
 {
     if (!canRepair()) return;
+    playingVanilla_ = false;
     std::wstring settingsError;
     if (!LauncherSettingsStore::validate(settings_, settingsError)) {
         showPage(LauncherPage::Settings);
@@ -2043,7 +2054,7 @@ void MainPage::beginPlay(bool repairOnly)
     installationMailbox_.begin(installation_.attempt);
     viewState_.operation = LauncherOperation::PreparingMinecraft;
     viewState_.headline = repairOnly ? L"Reparando a instalação" : L"Preparando seu mundo";
-    viewState_.operationMessage = L"Conferindo Java e arquivos do grupo...";
+    viewState_.operationMessage = playingVanilla_ ? L"Conferindo Java e arquivos da 1.8.9..." : L"Conferindo Java e arquivos do grupo...";
     viewState_.primaryActionLabel = repairOnly ? L"REPARANDO" : L"PREPARANDO";
     viewState_.playEnabled = false;
     viewState_.progressVisible = true;
@@ -2052,13 +2063,14 @@ void MainPage::beginPlay(bool repairOnly)
     SetTimer(window_, InstallationProgressTimerId, 200, nullptr);
     redraw();
     const auto attempt = installation_.attempt;
-    installationThread_ = std::jthread([this, attempt](std::stop_token stop) {
-        InstallationCoordinator coordinator(*fileServerService_, *javaRuntimeService_, *gameInstallationService_,
-            *minecraftLauncherService_, settings_);
-        auto result = coordinator.run(stop, [this, attempt](const InstallationProgress& value) {
+    installationThread_ = std::jthread([this, attempt, vanilla = playingVanilla_](std::stop_token stop) {
+        const InstallationProgressCallback publish = [this, attempt](const InstallationProgress& value) {
             if (installationMailbox_.publish(attempt, value, InstallationTransferMeter::Clock::now()))
                 PostMessageW(window_, InstallationProgressMessage, 0, 0);
-        });
+        };
+        InstallationCoordinator coordinator(*fileServerService_, *javaRuntimeService_, *gameInstallationService_,
+            *minecraftLauncherService_, settings_);
+        auto result = vanilla ? VanillaMinecraftService{}.prepare(stop, publish) : coordinator.run(stop, publish);
         installationMailbox_.finish(attempt, std::move(result));
         PostMessageW(window_, InstallationProgressMessage, 0, 0);
     });
@@ -2071,6 +2083,7 @@ void MainPage::pollGameProcess()
     const auto session = playSession_.active() ? playSession_.elapsedSeconds(PlaySession::Clock::now()) : 0;
     const bool wasHidden = hiddenToTray_;
     finishPlaySession();
+    playingVanilla_ = false;
     viewState_.operation = LauncherOperation::ReadyToPlay;
     viewState_.headline = L"Minecraft encerrado";
     viewState_.operationMessage = session > 0 ? L"Sessão de " + PlaytimeStore::formatDuration(session) +
@@ -2353,7 +2366,7 @@ void MainPage::consumeInstallationProgress()
             helpMessageError_ = false;
         } else if (result.outcome == InstallationOutcome::Success) {
             launchPreparedMinecraft(result);
-        } else if ((result.failure == InstallationFailure::Network || result.failure == InstallationFailure::Http) &&
+        } else if (!playingVanilla_ && (result.failure == InstallationFailure::Network || result.failure == InstallationFailure::Http) &&
                    minecraftLauncherService_->validateInstallation().success) {
             // The server dropped during the check, but the game on disk is complete: offer it.
             installation_.visible = false;
@@ -2372,8 +2385,44 @@ void MainPage::consumeInstallationProgress()
     redraw();
 }
 
+void MainPage::launchVanilla()
+{
+    viewState_.operation = LauncherOperation::LaunchingMinecraft;
+    viewState_.headline = L"Iniciando Minecraft";
+    viewState_.operationMessage = L"Preparação concluída; iniciando a versão 1.8.9...";
+    viewState_.primaryActionLabel = L"INICIANDO";
+    viewState_.playEnabled = false;
+    redraw();
+    UpdateWindow(window_);
+    const auto launched = minecraftLauncherService_->launchVanilla(pendingIdentity_, VanillaMinecraftService::javaExecutable(),
+        VanillaMinecraftService::gameDirectory());
+    if (!launched.success) {
+        installation_.result = InstallationResult{InstallationOutcome::Failed, InstallationFailure::Process,
+            L"Não foi possível iniciar o jogo. Tente novamente.", launched.message, 0};
+        installation_.steps[5] = InstallationStepState::Failed;
+        viewState_.operation = LauncherOperation::LaunchError;
+        viewState_.headline = L"Não foi possível iniciar";
+        viewState_.operationMessage = installation_.result->message;
+        viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
+        viewState_.playEnabled = true;
+        return;
+    }
+    installation_.visible = false;
+    viewState_.operation = LauncherOperation::MinecraftRunning;
+    viewState_.headline = L"Jogando agora";
+    // The ranking is about the group's server, so this version never reaches the counters.
+    viewState_.operationMessage = originalMode_
+        ? L"Minecraft 1.8.9 iniciado, sem mods. Este tempo não conta no ranking."
+        : L"Minecraft 1.8.9 iniciado, sem mods. Sem conta original, só entra em servidores que aceitam nickname.";
+    viewState_.primaryActionLabel = L"JOGANDO";
+    SetTimer(window_, GameProcessTimerId, 1000, nullptr);
+    showGameTrayIcon();
+    if (settings_.minimizeOnLaunch) hideToTray(false);
+}
+
 void MainPage::launchPreparedMinecraft(const InstallationResult& result, bool offline)
 {
+    if (playingVanilla_) { launchVanilla(); return; }
     updateInstallationState({true, L"Instalação pronta."});
     if (!offline) {
         auto& modsCard = viewState_.statusCards[1];
@@ -2446,10 +2495,15 @@ void MainPage::startPlaySession()
     playSession_.start(playtime_, PlaySession::Clock::now(), wallClock());
     flushPlaytime();
     SetTimer(window_, PlaytimeTimerId, 60 * 1000, nullptr);
+    showGameTrayIcon();
+    updateTrayTooltip();
+}
+
+void MainPage::showGameTrayIcon()
+{
     const int size = GetSystemMetrics(SM_CXSMICON);
     const auto icon = static_cast<HICON>(LoadImageW(instance_, MAKEINTRESOURCEW(101), IMAGE_ICON, size, size, LR_SHARED));
     trayIcon_.show(window_, TrayIconMessage, icon ? icon : LoadIcon(nullptr, IDI_APPLICATION), L"Eternal Launcher · Jogando");
-    updateTrayTooltip();
 }
 
 void MainPage::flushPlaytime()

@@ -276,6 +276,41 @@ std::wstring MinecraftLaunchCommandBuilder::build(
     return joinArguments(arguments);
 }
 
+std::wstring MinecraftLaunchCommandBuilder::buildVanilla(
+    const MinecraftIdentity& identity, const std::filesystem::path& javaExecutable,
+    const std::filesystem::path& gamePath, const LauncherSettings& settings) const
+{
+    const auto assets = gamePath / L"assets";
+    std::vector<std::wstring> arguments = {
+        javaExecutable.wstring(),
+        L"-Xms" + std::to_wstring(settings.minimumMemoryMegabytes) + L"M",
+        L"-Xmx" + std::to_wstring(settings.maximumMemoryMegabytes) + L"M",
+        // Mojang's default on Windows: without it, Intel drivers break old versions.
+        L"-XX:HeapDumpPath=MojangTricksIntelDriversForPerformance_javaw.exe_minecraft.exe.heapdump",
+        L"-Djava.library.path=" + (gamePath / L"natives").wstring(),
+        // Disables the JNDI lookups of this version's log4j (Log4Shell).
+        L"-Dlog4j.configurationFile=" + (assets / L"log_configs" / L"client-1.7.xml").wstring(),
+        L"-Dminecraft.launcher.brand=EternalLauncher",
+        L"-Dminecraft.launcher.version=" + std::wstring(LauncherConfig::LauncherVersion),
+        L"-cp",
+        buildClasspath(gamePath),
+        L"net.minecraft.client.main.Main",
+        L"--username", identity.name,
+        L"--version", std::wstring(LauncherConfig::VanillaVersion),
+        L"--gameDir", gamePath.wstring(),
+        L"--assetsDir", assets.wstring(),
+        L"--assetIndex", std::wstring(LauncherConfig::VanillaAssetIndex),
+        L"--uuid", identity.online() ? identity.uuid : createOfflineUuid(identity.name),
+        L"--accessToken", identity.online() ? identity.accessToken : L"0",
+        L"--userProperties", L"{}",
+        L"--userType", identity.online() ? L"msa" : L"legacy",
+        L"--width", std::to_wstring(settings.windowWidth),
+        L"--height", std::to_wstring(settings.windowHeight)
+    };
+    if (settings.fullscreen) arguments.push_back(L"--fullscreen");
+    return joinArguments(arguments);
+}
+
 std::wstring MinecraftLaunchCommandBuilder::buildClasspath(
     const std::filesystem::path& gamePath) const
 {

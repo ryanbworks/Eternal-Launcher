@@ -95,8 +95,9 @@ namespace
 }
 
 MinecraftInstallPlanResult MinecraftManifestService::createPlan(
-    const std::filesystem::path& gameDirectory, std::stop_token stop) const
+    const std::filesystem::path& gameDirectory, std::stop_token stop, std::string_view versionId) const
 {
+    const auto wideVersion = utf8ToWide(versionId);
     HttpDownloadClient http;
     const auto manifestResponse = http.getText(VersionManifestUrl,stop);
     if (!manifestResponse.success)
@@ -115,7 +116,7 @@ MinecraftInstallPlanResult MinecraftManifestService::createPlan(
     {
         for (const auto& entry : *entries)
         {
-            if (text(child(&entry, "id")) == "1.20.1")
+            if (text(child(&entry, "id")) == versionId)
             {
                 versionUrl = text(child(&entry, "url"));
                 break;
@@ -124,7 +125,7 @@ MinecraftInstallPlanResult MinecraftManifestService::createPlan(
     }
     if (versionUrl.empty())
     {
-        return {false, L"Minecraft 1.20.1 não foi encontrado no manifesto oficial.", {}};
+        return {false, L"Minecraft " + wideVersion + L" não foi encontrado no manifesto oficial.", {}};
     }
 
     const auto versionResponse = http.getText(utf8ToWide(versionUrl),stop);
@@ -144,10 +145,9 @@ MinecraftInstallPlanResult MinecraftManifestService::createPlan(
     const auto clientHash = text(child(client, "sha1"));
     if (clientUrl.empty() || clientHash.empty())
     {
-        return {false, L"O manifesto não contém o cliente Minecraft 1.20.1.", {}};
+        return {false, L"O manifesto não contém o cliente Minecraft " + wideVersion + L".", {}};
     }
-    const auto clientPath = gameDirectory / L"versions" / LauncherConfig::MinecraftVersion /
-                            L"1.20.1.jar";
+    const auto clientPath = gameDirectory / L"versions" / wideVersion / (wideVersion + L".jar");
     plan.downloads.push_back({
         utf8ToWide(clientUrl), clientPath, clientHash,
         unsignedNumber(child(client, "size")), FileHashAlgorithm::Sha1});

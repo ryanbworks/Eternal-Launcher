@@ -40,6 +40,15 @@ namespace LauncherConfig
     // installations in the user's .minecraft folder.
     inline constexpr std::wstring_view DataDirectoryName = L".eternal-launcher";
     inline constexpr std::wstring_view GameDirectoryName = L"minecraft";
+
+    // Unmodified 1.8.9, kept apart from the group's instance.
+    inline constexpr std::wstring_view VanillaVersion = L"1.8.9";
+    inline constexpr std::wstring_view VanillaAssetIndex = L"1.8";
+    inline constexpr std::wstring_view VanillaGameDirectoryName = L"minecraft-1.8.9";
+    inline constexpr std::wstring_view Java8RuntimeDirectoryName = L"runtime-8";
+    inline constexpr std::wstring_view Java8RuntimeMetadataUrl =
+        L"https://api.adoptium.net/v3/assets/latest/8/hotspot"
+        L"?architecture=x64&image_type=jre&os=windows&vendor=eclipse";
     inline constexpr int MinimumMemoryMegabytes = 512;
     inline constexpr int MaximumMemoryMegabytes = 4096;
 }

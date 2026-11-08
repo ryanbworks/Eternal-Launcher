@@ -194,5 +194,16 @@ int main(int argumentCount, char* arguments[])
         return 17;
     }
 
+    const auto vanillaCommand = commandBuilder.buildVanilla(
+        MinecraftIdentity{L"Amigo_123"}, L"C:\\java8.exe", settingsDirectory, LauncherSettings{});
+    const auto has = [&](std::wstring_view text) { return vanillaCommand.find(text) != std::wstring::npos; };
+    if (!has(L"net.minecraft.client.main.Main") || !has(L"client-1.7.xml") || !has(L"--userProperties {}") ||
+        !has(L"--assetIndex 1.8 ") || !has(L"--version 1.8.9 ") || !has(L"--userType legacy") ||
+        has(L"--add-opens") || has(L"forgeclient") || has(L"bootstraplauncher"))
+    {
+        std::wcerr << L"The 1.8.9 command is not the plain Java 8 profile.\n";
+        return 18;
+    }
+
     return 0;
 }

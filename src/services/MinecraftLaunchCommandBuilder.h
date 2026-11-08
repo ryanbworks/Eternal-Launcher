@@ -23,6 +23,10 @@ public:
     [[nodiscard]] std::wstring build(
         const MinecraftIdentity& identity, const std::filesystem::path& javaExecutable,
         const std::filesystem::path& gameDirectory, const LauncherSettings& settings) const;
+    // Unmodified 1.8.9 on Java 8: no Forge bootstrap and no Java 9+ module options.
+    [[nodiscard]] std::wstring buildVanilla(
+        const MinecraftIdentity& identity, const std::filesystem::path& javaExecutable,
+        const std::filesystem::path& gameDirectory, const LauncherSettings& settings) const;
 
 private:
     [[nodiscard]] std::wstring buildClasspath(

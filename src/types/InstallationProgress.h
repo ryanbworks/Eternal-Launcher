@@ -40,7 +40,7 @@ struct InstallationResult {
 };
 
 inline const wchar_t* installationStageLabel(InstallationStage stage) {
-    constexpr const wchar_t* labels[] = {L"Verificações e Java 17", L"Minecraft e assets",
+    constexpr const wchar_t* labels[] = {L"Verificações e Java", L"Minecraft e assets",
         L"Bibliotecas nativas", L"Forge", L"Mods e configurações", L"Validação final"};
     return labels[static_cast<std::size_t>(stage)];
 }

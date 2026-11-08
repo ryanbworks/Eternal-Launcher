@@ -70,6 +70,19 @@ offline servers. In Original mode, the player signs in with Microsoft and the
 launcher uses the name, UUID and token of the Minecraft: Java Edition profile. See
 the README to configure the Application ID that mode requires.
 
+## Minecraft 1.8.9 without mods
+
+The arrow next to **Jogar** offers an unmodified 1.8.9, for public minigame servers.
+It uses `minecraft-1.8.9` and `runtime-8` inside the data folder, so the group's
+instance, Java 17 and mods are never touched, and it does not depend on the file
+server. Java comes from Adoptium and the game from Mojang, both verified by hash.
+The `client-1.7.xml` log configuration is mandatory: it disables the JNDI lookups of
+this version's log4j (Log4Shell), and the game does not start without it.
+
+This time is not counted in the local total or in the leaderboard. Nickname mode only
+reaches servers that accept unauthenticated players; servers such as Hypixel require
+the original account.
+
 ## Validation and execution
 
 Before starting, `MinecraftLauncherService` confirms Java 17, the Forge profile,

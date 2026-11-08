@@ -105,7 +105,9 @@ private:
     void showPlayMenu();
 
     // Play flow.
-    void handlePrimaryAction();
+    void handlePrimaryAction(bool vanilla = false);
+    void launchVanilla();
+    void showGameTrayIcon();
     void beginPlay(bool repairOnly = false);
     // Plays offline when the file server is down and the installation is complete,
     // otherwise prepares the game (or retries the server first).
@@ -221,6 +223,7 @@ private:
     SettingsPage settingsPage_;
     bool closing_ = false;
     bool repairOnly_ = false;
+    bool playingVanilla_ = false; // the current play request is the unmodified 1.8.9
 
     ChromeView chrome_;
     HeroComponent hero_;

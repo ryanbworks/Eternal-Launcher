@@ -65,6 +65,7 @@ namespace LauncherConstants
     inline constexpr UINT MenuOpenModsFolder = 40002;
     inline constexpr UINT MenuRepair = 40003;
     inline constexpr UINT MenuOpenLogs = 40004;
+    inline constexpr UINT MenuPlayVanilla = 40005;
     inline constexpr UINT MenuTrayOpen = 40011;
     inline constexpr UINT MenuTrayExit = 40012;
 

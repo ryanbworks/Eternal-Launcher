@@ -226,8 +226,43 @@ MinecraftLaunchResult MinecraftLauncherService::launch(const MinecraftIdentity& 
         return {false, L"A sessão Microsoft está incompleta. Entre novamente.", 0,
                 MinecraftLaunchIssue::InvalidNickname};
     }
-    std::wstring commandLine = commandBuilder.build(identity, javaPath, gamePath, settings_);
+    return startProcess(javaPath, commandBuilder.build(identity, javaPath, gamePath, settings_), gamePath,
+                        L"Minecraft iniciado com o perfil Forge configurado.");
+}
 
+MinecraftLaunchResult MinecraftLauncherService::launchVanilla(
+    const MinecraftIdentity& identity, const std::filesystem::path& javaExecutable, const std::filesystem::path& gamePath)
+{
+    if (isGameRunning())
+    {
+        return {false, L"O Minecraft já está em execução.", processId_, MinecraftLaunchIssue::GameAlreadyRunning};
+    }
+    if (processHandle_ != nullptr)
+    {
+        CloseHandle(processHandle_);
+        processHandle_ = nullptr;
+        processId_ = 0;
+    }
+    if (!isValidNickname(identity.name))
+    {
+        return {false, L"O nickname deve ter de 3 a 16 caracteres e usar apenas letras, números ou underline.", 0,
+                MinecraftLaunchIssue::InvalidNickname};
+    }
+    if (identity.online() && identity.uuid.size() != 32)
+    {
+        return {false, L"A sessão Microsoft está incompleta. Entre novamente.", 0, MinecraftLaunchIssue::InvalidNickname};
+    }
+    if (!std::filesystem::is_regular_file(javaExecutable))
+    {
+        return {false, L"O Java 8 não foi encontrado.", 0, MinecraftLaunchIssue::JavaMissing};
+    }
+    return startProcess(javaExecutable, MinecraftLaunchCommandBuilder{}.buildVanilla(identity, javaExecutable, gamePath, settings_),
+                        gamePath, L"Minecraft 1.8.9 iniciado.");
+}
+
+MinecraftLaunchResult MinecraftLauncherService::startProcess(
+    const std::filesystem::path& javaPath, std::wstring commandLine, const std::filesystem::path& gamePath, std::wstring successMessage)
+{
     STARTUPINFO startupInfo{};
     startupInfo.cb = sizeof(startupInfo);
     std::filesystem::create_directories(gamePath / L"logs");
@@ -276,7 +311,7 @@ MinecraftLaunchResult MinecraftLauncherService::launch(const MinecraftIdentity& 
     CloseHandle(processInformation.hThread);
     processHandle_ = processInformation.hProcess;
     processId_ = processInformation.dwProcessId;
-    return {true, L"Minecraft iniciado com o perfil Forge configurado.", processId_};
+    return {true, std::move(successMessage), processId_};
 }
 
 bool MinecraftLauncherService::isGameRunning() const

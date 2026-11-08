@@ -35,6 +35,10 @@ public:
     [[nodiscard]] virtual MinecraftLaunchResult validateInstallation() const = 0;
     virtual MinecraftLaunchResult launch(std::wstring_view nickname) = 0;
     virtual MinecraftLaunchResult launch(const MinecraftIdentity& identity) = 0;
+    virtual MinecraftLaunchResult launchVanilla(const MinecraftIdentity&, const std::filesystem::path&, const std::filesystem::path&)
+    {
+        return {false, L"Esta versão não está disponível.", 0, MinecraftLaunchIssue::InvalidConfiguration};
+    }
     [[nodiscard]] virtual bool isGameRunning() const = 0;
     [[nodiscard]] virtual std::filesystem::path gameDirectory() const = 0;
 };

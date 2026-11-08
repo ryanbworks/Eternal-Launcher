@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 struct MinecraftInstallPlan
@@ -29,5 +30,6 @@ class MinecraftManifestService
 {
 public:
     [[nodiscard]] MinecraftInstallPlanResult createPlan(
-        const std::filesystem::path& gameDirectory, std::stop_token stop = {}) const;
+        const std::filesystem::path& gameDirectory, std::stop_token stop = {},
+        std::string_view versionId = "1.20.1") const;
 };
