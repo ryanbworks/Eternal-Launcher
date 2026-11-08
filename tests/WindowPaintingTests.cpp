@@ -535,11 +535,11 @@ public:
         page.showPage(LauncherPage::News);
         check(page.pageFade_==0 && page.animationTimer_,"page switches fade in");
         tick(page);
-        check(page.navIndicator_>Layout::navButton(0).Y && page.navIndicator_<Layout::navButton(1).Y,
+        check(page.navIndicator_>Layout::navButton(0).Y && page.navIndicator_<Layout::navButton(2).Y,
             "the navigation selection slides toward the new page");
         for(int i=0;i<10;++i) tick(page);
         check(page.pageFade_==1 && !page.animationTimer_,"page fade completes and stops");
-        check(page.navIndicator_==Layout::navButton(1).Y,"the navigation selection settles on the page");
+        check(page.navIndicator_==Layout::navButton(2).Y,"the navigation selection settles on the page");
         page.showPage(LauncherPage::Settings);for(int i=0;i<10;++i) tick(page);
         check(!page.animationTimer_,"settings settles after its entrance");
         SendMessageW(GetDlgItem(page.window_,SettingsPage::Fullscreen),BM_CLICK,0,0);
