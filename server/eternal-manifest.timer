@@ -1,5 +1,5 @@
 [Unit]
-Description=Check for new Eternal Launcher mods
+Description=Check for new Eternal Launcher mods, configs and packs
 
 [Timer]
 OnBootSec=10s

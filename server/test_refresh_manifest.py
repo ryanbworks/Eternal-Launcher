@@ -20,7 +20,7 @@ class RefreshManifestTests(unittest.TestCase):
             manifest = root / "manifest.json"
             manifest.write_text(json.dumps({
                 "schemaVersion": 1,
-                "files": [{"path": "config/grupo.toml", "sha256": "abc"}],
+                "files": [{"path": "extras/grupo.toml", "sha256": "abc"}],
             }), encoding="utf-8")
             mod = mods / "teste-1.20.1.jar"
             mod.write_bytes(b"versao-1")
@@ -30,7 +30,7 @@ class RefreshManifestTests(unittest.TestCase):
 
             self.assertEqual(refresh(root, cache), 1)
             entries = json.loads(manifest.read_text(encoding="utf-8"))["files"]
-            self.assertEqual(entries[0]["path"], "config/grupo.toml")
+            self.assertEqual(entries[0]["path"], "extras/grupo.toml")
             self.assertEqual(entries[1], {
                 "path": "mods/teste-1.20.1.jar",
                 "sha256": hashlib.sha256(b"versao-1").hexdigest(),
@@ -56,6 +56,36 @@ class RefreshManifestTests(unittest.TestCase):
             self.assertEqual(refresh(root, cache), 1)
             entries = json.loads(manifest.read_text(encoding="utf-8"))["files"]
             self.assertEqual(entries[1]["path"], f"mods/{named_mod.name}")
+
+    def test_configs_and_packs_are_published_and_removed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "mods").mkdir()
+            old = time.time() - 10
+            names = [
+                "config/simple-rpc/main.toml",
+                "resourcepacks/pack.zip",
+                "shaderpacks/shader.zip",
+                "config/.hidden/secret.toml",
+                "config/.dotfile",
+                "config/half.upload",
+            ]
+            for name in names:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"data")
+                os.utime(path, (old, old))
+            manifest = root / "manifest.json"
+            cache = root / "cache.json"
+
+            self.assertEqual(refresh(root, cache), 3)
+            entries = json.loads(manifest.read_text(encoding="utf-8"))["files"]
+            self.assertEqual([entry["path"] for entry in entries], names[:3])
+
+            (root / names[0]).unlink()
+            self.assertEqual(refresh(root, cache), 2)
+            entries = json.loads(manifest.read_text(encoding="utf-8"))["files"]
+            self.assertEqual([entry["path"] for entry in entries], names[1:3])
 
 
 if __name__ == "__main__":
