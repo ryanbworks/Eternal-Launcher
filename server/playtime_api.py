@@ -27,7 +27,8 @@ HEARTBEAT_SECONDS = 60
 # A longer silence (sleep, lost connection) earns nothing: only proven time counts.
 MAX_CREDIT_GAP = 150
 SESSION_TTL = 900
-MAX_SESSIONS_PER_IP = 6
+# Generous on purpose: friends at one house or behind carrier NAT share an address.
+MAX_SESSIONS_PER_IP = 20
 MAX_BODY_BYTES = 4096
 MAX_LEADERBOARD = 20
 
