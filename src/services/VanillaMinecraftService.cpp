@@ -155,6 +155,12 @@ std::filesystem::path VanillaMinecraftService::javaExecutable()
     return LauncherSettingsStore::dataDirectory() / LauncherConfig::Java8RuntimeDirectoryName / L"bin" / L"java.exe";
 }
 
+bool VanillaMinecraftService::isInstalled()
+{
+    std::error_code ignored;
+    return std::filesystem::is_regular_file(gameDirectory() / ReadyMarker, ignored);
+}
+
 InstallationResult VanillaMinecraftService::prepare(std::stop_token stop, const InstallationProgressCallback& callback) const
 {
     const InstallationProgressCallback progress = [&](const InstallationProgress& value) { if (callback) callback(value); };

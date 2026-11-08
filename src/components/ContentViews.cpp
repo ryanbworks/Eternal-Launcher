@@ -1,13 +1,17 @@
 #include "components/ContentViews.h"
 
+#include "components/HeroComponent.h"
 #include "components/Layout.h"
 #include "constants/LauncherConstants.h"
 #include "styles/Theme.h"
 #include "utils/DrawingUtils.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <optional>
 #include <string>
+#include <vector>
 
 using namespace DrawingUtils;
 
@@ -38,6 +42,136 @@ namespace
         const float thumb = std::max(28.0F, list.Height * ratio);
         const float y = list.Y + (list.Height - thumb) * (scroll / (content - list.Height));
         fillPill(g, {list.GetRight() + 8, y, 4, thumb}, Theme::Border);
+    }
+}
+
+namespace
+{
+    // Authored scene for the classic version: floating block islands at dusk.
+    void classicScene(Gdiplus::Graphics& g, const Gdiplus::RectF& b)
+    {
+        Gdiplus::LinearGradientBrush sky(Gdiplus::PointF(0, b.Y), Gdiplus::PointF(0, b.GetBottom()),
+            Gdiplus::Color(255, 18, 22, 52), Gdiplus::Color(255, 96, 64, 146));
+        g.FillRectangle(&sky, b);
+        for (int i = 0; i < 34; ++i) {
+            Gdiplus::SolidBrush star(Gdiplus::Color(static_cast<BYTE>(110 + i * 41 % 130), 226, 222, 255));
+            g.FillRectangle(&star, b.X + static_cast<float>((i * 137 + 23) % 556), b.Y + static_cast<float>((i * 71 + 9) % 118), 3.0F, 3.0F);
+        }
+        const float cell = 14;
+        const auto block = [&](int column, int row, int red, int green, int blue) {
+            const int shade = (column * 73 + row * 151) % 5 * 5 - 10;
+            const auto channel = [shade](int value) { return static_cast<BYTE>(std::clamp(value + shade, 0, 255)); };
+            Gdiplus::SolidBrush brush(Gdiplus::Color(255, channel(red), channel(green), channel(blue)));
+            g.FillRectangle(&brush, b.X + static_cast<float>(column) * cell, b.Y + static_cast<float>(row) * cell, cell + .5F, cell + .5F);
+        };
+        const auto island = [&](int center, int top, int halfWidth, int depth) {
+            for (int row = 0; row < depth; ++row) {
+                const int half = halfWidth - row * halfWidth / depth;
+                for (int column = center - half; column <= center + half; ++column) {
+                    if (row == 0) block(column, top, 86, 168, 92);
+                    else if (row == 1) block(column, top + row, 128, 92, 66);
+                    else block(column, top + row, 92, 94, 116);
+                }
+            }
+        };
+        island(20, 9, 13, 6);
+        island(5, 11, 5, 4);
+        island(35, 7, 6, 5);
+        for (int column = 17; column <= 18; ++column) block(column, 8, 196, 62, 70);
+        for (int column = 19; column <= 20; ++column) block(column, 8, 226, 226, 236);
+        for (int row = 8; row <= 10; ++row) block(5, row, 74, 120, 220);
+        for (int row = 4; row <= 6; ++row) block(35, row, 232, 186, 70);
+    }
+
+    void chips(Gdiplus::Graphics& g, float x, float y, const std::vector<std::wstring>& labels)
+    {
+        for (const auto& label : labels) {
+            const float width = measureText(g, label, 12, Gdiplus::FontStyleBold) + 24;
+            const Gdiplus::RectF pill{x, y, width, 26};
+            fillPill(g, pill, Theme::SurfaceElevated);
+            drawText(g, label, pill, 12, Gdiplus::FontStyleBold, Theme::TextSecondary, Gdiplus::StringAlignmentCenter, Gdiplus::StringAlignmentCenter);
+            x += width + 8;
+        }
+    }
+
+    struct VersionCard
+    {
+        const wchar_t* kicker;
+        const wchar_t* title;
+        std::vector<std::wstring> tags;
+        struct Row { Icons::Icon icon; const wchar_t* text; };
+        std::array<Row, 4> rows;
+    };
+}
+
+void VersionsView::draw(Gdiplus::Graphics& g, const VersionsModel& m, const HeroComponent& hero, const ControlVisuals& visuals) const
+{
+    using LauncherConstants::VersionEternalButtonId;
+    using LauncherConstants::VersionVanillaButtonId;
+    header(g, L"Versões", L"Escolha o que você quer jogar. O botão Jogar da tela inicial abre a versão selecionada.");
+    const float radius = Theme::CardRadius + 2;
+    const float artHeight = 250;
+    const VersionCard cards[] = {
+        {L"MODPACK DO GRUPO", L"Eternal Realms",
+         {L"Minecraft 1.20.1", L"Forge 47.4.10", m.serverMods >= 0 ? std::to_wstring(m.serverMods) + L" mods" : std::wstring(L"Mods do grupo")},
+         {{{Icons::Icon::Server, L"Feito para o servidor do grupo"},
+           {Icons::Icon::Clock, L"Seu tempo conta no ranking"},
+           {Icons::Icon::Download, L"Mods sincronizados a cada Jogar"},
+           {Icons::Icon::Folder, L"Aceita os seus próprios mods"}}}},
+        {L"VERSÃO CLÁSSICA", L"Minecraft 1.8.9",
+         {L"Sem mods", L"Java 8", m.vanillaInstalled ? std::wstring(L"Instalada") : std::wstring(L"Baixa no primeiro jogo")},
+         {{{Icons::Icon::Play, L"Boa para Bedwars, SkyWars e outros minigames"},
+           {Icons::Icon::Layers, L"Pasta e Java próprios, sem mexer no modpack"},
+           {Icons::Icon::Clock, L"Este tempo não conta no ranking"},
+           {Icons::Icon::Key, L"Hypixel e servidores premium pedem Conta original"}}}}};
+    for (int i = 0; i < 2; ++i) {
+        const bool selected = (i == 1) == m.vanillaSelected;
+        const float offset = rise(m.entrance, i);
+        auto b = Layout::versionCard(i);
+        b.Y += offset;
+        fillRoundedRectangle(g, b, radius, Theme::Surface);
+        {
+            const Gdiplus::RectF art{b.X, b.Y, b.Width, artHeight};
+            const auto saved = g.Save();
+            auto clip = createRoundedPath(b, radius);
+            g.SetClip(clip.get(), Gdiplus::CombineModeIntersect);
+            if (i == 0) hero.drawThumbnail(g, art, 3, .62F, .42F);
+            else classicScene(g, art);
+            // The artwork dissolves into the card so the copy below reads as part of it.
+            const Gdiplus::Color surface = Theme::Surface;
+            Gdiplus::LinearGradientBrush fade(Gdiplus::PointF(0, art.GetBottom() - 96), Gdiplus::PointF(0, art.GetBottom() + 1),
+                Gdiplus::Color(0, surface.GetR(), surface.GetG(), surface.GetB()), surface);
+            g.FillRectangle(&fade, Gdiplus::RectF(art.X, art.GetBottom() - 95, art.Width, 95));
+            g.Restore(saved);
+        }
+        if (selected) drawRoundedRectangle(g, {b.X + 1, b.Y + 1, b.Width - 2, b.Height - 2}, radius, Theme::Accent, 2);
+        else drawRoundedRectangle(g, {b.X + .5F, b.Y + .5F, b.Width - 1, b.Height - 1}, radius, Theme::Divider);
+
+        const auto& card = cards[i];
+        const float top = b.Y + artHeight - 22;
+        const float left = b.X + 28, width = b.Width - 56;
+        drawText(g, card.kicker, {left, top, width, 18}, 11.5F, Gdiplus::FontStyleBold, Theme::AccentLight);
+        drawDisplayText(g, card.title, {left, top + 20, width - 130, 40}, 26, Theme::TextPrimary, Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+        if (selected) {
+            const Gdiplus::RectF pill{b.GetRight() - 28 - 122, top + 27, 122, 28};
+            fillPill(g, pill, Theme::AccentTint);
+            Icons::draw(g, Icons::Icon::Check, {pill.X + 13, pill.Y + 7, 14, 14}, Theme::AccentLight, 2);
+            drawText(g, L"Selecionada", {pill.X + 32, pill.Y, pill.Width - 36, pill.Height}, 12.5F, Gdiplus::FontStyleBold, Theme::AccentLight,
+                Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+        }
+        chips(g, left, top + 68, card.tags);
+        for (std::size_t row = 0; row < card.rows.size(); ++row) {
+            const float y = top + 108 + static_cast<float>(row) * 31;
+            Icons::draw(g, card.rows[row].icon, {left, y + 6, 18, 18}, Theme::AccentLight, 1.7F);
+            drawText(g, card.rows[row].text, {left + 30, y, width - 30, 30}, 14, Gdiplus::FontStyleRegular, Theme::TextSecondary,
+                Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+        }
+
+        auto action = Layout::versionAction(i);
+        action.Y += offset;
+        const auto visual = visuals(i == 0 ? VersionEternalButtonId : VersionVanillaButtonId);
+        if (selected) Buttons::draw(g, action, L"JOGAR", visual, Buttons::Style::Primary, Icons::Icon::Play, false, 15);
+        else Buttons::draw(g, action, L"Usar esta versão", visual, Buttons::Style::Secondary, std::nullopt, false, 14);
     }
 }
 

@@ -156,6 +156,14 @@ public:
         MSG escape{};escape.hwnd=page.window_;escape.message=WM_KEYDOWN;escape.wParam=VK_ESCAPE;
         check(page.handleKeyboard(escape) && page.page_==LauncherPage::Home && !shown(GetDlgItem(page.window_,SettingsPage::Save)),
             "Escape returns home and hides the settings form");
+        SendMessageW(control(page,NavVersionsId),BM_CLICK,0,0);
+        check(page.page_==LauncherPage::Versions && shown(control(page,VersionVanillaButtonId)) && !shown(control(page,PlayButtonId)),
+            "the versions page replaces the home controls");
+        page.viewState_.playEnabled=true;page.redraw();
+        SendMessageW(control(page,VersionVanillaButtonId),BM_CLICK,0,0);
+        check(page.vanillaSelected_ && page.page_==LauncherPage::Versions,"choosing a version selects it and stays on the page");
+        SendMessageW(control(page,VersionEternalButtonId),BM_CLICK,0,0);
+        check(!page.vanillaSelected_,"the group's modpack can be selected again");
         SendMessageW(control(page,NavHelpId),BM_CLICK,0,0);
         check(page.page_==LauncherPage::Help && shown(control(page,HelpRepairButtonId)) && shown(control(page,HelpCopySupportButtonId)),
             "help page exposes its actions");

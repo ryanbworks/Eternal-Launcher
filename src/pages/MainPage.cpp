@@ -40,6 +40,7 @@ namespace
     struct ControlSpec { int id; bool chrome; bool tabStop; const wchar_t* label; };
     constexpr ControlSpec ControlSpecs[] = {
         {NavHomeId, true, true, L"Início"},
+        {NavVersionsId, true, true, L"Versões"},
         {NavNewsId, true, true, L"Notícias"},
         {NavModsId, true, true, L"Mods"},
         {NavSettingsId, true, true, L"Configurações"},
@@ -50,6 +51,7 @@ namespace
         {OriginalButtonId, false, true, L"Conta original"},
         {VersionEternalButtonId, false, true, L"Modpack Eternal"},
         {VersionVanillaButtonId, false, true, L"Minecraft 1.8.9"},
+        {VersionChangeButtonId, false, true, L"Trocar versão"},
         {UpdateDownloadButtonId, false, true, L"Baixar launcher"},
         {RetryServerButtonId, false, true, L"Tentar conectar ao servidor"},
         {PlayButtonId, false, true, L"Jogar"},
@@ -832,7 +834,6 @@ HomeModel MainPage::homeModel(bool preview) const
     player.nicknameEmpty = nickname.empty();
     player.nicknameValid = NicknameStore::isValid(nickname);
     player.identitySelection = preview ? (originalMode_ ? 1.0F : 0.0F) : identitySelection_;
-    player.versionSelection = preview ? (vanillaSelected_ ? 1.0F : 0.0F) : versionSelection_;
     const auto now = wallClock();
     const auto record = playSession_.active() ? playSession_.snapshot(PlaySession::Clock::now(), now) : playtime_;
     player.playing = playSession_.active() || viewState_.operation == LauncherOperation::MinecraftRunning;
@@ -873,6 +874,8 @@ HomeModel MainPage::homeModel(bool preview) const
     }
 
     const int serverMods = mods_.manifestKnown ? static_cast<int>(mods_.server.size()) : -1;
+    player.versionSummary = vanillaSelected_ ? std::wstring(L"1.8.9 · Sem mods")
+        : std::wstring(LauncherConfig::MinecraftVersion) + L" · Forge " + std::wstring(LauncherConfig::ForgeVersion);
     {
         const int memory = settings_.maximumMemoryMegabytes;
         std::wstring gigabytes = memory % 1024 == 0 ? std::to_wstring(memory / 1024) : std::to_wstring(memory / 1024) + L"," + std::to_wstring(memory % 1024 * 10 / 1024);
@@ -960,6 +963,10 @@ void MainPage::render(Gdiplus::Graphics& g, float width, float height, bool prev
             installationPanel_.draw(g, installation_, animationPhase_, visuals, preview ? -1 : installationFill_,
                 preview ? std::array<float, 6>{} : completionPulse_);
         break;
+    case LauncherPage::Versions:
+        versionsView_.draw(g, VersionsModel{vanillaSelected_, vanillaInstalled_, mods_.manifestKnown ? static_cast<int>(mods_.server.size()) : -1,
+            preview ? 1.0F : pageFade_}, hero_, visuals);
+        break;
     case LauncherPage::News:
         newsView_.draw(g, NewsModel{&viewState_.news, newsFirst_, newsLoading_, newsError_, preview ? 1.0F : pageFade_}, visuals);
         break;
@@ -1045,8 +1052,6 @@ void MainPage::redraw(bool animationFrame)
     for (const auto& control : controls_) unsettled |= std::abs(control.hover - (control.hovered ? 1.0F : 0.0F)) > 0.005F;
     const float selection = originalMode_ ? 1.0F : 0.0F;
     unsettled |= std::abs(identitySelection_ - selection) > .005F;
-    const float versionTarget = vanillaSelected_ ? 1.0F : 0.0F;
-    unsettled |= std::abs(versionSelection_ - versionTarget) > .005F;
     const bool transferVisible = installation_.visible && installation_.running && !installation_.cancelling &&
         transfer.activity == InstallationActivity::Downloading && transfer.percent.has_value();
     unsettled |= transferVisible && std::abs(installationFill_ - fillTarget) > .1F;
@@ -1068,7 +1073,6 @@ void MainPage::redraw(bool animationFrame)
         for (auto& control : controls_) control.hover = control.hovered ? 1.0F : 0.0F;
         displayedProgress_ = static_cast<float>(viewState_.progressPercent);
         identitySelection_ = selection;
-        versionSelection_ = versionTarget;
         installationFill_ = fillTarget;
         portalEntrance_ = 1; portalEnergy_ = 0; portalBurst_ = 0; pageFade_ = 1;
         completionPulse_ = {};
@@ -1124,7 +1128,7 @@ void MainPage::animate()
     const float dt = std::clamp(std::chrono::duration<float, std::milli>(now - previousFrame_).count(), 0.0F, 100.0F);
     previousFrame_ = now;
     // Remember what is on screen so only what actually moves gets repainted.
-    const float fadeBefore = pageFade_, navBefore = navIndicator_, toastBefore = toastReveal_, selectionBefore = identitySelection_, versionBefore = versionSelection_;
+    const float fadeBefore = pageFade_, navBefore = navIndicator_, toastBefore = toastReveal_, selectionBefore = identitySelection_;
     const float playBefore[] = {playSweep_, playPulse_, playPress_, playLight_, playProgressShown_, displayedProgress_};
     const float fillBefore = installationFill_, entranceBefore = portalEntrance_;
     const auto pulsesBefore = completionPulse_;
@@ -1153,9 +1157,6 @@ void MainPage::animate()
     const float selection = originalMode_ ? 1.0F : 0.0F;
     identitySelection_ += (selection - identitySelection_) * (1 - std::exp(-dt / 55));
     if (std::abs(selection - identitySelection_) < .006F) identitySelection_ = selection;
-    const float versionTarget = vanillaSelected_ ? 1.0F : 0.0F;
-    versionSelection_ += (versionTarget - versionSelection_) * (1 - std::exp(-dt / 55));
-    if (std::abs(versionTarget - versionSelection_) < .006F) versionSelection_ = versionTarget;
     const float fillTarget = static_cast<float>(installation_.progress.percent.value_or(0));
     installationFill_ += (fillTarget - installationFill_) * (1 - std::exp(-dt / 70));
     if (std::abs(fillTarget - installationFill_) < .1F) installationFill_ = fillTarget;
@@ -1208,9 +1209,6 @@ void MainPage::animate()
             if (portalEntrance_ != entranceBefore) markContent(Layout::Installation, 24);  // tiles and cards rise
         }
         if (toastReveal_ != toastBefore) markContent(Layout::Hero, 2);
-        if (versionSelection_ != versionBefore)
-            markContent({Layout::VersionEternal.X, Layout::VersionEternal.Y, Layout::VersionVanilla.GetRight() - Layout::VersionEternal.X,
-                Layout::VersionEternal.Height}, 4);
         if (identitySelection_ != selectionBefore)
             markContent({Layout::OfflineMode.X, Layout::OfflineMode.Y, Layout::OriginalMode.GetRight() - Layout::OfflineMode.X,
                 Layout::OfflineMode.Height}, 4);
@@ -1283,7 +1281,7 @@ const MainPage::Control* MainPage::findControl(int id) const
 
 bool MainPage::chromeControl(int id) const
 {
-    return id == MinimizeButtonId || id == MaximizeButtonId || id == CloseButtonId || inRange(id, NavHomeId, 5);
+    return id == MinimizeButtonId || id == MaximizeButtonId || id == CloseButtonId || inRange(id, NavHomeId, NavigationCount);
 }
 
 float MainPage::chromeWidth() const { return viewScale_ > 0 ? clientWidth_ / viewScale_ : static_cast<float>(WindowWidth); }
@@ -1323,16 +1321,18 @@ Gdiplus::RectF MainPage::controlBounds(int id) const
     case MaximizeButtonId: return Layout::captionButton(1, chromeWidth());
     case CloseButtonId: return Layout::captionButton(2, chromeWidth());
     case NavHomeId: return Layout::navButton(0);
-    case NavNewsId: return Layout::navButton(1);
-    case NavModsId: return Layout::navButton(2);
-    case NavSettingsId: return Layout::navButton(3);
+    case NavVersionsId: return Layout::navButton(1);
+    case NavNewsId: return Layout::navButton(2);
+    case NavModsId: return Layout::navButton(3);
+    case NavSettingsId: return Layout::navButton(4);
     case NavHelpId: return Layout::sidebarHelp(chromeHeight());
     case NicknameInputId: return Layout::NicknameEdit;
     case EditNicknameButtonId: return Layout::EditNickname;
     case OfflineButtonId: return Layout::OfflineMode;
     case OriginalButtonId: return Layout::OriginalMode;
-    case VersionEternalButtonId: return Layout::VersionEternal;
-    case VersionVanillaButtonId: return Layout::VersionVanilla;
+    case VersionEternalButtonId: return Layout::versionAction(0);
+    case VersionVanillaButtonId: return Layout::versionAction(1);
+    case VersionChangeButtonId: return Layout::VersionRow;
     case UpdateDownloadButtonId:
     case RetryServerButtonId:
         return Layout::UpdateLink;
@@ -1373,9 +1373,11 @@ bool MainPage::controlVisible(int id) const
     case EditNicknameButtonId:
         return home && !originalMode_;
     case OfflineButtonId:
-    case OriginalButtonId:
     case VersionEternalButtonId:
     case VersionVanillaButtonId:
+        return page_ == LauncherPage::Versions;
+    case OriginalButtonId:
+    case VersionChangeButtonId:
     case PlayButtonId:
     case PlayMenuButtonId:
     case QuickFolderButtonId:
@@ -1443,17 +1445,18 @@ std::wstring MainPage::controlLabel(int id) const
     case PlayButtonId:
         if (vanillaSelected_ && viewState_.playEnabled) return L"Jogar Minecraft 1.8.9";
         return viewState_.primaryActionLabel.empty() ? L"Jogar" : viewState_.primaryActionLabel;
-    case VersionEternalButtonId: return vanillaSelected_ ? L"Modpack Eternal" : L"Modpack Eternal (selecionado)";
-    case VersionVanillaButtonId: return vanillaSelected_ ? L"Minecraft 1.8.9 (selecionado)" : L"Minecraft 1.8.9";
+    case VersionEternalButtonId: return vanillaSelected_ ? L"Usar o Modpack Eternal" : L"Jogar o Modpack Eternal";
+    case VersionVanillaButtonId: return vanillaSelected_ ? L"Jogar Minecraft 1.8.9" : L"Usar Minecraft 1.8.9";
+    case VersionChangeButtonId: return vanillaSelected_ ? L"Trocar versão, selecionada Minecraft 1.8.9" : L"Trocar versão, selecionado Modpack Eternal";
     case OfflineButtonId: return originalMode_ ? L"Nickname" : L"Nickname (selecionado)";
     case OriginalButtonId: return originalMode_ ? L"Conta original (selecionado)" : L"Conta original";
     case MaximizeButtonId: return window_ && IsZoomed(window_) ? L"Restaurar" : L"Maximizar";
     case CancelInstallationButtonId: return installation_.cancelling ? L"Cancelando instalação" : L"Cancelar instalação";
     default: break;
     }
-    if (inRange(id, NavHomeId, 5)) {
-        const wchar_t* names[] = {L"Início", L"Notícias", L"Mods", L"Configurações", L"Ajuda"};
-        const LauncherPage pages[] = {LauncherPage::Home, LauncherPage::News, LauncherPage::Mods, LauncherPage::Settings, LauncherPage::Help};
+    if (inRange(id, NavHomeId, NavigationCount)) {
+        const wchar_t* names[] = {L"Início", L"Notícias", L"Mods", L"Configurações", L"Ajuda", L"Versões"};
+        const LauncherPage pages[] = {LauncherPage::Home, LauncherPage::News, LauncherPage::Mods, LauncherPage::Settings, LauncherPage::Help, LauncherPage::Versions};
         const auto index = static_cast<std::size_t>(id - NavHomeId);
         return std::wstring(names[index]) + (page_ == pages[index] ? L" (página atual)" : L"");
     }
@@ -1526,7 +1529,7 @@ void MainPage::syncControls()
     if (page_ == LauncherPage::Settings) settingsPage_.setLocked(!viewState_.playEnabled || gameRunning());
     // Never leave keyboard focus on a control that just disappeared.
     if (focused && focused != window_ && IsChild(window_, focused) && !(GetWindowLongPtrW(focused, GWL_STYLE) & WS_VISIBLE)) {
-        const int navigation[] = {NavHomeId, NavNewsId, NavModsId, NavSettingsId, NavHelpId};
+        const int navigation[] = {NavHomeId, NavVersionsId, NavNewsId, NavModsId, NavSettingsId, NavHelpId};
         if (const auto* control = findControl(navigation[static_cast<int>(page_)]); control && control->window)
             SetFocus(control->window);
     }
@@ -1623,13 +1626,14 @@ void MainPage::showPage(LauncherPage page)
     if (page == LauncherPage::Mods) { refreshMods(); modsMessage_.clear(); modsMessageError_ = false; }
     if (page == LauncherPage::News) toastVisible_ = false;
     if (page == LauncherPage::Help) helpMessage_.clear();
+    if (page == LauncherPage::Versions) vanillaInstalled_ = VanillaMinecraftService::isInstalled();
     portalHovered_ = false;
     modsHoverRow_ = modsHoverAction_ = -1;
     pageFade_ = motionEnabled_ ? 0.0F : 1.0F;
     redraw();
     // Keyboard focus follows the page: a control of the previous page never keeps it.
     if (focused && focused != window_ && IsChild(window_, focused) && !(GetWindowLongPtrW(focused, GWL_STYLE) & WS_VISIBLE)) {
-        const int navigation[] = {NavHomeId, NavNewsId, NavModsId, NavSettingsId, NavHelpId};
+        const int navigation[] = {NavHomeId, NavVersionsId, NavNewsId, NavModsId, NavSettingsId, NavHelpId};
         if (const auto* control = findControl(navigation[static_cast<int>(page_)]); control && control->window)
             SetFocus(control->window);
     }
@@ -1656,6 +1660,10 @@ void MainPage::handleCommand(int id, int)
     case MaximizeButtonId: PostMessageW(window_, WM_SYSCOMMAND, IsZoomed(window_) ? SC_RESTORE : SC_MAXIMIZE, 0); break;
     case CloseButtonId: PostMessageW(window_, WM_CLOSE, 0, 0); break;
     case NavHomeId: showPage(LauncherPage::Home); break;
+    case NavVersionsId:
+    case VersionChangeButtonId:
+        showPage(LauncherPage::Versions);
+        break;
     case NavNewsId: showPage(LauncherPage::News); break;
     case NavModsId: showPage(LauncherPage::Mods); break;
     case NavSettingsId: showPage(LauncherPage::Settings); break;
@@ -1669,10 +1677,13 @@ void MainPage::handleCommand(int id, int)
         if (viewState_.playEnabled) { originalMode_ = true; redraw(); }
         break;
     case VersionEternalButtonId:
-        if (viewState_.playEnabled) { vanillaSelected_ = false; redraw(); }
-        break;
     case VersionVanillaButtonId:
-        if (viewState_.playEnabled) { vanillaSelected_ = true; redraw(); }
+        // The selected card's button plays; the other one only selects.
+        if (viewState_.playEnabled) {
+            const bool vanilla = id == VersionVanillaButtonId;
+            if (vanillaSelected_ == vanilla) { showPage(LauncherPage::Home); handlePrimaryAction(); }
+            else { vanillaSelected_ = vanilla; redraw(); }
+        }
         break;
     case EditNicknameButtonId:
         SetFocus(nicknameInput_);
@@ -2808,6 +2819,12 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
     }
 
     // Other pages.
+    ready(); page_ = LauncherPage::Versions;
+    if (!save(L"versions.png", 1)) return false;
+    vanillaSelected_ = true;
+    if (!save(L"versions-189.png", 1)) return false;
+    if (!save(L"versions-compact.png", .8F)) return false;
+    vanillaSelected_ = false;
     ready(); page_ = LauncherPage::News;
     if (!save(L"news.png", 1)) return false;
     viewState_.news.clear();

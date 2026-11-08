@@ -190,6 +190,11 @@ void Icons::draw(Gdiplus::Graphics& g, Icon icon, const Gdiplus::RectF& b,
         p.line(8, 3, 8, 7);
         p.line(16, 3, 16, 7);
         break;
+    case Icon::Layers:
+        p.polygon({{12, 3}, {21, 8}, {12, 13}, {3, 8}});
+        p.lines({{3, 12.5F}, {12, 17.5F}, {21, 12.5F}});
+        p.lines({{3, 16.5F}, {12, 21.5F}, {21, 16.5F}});
+        break;
     case Icon::Server:
         p.rect(3, 4, 18, 7, 2);
         p.rect(3, 13, 18, 7, 2);

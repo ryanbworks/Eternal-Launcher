@@ -32,6 +32,8 @@ namespace LauncherConstants
     inline constexpr int NavModsId = 1113;
     inline constexpr int NavSettingsId = 1114;
     inline constexpr int NavHelpId = 1115;
+    inline constexpr int NavVersionsId = 1116;
+    inline constexpr int NavigationCount = 6;
     // Home.
     inline constexpr int PlayMenuButtonId = 1121;
     inline constexpr int EditNicknameButtonId = 1122;
@@ -45,6 +47,7 @@ namespace LauncherConstants
     inline constexpr int RetryServerButtonId = 1131;
     inline constexpr int VersionEternalButtonId = 1132;
     inline constexpr int VersionVanillaButtonId = 1133;
+    inline constexpr int VersionChangeButtonId = 1134;
     // News page.
     inline constexpr int NewsLinkFirstId = 1141;
     inline constexpr int NewsLinkCount = 4;

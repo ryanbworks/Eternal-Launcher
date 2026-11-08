@@ -290,31 +290,6 @@ void HomeView::drawPlayerCard(Gdiplus::Graphics& g, const PlayerCardModel& m, co
         if (v.focused) drawFocusRing(g, b, 14, Theme::AccentLight);
     }
 
-    // Which game the play button starts, with the same sliding selection as the cards above.
-    const float versionTravel = easeInOut(m.versionSelection);
-    const Gdiplus::RectF versionSelected{Layout::VersionEternal.X + (Layout::VersionVanilla.X - Layout::VersionEternal.X) * versionTravel,
-        Layout::VersionEternal.Y, Layout::VersionEternal.Width, Layout::VersionEternal.Height};
-    const struct { const Gdiplus::RectF* bounds; int id; const wchar_t* title; const wchar_t* description; } versions[] = {
-        {&Layout::VersionEternal, VersionEternalButtonId, L"Modpack Eternal", L"1.20.1 · Forge"},
-        {&Layout::VersionVanilla, VersionVanillaButtonId, L"Minecraft 1.8.9", L"Sem mods · Minigames"}};
-    for (const auto& version : versions) {
-        const auto& b = *version.bounds;
-        const auto v = visuals(version.id);
-        fillRoundedRectangle(g, b, 12, blend(Gdiplus::Color(0, 30, 31, 44), Theme::SurfaceElevated, v.hover));
-        drawRoundedRectangle(g, {b.X + .5F, b.Y + .5F, b.Width - 1, b.Height - 1}, 12, blend(Theme::OutlineSubtle, Theme::Border, v.hover));
-    }
-    fillRoundedRectangle(g, versionSelected, 12, Theme::AccentTint);
-    drawRoundedRectangle(g, {versionSelected.X + .5F, versionSelected.Y + .5F, versionSelected.Width - 1, versionSelected.Height - 1}, 12, Theme::Accent);
-    for (const auto& version : versions) {
-        const auto& b = *version.bounds;
-        const auto v = visuals(version.id);
-        const float cover = std::clamp(1 - std::abs(versionSelected.X - b.X) / b.Width, 0.0F, 1.0F);
-        drawText(g, version.title, {b.X + 12, b.Y + 9, b.Width - 20, 18}, 13, Gdiplus::FontStyleBold, v.enabled ? Theme::TextPrimary : Theme::TextMuted);
-        drawText(g, version.description, {b.X + 12, b.Y + 30, b.Width - 18, 18}, 11.5F, Gdiplus::FontStyleRegular,
-            blend(Theme::TextMuted, Theme::TextSecondary, cover));
-        if (v.focused) drawFocusRing(g, b, 12, Theme::AccentLight);
-    }
-
     const wchar_t* statLabels[] = {L"Última partida", L"Tempo jogado"};
     const std::wstring statValues[] = {m.lastPlayed, m.totalPlayed};
     for (int i = 0; i < 2; ++i) {
@@ -327,15 +302,21 @@ void HomeView::drawPlayerCard(Gdiplus::Graphics& g, const PlayerCardModel& m, co
     {
         const auto& box = Layout::InstallSummary;
         drawRoundedRectangle(g, {box.X + .5F, box.Y + .5F, box.Width - 1, box.Height - 1}, 12, Theme::OutlineSubtle);
-        const wchar_t* labels[] = {L"Memória", L"Mods"};
-        const std::wstring values[] = {m.memorySummary, m.modsSummary.empty() ? std::wstring(L"—") : m.modsSummary};
+        // The version row is a button that opens the Versions page.
+        const auto versionRow = visuals(VersionChangeButtonId);
+        if (versionRow.hover > .01F)
+            fillRoundedRectangle(g, Layout::VersionRow, 9, blend(Gdiplus::Color(0, 30, 31, 44), Theme::SurfaceElevated, versionRow.hover));
+        if (versionRow.focused) drawFocusRing(g, Layout::VersionRow, 9, Theme::AccentLight);
+        Icons::draw(g, Icons::Icon::ChevronRight, {box.GetRight() - 27, box.Y + 13, 14, 14}, blend(Theme::TextMuted, Theme::AccentLight, versionRow.hover), 1.8F);
+        const wchar_t* labels[] = {L"Versão", L"Memória", L"Mods"};
+        const std::wstring values[] = {m.versionSummary, m.memorySummary, m.modsSummary.empty() ? std::wstring(L"—") : m.modsSummary};
         Gdiplus::Pen line(Theme::Divider);
-        for (int i = 0; i < 2; ++i) {
-            const float y = box.Y + static_cast<float>(i) * 30;
+        for (int i = 0; i < 3; ++i) {
+            const float y = box.Y + 4 + static_cast<float>(i) * 33.3F;
             if (i > 0) g.DrawLine(&line, box.X + 14, y, box.GetRight() - 14, y);
-            drawText(g, labels[i], {box.X + 14, y, 90, 30}, 12, Gdiplus::FontStyleRegular, Theme::TextMuted,
+            drawText(g, labels[i], {box.X + 14, y, 90, 33}, 12, Gdiplus::FontStyleRegular, Theme::TextMuted,
                 Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
-            drawText(g, values[i], {box.X + 90, y, box.Width - 104, 30}, 12.5F, Gdiplus::FontStyleBold, Theme::TextPrimary,
+            drawText(g, values[i], {box.X + 90, y, box.Width - (i == 0 ? 122 : 104), 33}, 12.5F, Gdiplus::FontStyleBold, Theme::TextPrimary,
                 Gdiplus::StringAlignmentFar, Gdiplus::StringAlignmentCenter);
         }
     }

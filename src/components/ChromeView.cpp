@@ -66,6 +66,7 @@ void ChromeView::draw(Gdiplus::Graphics& g, float width, float height, LauncherP
 
     const struct { int id; Icons::Icon icon; LauncherPage page; } navigation[] = {
         {NavHomeId, Icons::Icon::Home, LauncherPage::Home},
+        {NavVersionsId, Icons::Icon::Layers, LauncherPage::Versions},
         {NavNewsId, Icons::Icon::News, LauncherPage::News},
         {NavModsId, Icons::Icon::Mods, LauncherPage::Mods},
         {NavSettingsId, Icons::Icon::Settings, LauncherPage::Settings}};
@@ -79,6 +80,6 @@ void ChromeView::draw(Gdiplus::Graphics& g, float width, float height, LauncherP
         Buttons::drawIcon(g, bounds, glyph, visual, false, 22);
         if (selected) Icons::draw(g, glyph, {bounds.X + 13, bounds.Y + 13, 22, 22}, Theme::AccentLight, 1.8F);
     };
-    for (int i = 0; i < 4; ++i) icon(Layout::navButton(i), navigation[i].icon, navigation[i].id, page == navigation[i].page);
+    for (int i = 0; i < 5; ++i) icon(Layout::navButton(i), navigation[i].icon, navigation[i].id, page == navigation[i].page);
     icon(Layout::sidebarHelp(height), Icons::Icon::Help, NavHelpId, page == LauncherPage::Help);
 }

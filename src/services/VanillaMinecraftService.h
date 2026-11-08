@@ -12,5 +12,6 @@ class VanillaMinecraftService
 public:
     [[nodiscard]] static std::filesystem::path gameDirectory();
     [[nodiscard]] static std::filesystem::path javaExecutable();
+    [[nodiscard]] static bool isInstalled();
     [[nodiscard]] InstallationResult prepare(std::stop_token stop, const InstallationProgressCallback& progress) const;
 };

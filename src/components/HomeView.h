@@ -21,7 +21,6 @@ struct PlayerCardModel
     bool nicknameValid = true;
     bool nicknameEmpty = false;
     float identitySelection = 0;
-    float versionSelection = 0; // 0 is the group's modpack, 1 is the unmodified 1.8.9
     // Replace the group-related status while the 1.8.9 is the selected game.
     std::wstring statusHeadline;
     std::wstring statusMessage;
@@ -36,7 +35,8 @@ struct PlayerCardModel
     bool installationVisible = false;
     // The file server is unreachable; offer to try again next to the status.
     bool serverOffline = false;
-    // "This installation" summary: memory and mod counts of the selected game.
+    // "This installation" summary: version, memory and mod counts of the selected game.
+    std::wstring versionSummary;
     std::wstring memorySummary;
     std::wstring modsSummary;
     // Motion. `time` is a seconds clock for idle effects; `ambient` allows them (foreground,

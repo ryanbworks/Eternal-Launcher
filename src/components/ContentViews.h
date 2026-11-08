@@ -58,6 +58,20 @@ public:
     static Gdiplus::RectF userList();
 };
 
+struct VersionsModel
+{
+    bool vanillaSelected = false;
+    bool vanillaInstalled = false;
+    int serverMods = -1;
+    float entrance = 1;
+};
+
+class VersionsView
+{
+public:
+    void draw(Gdiplus::Graphics& graphics, const VersionsModel& model, const HeroComponent& hero, const ControlVisuals& visuals) const;
+};
+
 struct HelpModel
 {
     std::wstring message;
