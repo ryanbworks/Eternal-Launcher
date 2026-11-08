@@ -48,6 +48,8 @@ namespace
         {EditNicknameButtonId, false, true, L"Editar nickname"},
         {OfflineButtonId, false, true, L"Nickname"},
         {OriginalButtonId, false, true, L"Conta original"},
+        {VersionEternalButtonId, false, true, L"Modpack Eternal"},
+        {VersionVanillaButtonId, false, true, L"Minecraft 1.8.9"},
         {UpdateDownloadButtonId, false, true, L"Baixar launcher"},
         {RetryServerButtonId, false, true, L"Tentar conectar ao servidor"},
         {PlayButtonId, false, true, L"Jogar"},
@@ -830,6 +832,7 @@ HomeModel MainPage::homeModel(bool preview) const
     player.nicknameEmpty = nickname.empty();
     player.nicknameValid = NicknameStore::isValid(nickname);
     player.identitySelection = preview ? (originalMode_ ? 1.0F : 0.0F) : identitySelection_;
+    player.versionSelection = preview ? (vanillaSelected_ ? 1.0F : 0.0F) : versionSelection_;
     const auto now = wallClock();
     const auto record = playSession_.active() ? playSession_.snapshot(PlaySession::Clock::now(), now) : playtime_;
     player.playing = playSession_.active() || viewState_.operation == LauncherOperation::MinecraftRunning;
@@ -858,14 +861,22 @@ HomeModel MainPage::homeModel(bool preview) const
     player.playPress = preview ? 0.0F : playPress_;
     player.updateWarning = updateWarning_;
     player.installationVisible = installation_.visible;
-    player.serverOffline = serverOffline_;
+    player.serverOffline = serverOffline_ && !vanillaSelected_;
+    const auto operation = viewState_.operation;
+    if (vanillaSelected_ && viewState_.playEnabled && !installation_.running && !player.playing &&
+        (operation == LauncherOperation::ReadyToPlay || operation == LauncherOperation::NeedsInstallation ||
+         operation == LauncherOperation::OfflineReady || operation == LauncherOperation::ServerUnavailable)) {
+        player.statusHeadline = L"Minecraft 1.8.9";
+        player.statusMessage = originalMode_ ? L"Versão pura, em pasta própria. Este tempo não conta no ranking."
+                                             : L"Sem conta original, só entra em servidores que aceitam nickname.";
+        player.playLabel = L"JOGAR 1.8.9";
+    }
 
     const int serverMods = mods_.manifestKnown ? static_cast<int>(mods_.server.size()) : -1;
-    player.versionSummary = std::wstring(LauncherConfig::MinecraftVersion) + L" · Forge " + std::wstring(LauncherConfig::ForgeVersion);
     {
         const int memory = settings_.maximumMemoryMegabytes;
         std::wstring gigabytes = memory % 1024 == 0 ? std::to_wstring(memory / 1024) : std::to_wstring(memory / 1024) + L"," + std::to_wstring(memory % 1024 * 10 / 1024);
-        player.memorySummary = gigabytes + L" GB" + (settings_.javaExecutable.empty() ? L" · Java automático" : L" · Java próprio");
+        player.memorySummary = gigabytes + L" GB" + (vanillaSelected_ ? L" · Java 8" : settings_.javaExecutable.empty() ? L" · Java automático" : L" · Java próprio");
     }
     if (serverMods >= 0) {
         player.modsSummary = std::to_wstring(serverMods) + L" do servidor";
@@ -873,6 +884,10 @@ HomeModel MainPage::homeModel(bool preview) const
     }
     model.chips = {L"Minecraft " + std::wstring(LauncherConfig::MinecraftVersion), L"Forge " + std::wstring(LauncherConfig::ForgeVersion),
         serverMods >= 0 ? std::to_wstring(serverMods) + L" mods" : std::wstring(L"Modpack do grupo")};
+    if (vanillaSelected_) {
+        player.modsSummary = L"Sem mods";
+        model.chips = {L"Minecraft 1.8.9", L"Sem mods", L"Java 8"};
+    }
     model.reveal = preview ? 1 : portalEntrance_;
     model.energy = preview || !motionEnabled_ ? 0 : std::max({portalEnergy_, portalBurst_, .28F});
     model.phase = animationPhase_;
@@ -1030,6 +1045,8 @@ void MainPage::redraw(bool animationFrame)
     for (const auto& control : controls_) unsettled |= std::abs(control.hover - (control.hovered ? 1.0F : 0.0F)) > 0.005F;
     const float selection = originalMode_ ? 1.0F : 0.0F;
     unsettled |= std::abs(identitySelection_ - selection) > .005F;
+    const float versionTarget = vanillaSelected_ ? 1.0F : 0.0F;
+    unsettled |= std::abs(versionSelection_ - versionTarget) > .005F;
     const bool transferVisible = installation_.visible && installation_.running && !installation_.cancelling &&
         transfer.activity == InstallationActivity::Downloading && transfer.percent.has_value();
     unsettled |= transferVisible && std::abs(installationFill_ - fillTarget) > .1F;
@@ -1051,6 +1068,7 @@ void MainPage::redraw(bool animationFrame)
         for (auto& control : controls_) control.hover = control.hovered ? 1.0F : 0.0F;
         displayedProgress_ = static_cast<float>(viewState_.progressPercent);
         identitySelection_ = selection;
+        versionSelection_ = versionTarget;
         installationFill_ = fillTarget;
         portalEntrance_ = 1; portalEnergy_ = 0; portalBurst_ = 0; pageFade_ = 1;
         completionPulse_ = {};
@@ -1106,7 +1124,7 @@ void MainPage::animate()
     const float dt = std::clamp(std::chrono::duration<float, std::milli>(now - previousFrame_).count(), 0.0F, 100.0F);
     previousFrame_ = now;
     // Remember what is on screen so only what actually moves gets repainted.
-    const float fadeBefore = pageFade_, navBefore = navIndicator_, toastBefore = toastReveal_, selectionBefore = identitySelection_;
+    const float fadeBefore = pageFade_, navBefore = navIndicator_, toastBefore = toastReveal_, selectionBefore = identitySelection_, versionBefore = versionSelection_;
     const float playBefore[] = {playSweep_, playPulse_, playPress_, playLight_, playProgressShown_, displayedProgress_};
     const float fillBefore = installationFill_, entranceBefore = portalEntrance_;
     const auto pulsesBefore = completionPulse_;
@@ -1135,6 +1153,9 @@ void MainPage::animate()
     const float selection = originalMode_ ? 1.0F : 0.0F;
     identitySelection_ += (selection - identitySelection_) * (1 - std::exp(-dt / 55));
     if (std::abs(selection - identitySelection_) < .006F) identitySelection_ = selection;
+    const float versionTarget = vanillaSelected_ ? 1.0F : 0.0F;
+    versionSelection_ += (versionTarget - versionSelection_) * (1 - std::exp(-dt / 55));
+    if (std::abs(versionTarget - versionSelection_) < .006F) versionSelection_ = versionTarget;
     const float fillTarget = static_cast<float>(installation_.progress.percent.value_or(0));
     installationFill_ += (fillTarget - installationFill_) * (1 - std::exp(-dt / 70));
     if (std::abs(fillTarget - installationFill_) < .1F) installationFill_ = fillTarget;
@@ -1187,6 +1208,9 @@ void MainPage::animate()
             if (portalEntrance_ != entranceBefore) markContent(Layout::Installation, 24);  // tiles and cards rise
         }
         if (toastReveal_ != toastBefore) markContent(Layout::Hero, 2);
+        if (versionSelection_ != versionBefore)
+            markContent({Layout::VersionEternal.X, Layout::VersionEternal.Y, Layout::VersionVanilla.GetRight() - Layout::VersionEternal.X,
+                Layout::VersionEternal.Height}, 4);
         if (identitySelection_ != selectionBefore)
             markContent({Layout::OfflineMode.X, Layout::OfflineMode.Y, Layout::OriginalMode.GetRight() - Layout::OfflineMode.X,
                 Layout::OfflineMode.Height}, 4);
@@ -1307,6 +1331,8 @@ Gdiplus::RectF MainPage::controlBounds(int id) const
     case EditNicknameButtonId: return Layout::EditNickname;
     case OfflineButtonId: return Layout::OfflineMode;
     case OriginalButtonId: return Layout::OriginalMode;
+    case VersionEternalButtonId: return Layout::VersionEternal;
+    case VersionVanillaButtonId: return Layout::VersionVanilla;
     case UpdateDownloadButtonId:
     case RetryServerButtonId:
         return Layout::UpdateLink;
@@ -1348,6 +1374,8 @@ bool MainPage::controlVisible(int id) const
         return home && !originalMode_;
     case OfflineButtonId:
     case OriginalButtonId:
+    case VersionEternalButtonId:
+    case VersionVanillaButtonId:
     case PlayButtonId:
     case PlayMenuButtonId:
     case QuickFolderButtonId:
@@ -1357,7 +1385,7 @@ bool MainPage::controlVisible(int id) const
     case UpdateDownloadButtonId:
         return home && !updateWarning_.empty() && viewState_.playEnabled;
     case RetryServerButtonId:
-        return home && serverOffline_ && updateWarning_.empty() && viewState_.playEnabled && !installation_.visible;
+        return home && serverOffline_ && !vanillaSelected_ && updateWarning_.empty() && viewState_.playEnabled && !installation_.visible;
     case ToastNewsButtonId:
         return leftColumn && toastVisible_;
     case NewsAllButtonId:
@@ -1391,6 +1419,8 @@ bool MainPage::controlEnabled(int id) const
     case EditNicknameButtonId:
     case OfflineButtonId:
     case OriginalButtonId:
+    case VersionEternalButtonId:
+    case VersionVanillaButtonId:
     case PlayButtonId:
         return idle;
     case PlayMenuButtonId:
@@ -1410,7 +1440,11 @@ bool MainPage::controlEnabled(int id) const
 std::wstring MainPage::controlLabel(int id) const
 {
     switch (id) {
-    case PlayButtonId: return viewState_.primaryActionLabel.empty() ? L"Jogar" : viewState_.primaryActionLabel;
+    case PlayButtonId:
+        if (vanillaSelected_ && viewState_.playEnabled) return L"Jogar Minecraft 1.8.9";
+        return viewState_.primaryActionLabel.empty() ? L"Jogar" : viewState_.primaryActionLabel;
+    case VersionEternalButtonId: return vanillaSelected_ ? L"Modpack Eternal" : L"Modpack Eternal (selecionado)";
+    case VersionVanillaButtonId: return vanillaSelected_ ? L"Minecraft 1.8.9 (selecionado)" : L"Minecraft 1.8.9";
     case OfflineButtonId: return originalMode_ ? L"Nickname" : L"Nickname (selecionado)";
     case OriginalButtonId: return originalMode_ ? L"Conta original (selecionado)" : L"Conta original";
     case MaximizeButtonId: return window_ && IsZoomed(window_) ? L"Restaurar" : L"Maximizar";
@@ -1634,6 +1668,12 @@ void MainPage::handleCommand(int id, int)
     case OriginalButtonId:
         if (viewState_.playEnabled) { originalMode_ = true; redraw(); }
         break;
+    case VersionEternalButtonId:
+        if (viewState_.playEnabled) { vanillaSelected_ = false; redraw(); }
+        break;
+    case VersionVanillaButtonId:
+        if (viewState_.playEnabled) { vanillaSelected_ = true; redraw(); }
+        break;
     case EditNicknameButtonId:
         SetFocus(nicknameInput_);
         SendMessageW(nicknameInput_, EM_SETSEL, 0, -1);
@@ -1650,9 +1690,6 @@ void MainPage::handleCommand(int id, int)
         openPath(gameDirectory() / L"mods", true);
         break;
     case QuickRepairButtonId:
-    case MenuPlayVanilla:
-        handlePrimaryAction(true);
-        break;
     case MenuRepair:
     case HelpRepairButtonId:
         startRepair();
@@ -1703,9 +1740,6 @@ void MainPage::showPlayMenu()
     if (!button || !button->window) return;
     HMENU menu = CreatePopupMenu();
     if (!menu) return;
-    const bool canPlay = viewState_.playEnabled && !installation_.running && !gameRunning() && !updatingLauncher_;
-    AppendMenuW(menu, MF_STRING | (canPlay ? 0U : MF_GRAYED), MenuPlayVanilla, L"Jogar Minecraft 1.8.9 (sem mods)");
-    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, MenuOpenGameFolder, L"Abrir pasta do jogo");
     AppendMenuW(menu, MF_STRING, MenuOpenModsFolder, L"Abrir pasta de mods");
     AppendMenuW(menu, MF_STRING, MenuOpenLogs, L"Abrir logs");
@@ -1925,10 +1959,10 @@ bool MainPage::canRepair() const
     return viewState_.playEnabled && !updatingLauncher_ && !installation_.running && !gameRunning();
 }
 
-void MainPage::handlePrimaryAction(bool vanilla)
+void MainPage::handlePrimaryAction()
 {
     if (!viewState_.playEnabled) return;
-    playingVanilla_ = vanilla;
+    playingVanilla_ = vanillaSelected_;
     std::wstring settingsError;
     if (!LauncherSettingsStore::validate(settings_, settingsError)) {
         showPage(LauncherPage::Settings);
@@ -2664,6 +2698,9 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
     if (!save(L"toast.png", 1)) return false;
     ready(); originalMode_ = true;
     if (!save(L"original.png", 1)) return false;
+    ready(); vanillaSelected_ = true;
+    if (!save(L"version-189.png", 1)) return false;
+    vanillaSelected_ = false;
     ready();
     viewState_.operation = LauncherOperation::ServerUnavailable;
     viewState_.headline = L"Servidor indisponível";

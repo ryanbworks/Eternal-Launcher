@@ -105,7 +105,7 @@ private:
     void showPlayMenu();
 
     // Play flow.
-    void handlePrimaryAction(bool vanilla = false);
+    void handlePrimaryAction();
     void launchVanilla();
     void showGameTrayIcon();
     void beginPlay(bool repairOnly = false);
@@ -179,6 +179,7 @@ private:
     std::map<std::wstring, float> modKnobs_;
     bool windowActive_ = true;
     float identitySelection_ = 0;
+    float versionSelection_ = 0;
     float portalEntrance_ = 1;
     bool portalHovered_ = false;
     float portalEnergy_ = 0;
@@ -223,7 +224,8 @@ private:
     SettingsPage settingsPage_;
     bool closing_ = false;
     bool repairOnly_ = false;
-    bool playingVanilla_ = false; // the current play request is the unmodified 1.8.9
+    bool vanillaSelected_ = false; // the game picked in the player card
+    bool playingVanilla_ = false;  // the current play request is the unmodified 1.8.9
 
     ChromeView chrome_;
     HeroComponent hero_;

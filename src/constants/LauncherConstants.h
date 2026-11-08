@@ -43,6 +43,8 @@ namespace LauncherConstants
     inline constexpr int NewsAllButtonId = 1129;
     inline constexpr int ToastNewsButtonId = 1130;
     inline constexpr int RetryServerButtonId = 1131;
+    inline constexpr int VersionEternalButtonId = 1132;
+    inline constexpr int VersionVanillaButtonId = 1133;
     // News page.
     inline constexpr int NewsLinkFirstId = 1141;
     inline constexpr int NewsLinkCount = 4;
@@ -65,7 +67,6 @@ namespace LauncherConstants
     inline constexpr UINT MenuOpenModsFolder = 40002;
     inline constexpr UINT MenuRepair = 40003;
     inline constexpr UINT MenuOpenLogs = 40004;
-    inline constexpr UINT MenuPlayVanilla = 40005;
     inline constexpr UINT MenuTrayOpen = 40011;
     inline constexpr UINT MenuTrayExit = 40012;
 

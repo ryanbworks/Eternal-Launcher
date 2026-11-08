@@ -231,7 +231,7 @@ void HomeView::drawPlayerCard(Gdiplus::Graphics& g, const PlayerCardModel& m, co
     const auto& aside = Layout::Aside;
     fillRoundedRectangle(g, aside, Theme::PanelRadius, Theme::Surface);
     drawRoundedRectangle(g, {aside.X + .5F, aside.Y + .5F, aside.Width - 1, aside.Height - 1}, Theme::PanelRadius, Theme::Divider);
-    const auto tone = statusColor(state, m.playing);
+    const auto tone = m.statusHeadline.empty() ? statusColor(state, m.playing) : Theme::Success;
     // Blinks for a moment every few seconds while the window is in front.
     drawAvatar(g, Layout::Avatar, tone, m.ambient && std::fmod(m.time, 4.7F) < .14F);
     if (m.motion && m.playing)
@@ -290,6 +290,31 @@ void HomeView::drawPlayerCard(Gdiplus::Graphics& g, const PlayerCardModel& m, co
         if (v.focused) drawFocusRing(g, b, 14, Theme::AccentLight);
     }
 
+    // Which game the play button starts, with the same sliding selection as the cards above.
+    const float versionTravel = easeInOut(m.versionSelection);
+    const Gdiplus::RectF versionSelected{Layout::VersionEternal.X + (Layout::VersionVanilla.X - Layout::VersionEternal.X) * versionTravel,
+        Layout::VersionEternal.Y, Layout::VersionEternal.Width, Layout::VersionEternal.Height};
+    const struct { const Gdiplus::RectF* bounds; int id; const wchar_t* title; const wchar_t* description; } versions[] = {
+        {&Layout::VersionEternal, VersionEternalButtonId, L"Modpack Eternal", L"1.20.1 · Forge"},
+        {&Layout::VersionVanilla, VersionVanillaButtonId, L"Minecraft 1.8.9", L"Sem mods · Minigames"}};
+    for (const auto& version : versions) {
+        const auto& b = *version.bounds;
+        const auto v = visuals(version.id);
+        fillRoundedRectangle(g, b, 12, blend(Gdiplus::Color(0, 30, 31, 44), Theme::SurfaceElevated, v.hover));
+        drawRoundedRectangle(g, {b.X + .5F, b.Y + .5F, b.Width - 1, b.Height - 1}, 12, blend(Theme::OutlineSubtle, Theme::Border, v.hover));
+    }
+    fillRoundedRectangle(g, versionSelected, 12, Theme::AccentTint);
+    drawRoundedRectangle(g, {versionSelected.X + .5F, versionSelected.Y + .5F, versionSelected.Width - 1, versionSelected.Height - 1}, 12, Theme::Accent);
+    for (const auto& version : versions) {
+        const auto& b = *version.bounds;
+        const auto v = visuals(version.id);
+        const float cover = std::clamp(1 - std::abs(versionSelected.X - b.X) / b.Width, 0.0F, 1.0F);
+        drawText(g, version.title, {b.X + 12, b.Y + 9, b.Width - 20, 18}, 13, Gdiplus::FontStyleBold, v.enabled ? Theme::TextPrimary : Theme::TextMuted);
+        drawText(g, version.description, {b.X + 12, b.Y + 30, b.Width - 18, 18}, 11.5F, Gdiplus::FontStyleRegular,
+            blend(Theme::TextMuted, Theme::TextSecondary, cover));
+        if (v.focused) drawFocusRing(g, b, 12, Theme::AccentLight);
+    }
+
     const wchar_t* statLabels[] = {L"Última partida", L"Tempo jogado"};
     const std::wstring statValues[] = {m.lastPlayed, m.totalPlayed};
     for (int i = 0; i < 2; ++i) {
@@ -302,15 +327,15 @@ void HomeView::drawPlayerCard(Gdiplus::Graphics& g, const PlayerCardModel& m, co
     {
         const auto& box = Layout::InstallSummary;
         drawRoundedRectangle(g, {box.X + .5F, box.Y + .5F, box.Width - 1, box.Height - 1}, 12, Theme::OutlineSubtle);
-        const wchar_t* labels[] = {L"Versão", L"Memória", L"Mods"};
-        const std::wstring values[] = {m.versionSummary, m.memorySummary, m.modsSummary.empty() ? std::wstring(L"—") : m.modsSummary};
+        const wchar_t* labels[] = {L"Memória", L"Mods"};
+        const std::wstring values[] = {m.memorySummary, m.modsSummary.empty() ? std::wstring(L"—") : m.modsSummary};
         Gdiplus::Pen line(Theme::Divider);
-        for (int i = 0; i < 3; ++i) {
-            const float y = box.Y + 4 + static_cast<float>(i) * 33.3F;
+        for (int i = 0; i < 2; ++i) {
+            const float y = box.Y + static_cast<float>(i) * 30;
             if (i > 0) g.DrawLine(&line, box.X + 14, y, box.GetRight() - 14, y);
-            drawText(g, labels[i], {box.X + 14, y, 90, 33}, 12, Gdiplus::FontStyleRegular, Theme::TextMuted,
+            drawText(g, labels[i], {box.X + 14, y, 90, 30}, 12, Gdiplus::FontStyleRegular, Theme::TextMuted,
                 Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
-            drawText(g, values[i], {box.X + 90, y, box.Width - 104, 33}, 12.5F, Gdiplus::FontStyleBold, Theme::TextPrimary,
+            drawText(g, values[i], {box.X + 90, y, box.Width - 104, 30}, 12.5F, Gdiplus::FontStyleBold, Theme::TextPrimary,
                 Gdiplus::StringAlignmentFar, Gdiplus::StringAlignmentCenter);
         }
     }
@@ -318,11 +343,13 @@ void HomeView::drawPlayerCard(Gdiplus::Graphics& g, const PlayerCardModel& m, co
     dot(g, Layout::StatusLine.X, Layout::StatusLine.Y + 8, tone);
     const bool working = !state.playEnabled && state.operation != LauncherOperation::UpdateAvailable;
     if (m.motion && (m.playing || working)) pulseRing(g, Layout::StatusLine.X + 4, Layout::StatusLine.Y + 12, tone, m.time);
-    drawText(g, m.playing ? L"Jogando agora" : state.headline, {Layout::StatusLine.X + 16, Layout::StatusLine.Y,
+    drawText(g, m.playing ? L"Jogando agora" : !m.statusHeadline.empty() ? m.statusHeadline : state.headline, {Layout::StatusLine.X + 16, Layout::StatusLine.Y,
         Layout::StatusLine.Width - 16, Layout::StatusLine.Height}, 14, Gdiplus::FontStyleBold, Theme::TextPrimary,
         Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
-    const std::wstring message = !m.updateWarning.empty() && state.playEnabled ? m.updateWarning : state.operationMessage;
+    const std::wstring message = !m.updateWarning.empty() && state.playEnabled ? m.updateWarning :
+        !m.statusMessage.empty() ? m.statusMessage : state.operationMessage;
     drawText(g, message, Layout::StatusMessage, 12.5F, Gdiplus::FontStyleRegular,
+        !m.statusMessage.empty() ? Theme::TextSecondary :
         isLauncherError(state.operation) ? Theme::Danger :
         state.operation == LauncherOperation::OfflineReady ? Theme::Warning : Theme::TextSecondary);
     if (!m.updateWarning.empty() && state.playEnabled)
@@ -436,7 +463,7 @@ void HomeView::drawPlayButton(Gdiplus::Graphics& g, const PlayerCardModel& m, co
         }
         g.Restore(saved);
     }
-    std::wstring label = state.primaryActionLabel.empty() ? L"JOGAR" : state.primaryActionLabel;
+    std::wstring label = !m.playLabel.empty() ? m.playLabel : state.primaryActionLabel.empty() ? std::wstring(L"JOGAR") : state.primaryActionLabel;
     if (!enabled && m.progress > 0 && label.find(L'%') == std::wstring::npos)
         label += L" " + std::to_wstring(static_cast<int>(std::floor(m.progress))) + L"%";
     const auto ink = enabled ? Theme::AccentInk : Gdiplus::Color(255, 230, 225, 255);
