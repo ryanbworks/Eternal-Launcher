@@ -45,7 +45,9 @@ permissions granted by other rules.
 Under **Trust credentials**, create an **OpenID Connect** credential:
 
 - Issuer: GitHub Actions (`https://token.actions.githubusercontent.com`).
-- Subject: `repo:ryanbworks@213251617/Eternal-Launcher@1391560141:environment:production`.
+- Subject: `repo:ryanbworks@213251617/native-game-launcher@1391560141:environment:production`.
+  The repository was renamed from `Eternal-Launcher`; the name part of the Subject
+  follows the current repository name, while both IDs stay the same.
 - Custom claim `ref`: `refs/heads/master`.
 - Scope: `auth_keys` with write permission and tag `tag:eternal-ci`.
 - Copy the Client ID and Audience into the GitHub environment variables below.

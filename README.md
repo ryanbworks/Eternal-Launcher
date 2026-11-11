@@ -5,13 +5,13 @@
 **A native Windows game launcher in C++20 and the raw Win32 API: no frameworks,
 no web runtime, one portable executable.**
 
-[![Build](https://github.com/ryanbworks/Eternal-Launcher/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/ryanbworks/Eternal-Launcher/actions/workflows/build.yml)
-[![Release](https://img.shields.io/github/v/release/ryanbworks/Eternal-Launcher?label=release&color=7c3aed)](https://github.com/ryanbworks/Eternal-Launcher/releases/latest)
+[![Build](https://github.com/ryanbworks/native-game-launcher/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/ryanbworks/native-game-launcher/actions/workflows/build.yml)
+[![Release](https://img.shields.io/github/v/release/ryanbworks/native-game-launcher?label=release&color=7c3aed)](https://github.com/ryanbworks/native-game-launcher/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599c?logo=cplusplus&logoColor=white)
 ![Windows x64](https://img.shields.io/badge/Windows-x64-0078d4?logo=windows&logoColor=white)
 
-[Download](https://github.com/ryanbworks/Eternal-Launcher/releases/latest) ·
+[Download](https://github.com/ryanbworks/native-game-launcher/releases/latest) ·
 [User guide](docs/USER_GUIDE.md) ·
 [Architecture](docs/ARCHITECTURE.md) ·
 [Changelog](CHANGELOG.md)

@@ -351,9 +351,9 @@ void SettingsPage::handle(int id,int notification)
     case TabAdvanced:setTab(Tab::Advanced);setLocked(locked_);return;
     case TabAbout:setTab(Tab::About);setLocked(locked_);return;
     case OpenChangelog:
-        ShellExecuteW(parent_,L"open",L"https://github.com/ryanbworks/Eternal-Launcher/blob/master/CHANGELOG.md",nullptr,nullptr,SW_SHOWNORMAL);return;
+        ShellExecuteW(parent_,L"open",L"https://github.com/ryanbworks/native-game-launcher/blob/master/CHANGELOG.md",nullptr,nullptr,SW_SHOWNORMAL);return;
     case OpenRepository:
-        ShellExecuteW(parent_,L"open",L"https://github.com/ryanbworks/Eternal-Launcher",nullptr,nullptr,SW_SHOWNORMAL);return;
+        ShellExecuteW(parent_,L"open",L"https://github.com/ryanbworks/native-game-launcher",nullptr,nullptr,SW_SHOWNORMAL);return;
     case OpenDataFolder:openFolder(LauncherSettingsStore::dataDirectory());return;
     default:break;
     }

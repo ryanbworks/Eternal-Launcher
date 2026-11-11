@@ -94,7 +94,7 @@ NewsItem NewsFeed::releaseNotes()
                        L"notícias, mods e ajuda, configurações em abas, animações e a opção de jogar mesmo com o "
                        L"servidor de arquivos fora do ar.";
     item.date = L"Versão " + std::wstring(LauncherConfig::LauncherVersion);
-    item.url = L"https://github.com/ryanbworks/Eternal-Launcher/blob/master/CHANGELOG.md";
+    item.url = L"https://github.com/ryanbworks/native-game-launcher/blob/master/CHANGELOG.md";
     item.local = true;
     return item;
 }

@@ -167,7 +167,7 @@ cleaned up normally.
 - Mods with special names are included in the manifest.
 - Forge recovery and portable Java repair when the process fails to start.
 
-[1.0.14]: https://github.com/ryanbworks/Eternal-Launcher/releases/tag/v1.0.14
-[1.0.11]: https://github.com/ryanbworks/Eternal-Launcher/compare/v0.1.1...v1.0.14
-[1.0.0]: https://github.com/ryanbworks/Eternal-Launcher/blob/master/docs/RELEASE-1.0.0-Aurora.md
-[0.1.1]: https://github.com/ryanbworks/Eternal-Launcher/releases/tag/v0.1.1
+[1.0.14]: https://github.com/ryanbworks/native-game-launcher/releases/tag/v1.0.14
+[1.0.11]: https://github.com/ryanbworks/native-game-launcher/compare/v0.1.1...v1.0.14
+[1.0.0]: https://github.com/ryanbworks/native-game-launcher/blob/master/docs/RELEASE-1.0.0-Aurora.md
+[0.1.1]: https://github.com/ryanbworks/native-game-launcher/releases/tag/v0.1.1

@@ -7,7 +7,7 @@ their English meaning.
 ## Download and use
 
 Download the latest `EternalLauncher.exe` from the
-[releases page](https://github.com/ryanbworks/Eternal-Launcher/releases/latest).
+[releases page](https://github.com/ryanbworks/native-game-launcher/releases/latest).
 The distribution is a single portable executable for Windows x64. The launcher ships
 with the C++ runtime and sets up Java 17 automatically the first time you click
 **Jogar** (Play), with an internet connection.

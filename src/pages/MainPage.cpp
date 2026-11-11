@@ -92,7 +92,7 @@ namespace
         {CloseButtonId, true, false, L"Fechar"},
     };
 
-    constexpr wchar_t IssueUrl[] = L"https://github.com/ryanbworks/Eternal-Launcher/issues/new";
+    constexpr wchar_t IssueUrl[] = L"https://github.com/ryanbworks/native-game-launcher/issues/new";
 
     std::int64_t wallClock() { return static_cast<std::int64_t>(std::time(nullptr)); }
 
