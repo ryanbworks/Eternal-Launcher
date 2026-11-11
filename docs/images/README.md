@@ -16,6 +16,4 @@ The previews don't represent real server results and don't replace installation/
 
 `installation.png` is the download preview at 1280 × 800 with illustrative values: the
 compact installation panel in the hero's slot, with tiles, news and ranking still visible.
-`installation.origin.txt` records its origin. Additional captures from a visible
-native host are in `.impeccable/review/installation/installation-live*.png`; they
-show real controls with synthetic data, not a real installation or Minecraft session.
+`installation.origin.txt` records its origin.

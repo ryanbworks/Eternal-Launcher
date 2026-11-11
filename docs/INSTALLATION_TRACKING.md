@@ -71,7 +71,6 @@ and never calls the network, login or the real Minecraft.
 
 `EternalLauncher --render-preview <folder>` renders the verifying, downloading,
 Forge, error, cancelled, cancelling and compact states with the production renderer.
-The captures are in `.impeccable/review/installation`.
 
 This validation did not include a full installation from the public services, a
 real Forge run or starting the real Minecraft. Subprocess waiting was tested with

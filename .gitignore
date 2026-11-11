@@ -23,8 +23,9 @@ Thumbs.db
 config.local.json
 launcher-settings.json
 
-# Python cache and reproducible intermediate frames from visual validation.
+# Python cache.
 __pycache__/
 *.py[cod]
-/.impeccable/review/motion/*.png
-/.impeccable/review/navigation-performance/*.png
+
+# Local design-review tooling and its captures.
+/.impeccable/

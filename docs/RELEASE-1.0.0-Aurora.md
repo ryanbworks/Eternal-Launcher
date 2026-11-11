@@ -35,11 +35,9 @@ MSVC Release `/W4` build with no warnings. CTest: **5/5 passed**, including
 timeout, permissions, locking, cancellation, corruption, concurrency and recovery.
 Native lock/recovery controls were also exercised in a hidden test window.
 
-The seven captures in `.impeccable/review/autoupdate/` were checked at 1180 × 730
-and 944 × 584. The independent reviewer returned `ship` for the scope of the update
-states, recovery link and version identity. They are synthetic previews from the
-production renderer; they don't prove the behavior of a game session. Microsoft
-login, full installation and gameplay were not repeated for this release.
+The update states, recovery link and version identity were checked on seven
+synthetic previews from the production renderer at 1180 × 730 and 944 × 584.
+Microsoft login, full installation and gameplay were not repeated for this release.
 
 Published over SFTP to `/srv/eternal-launcher/files/launcher/`, with the remote
 SHA-256 checked and the manifest published by rename after the executable. NGINX
