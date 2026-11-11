@@ -4,7 +4,7 @@ All notable changes to Eternal Launcher are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and versions use [SemVer](https://semver.org/) plus a codename.
 
-## [Unreleased]
+## [2.2.0] — Horizon · 2026-11-11
 
 ### Added
 - **Real skin in the avatar.** The player card shows the face of the skin that belongs
