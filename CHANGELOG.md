@@ -4,6 +4,22 @@ All notable changes to Eternal Launcher are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and versions use [SemVer](https://semver.org/) plus a codename.
 
+## [Unreleased]
+
+### Added
+- **Real skin in the avatar.** The player card shows the face of the skin that belongs
+  to the nickname (or Microsoft account) in use. Names without an original account
+  show the classic default face.
+
+### Changed
+- **Installation no longer covers Home.** While the game is prepared, a compact panel
+  with a six-step stepper replaces only the landscape; status tiles, news and the
+  leaderboard stay visible and clickable.
+
+### Fixed
+- After choosing **Conta original**, the **Nickname** card could not be clicked, so
+  there was no way back to nickname mode until the launcher was restarted.
+
 ## [2.1.0] — Horizon · 2026-11-08
 
 ### Added

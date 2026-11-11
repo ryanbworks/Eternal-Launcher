@@ -61,8 +61,9 @@ alternative ([step by step](docs/AUTOUPDATE.md#two-click-wizard)).
 - Help page with repair, logs and copyable support information.
 - Vector logo and custom icon, with the landscape and font embedded in the executable.
 - Portal opening, three-layer particles, a light that follows the cursor on the Play button, page fades and eased hover feedback, all respecting the Windows animation preference. [Animation details](docs/ANIMATIONS.md).
-- Choice between a local nickname and an original Microsoft account login.
+- Choice between a local nickname and an original Microsoft account login, switchable both ways at any time.
 - Nickname field validated to 3–16 letters, digits or `_`.
+- Player avatar with the real skin face: typing a name that belongs to a Java Edition account shows that account's skin (looked up through Mojang's public API, cached per session); other names show the classic default face.
 - Asynchronous query of the configured HTTP server's manifest.
 - Executable AutoUpdate with RSA-PSS/SHA-256 signatures, backup and rollback.
 - Automatic discovery of mods uploaded to the server's `mods/` folder.
@@ -188,10 +189,12 @@ extension and only replace the destination after the hash is verified.
 
 ### Tracking and cancelling the installation
 
-After clicking **Jogar**, the left area shows six stages: checks and Java 17,
-Minecraft and assets, native libraries, Forge, mods and configuration, and final
-validation. The account and the summary stay on the right. Minecraft opens
-automatically when preparation finishes successfully.
+After clicking **Jogar**, a compact panel takes the place of the landscape at the
+top of Home and shows six stages as a stepper: checks and Java 17, Minecraft and
+assets, native libraries, Forge, mods and configuration, and final validation. The
+status tiles, news and leaderboard stay visible below it, and the account and the
+summary stay on the right. Minecraft opens automatically when preparation finishes
+successfully.
 
 During transfers, the panel shows downloaded bytes, the current transfer's
 percentage, speed, remaining time when it can be estimated, and verified/reused

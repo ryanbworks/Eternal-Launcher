@@ -1,6 +1,6 @@
 # Interface captures
 
-`main-interface.png` is a deterministic render of the final interface at 1180 × 730, with an illustrative ready-installation state and the nickname Steve. The data in this image is sample data; the real window queries the existing services.
+`main-interface.png` is a deterministic render of the final interface at 1280 × 800, with an illustrative ready-installation state and the nickname Steve. The data in this image is sample data; the real window queries the existing services.
 
 To generate the previews without starting downloads, signing in or opening Minecraft:
 
@@ -14,7 +14,8 @@ The previews don't represent real server results and don't replace installation/
 
 `settings.png` is the 1180 × 730 preview with the default values, produced by the same renderer. It shows neither a game session nor the user's saved preferences.
 
-`installation.png` is the download preview at 1180 × 730 with illustrative values.
+`installation.png` is the download preview at 1280 × 800 with illustrative values: the
+compact installation panel in the hero's slot, with tiles, news and ranking still visible.
 `installation.origin.txt` records its origin. Additional captures from a visible
 native host are in `.impeccable/review/installation/installation-live*.png`; they
 show real controls with synthetic data, not a real installation or Minecraft session.
