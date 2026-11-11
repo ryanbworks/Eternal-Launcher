@@ -54,38 +54,29 @@ namespace
     }
 }
 
-void HomeView::drawAvatar(Gdiplus::Graphics& g, const Gdiplus::RectF& b, const Gdiplus::Color& status, bool blink)
+void HomeView::drawAvatar(Gdiplus::Graphics& g, const Gdiplus::RectF& b, const Gdiplus::Color& status, const SkinFace& skin,
+                          float shimmer)
 {
-    // Generic pixel head: hood, face, eyes and mouth on an 8 x 8 grid.
+    // The skin's 8 x 8 face, scaled with hard pixel edges inside a rounded frame.
     fillRoundedRectangle(g, b, 18, Gdiplus::Color(255, 47, 40, 80));
     const Gdiplus::RectF face{b.X + 3, b.Y + 3, b.Width - 6, b.Height - 6};
     const auto saved = g.Save();
     auto clip = createRoundedPath(face, 15);
     g.SetClip(clip.get(), Gdiplus::CombineModeIntersect);
+    g.SetSmoothingMode(Gdiplus::SmoothingModeNone);
+    g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
     const float cell = face.Width / 8;
-    const auto block = [&](int x, int y, int w, int h, Gdiplus::Color color) {
-        Gdiplus::SolidBrush brush(color);
-        g.FillRectangle(&brush, face.X + static_cast<float>(x) * cell, face.Y + static_cast<float>(y) * cell,
-            static_cast<float>(w) * cell + .5F, static_cast<float>(h) * cell + .5F);
-    };
-    block(0, 0, 8, 8, Gdiplus::Color(255, 42, 40, 59));
-    block(0, 0, 8, 3, Gdiplus::Color(255, 59, 47, 99));
-    block(0, 3, 1, 5, Gdiplus::Color(255, 59, 47, 99));
-    block(7, 3, 1, 5, Gdiplus::Color(255, 59, 47, 99));
-    block(1, 3, 6, 5, Gdiplus::Color(255, 201, 154, 118));
-    block(1, 2, 6, 1, Theme::Accent);
-    if (blink) {
-        // Eyelids: a skin-toned row with a darker lash line.
-        block(2, 4, 4, 1, Gdiplus::Color(255, 201, 154, 118));
-        Gdiplus::SolidBrush lash(Gdiplus::Color(255, 138, 90, 67));
-        g.FillRectangle(&lash, face.X + 2 * cell, face.Y + 4.6F * cell, 4 * cell, cell * .3F);
-    } else {
-        block(2, 4, 1, 1, Theme::TextPrimary);
-        block(5, 4, 1, 1, Theme::TextPrimary);
-        block(3, 4, 1, 1, Gdiplus::Color(255, 109, 76, 209));
-        block(4, 4, 1, 1, Gdiplus::Color(255, 109, 76, 209));
+    for (int y = 0; y < 8; ++y)
+        for (int x = 0; x < 8; ++x) {
+            Gdiplus::SolidBrush brush(Gdiplus::Color(skin.pixels[static_cast<std::size_t>(y * 8 + x)]));
+            // Cells overlap by half a pixel so no seams show at fractional scales.
+            g.FillRectangle(&brush, face.X + static_cast<float>(x) * cell, face.Y + static_cast<float>(y) * cell, cell + .5F, cell + .5F);
+        }
+    if (shimmer >= 0) {
+        // Looking up the nickname: a soft band of light crosses the face.
+        const float center = face.X - face.Width * .5F + face.Width * 2 * std::fmod(shimmer, 1.0F);
+        lightBand(g, center, face.Y, face.Height, face.Width * .7F, 80);
     }
-    block(3, 6, 2, 1, Gdiplus::Color(255, 138, 90, 67));
     g.Restore(saved);
     Gdiplus::SolidBrush ring(Theme::Surface);
     g.FillEllipse(&ring, b.GetRight() - 15, b.GetBottom() - 15, 18.0F, 18.0F);
@@ -232,8 +223,7 @@ void HomeView::drawPlayerCard(Gdiplus::Graphics& g, const PlayerCardModel& m, co
     fillRoundedRectangle(g, aside, Theme::PanelRadius, Theme::Surface);
     drawRoundedRectangle(g, {aside.X + .5F, aside.Y + .5F, aside.Width - 1, aside.Height - 1}, Theme::PanelRadius, Theme::Divider);
     const auto tone = m.statusHeadline.empty() ? statusColor(state, m.playing) : Theme::Success;
-    // Blinks for a moment every few seconds while the window is in front.
-    drawAvatar(g, Layout::Avatar, tone, m.ambient && std::fmod(m.time, 4.7F) < .14F);
+    drawAvatar(g, Layout::Avatar, tone, m.face ? *m.face : SkinLookup::defaultFace(), m.skinLoading ? m.time / 1.2F : -1.0F);
     if (m.motion && m.playing)
         pulseRing(g, Layout::Avatar.GetRight() - 6, Layout::Avatar.GetBottom() - 6, tone, m.time, 2.2F);
 
@@ -256,7 +246,7 @@ void HomeView::drawPlayerCard(Gdiplus::Graphics& g, const PlayerCardModel& m, co
         Buttons::drawIcon(g, Layout::EditNickname, Icons::Icon::Pencil, visuals(EditNicknameButtonId), false, 16);
         const bool ok = m.nicknameValid && !m.nicknameEmpty;
         if (ok) Icons::draw(g, Icons::Icon::Check, {Layout::NicknameStatus.X, Layout::NicknameStatus.Y + 3, 12, 12}, Theme::Success, 1.8F);
-        drawText(g, ok ? L"Nickname válido" : m.nicknameEmpty ? L"Digite seu nickname" : L"Use 3 a 16 letras, números ou _",
+        drawText(g, ok ? (m.skinFound ? L"Skin da conta original" : L"Nickname válido") : m.nicknameEmpty ? L"Digite seu nickname" : L"Use 3 a 16 letras, números ou _",
             {Layout::NicknameStatus.X + (ok ? 18.0F : 0.0F), Layout::NicknameStatus.Y, Layout::NicknameStatus.Width, 18}, 12,
             Gdiplus::FontStyleRegular, ok ? Theme::Success : m.nicknameEmpty ? Theme::TextMuted : Theme::Error);
     }

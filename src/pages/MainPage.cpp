@@ -36,6 +36,13 @@ namespace
 {
     using namespace LauncherConstants;
 
+    // Minecraft names are ASCII and case-insensitive; this is the skin cache key.
+    std::wstring skinKey(std::wstring name)
+    {
+        for (auto& c : name) if (c >= L'A' && c <= L'Z') c = static_cast<wchar_t>(c - L'A' + L'a');
+        return name;
+    }
+
     // Creation order is also the keyboard tab order.
     struct ControlSpec { int id; bool chrome; bool tabStop; const wchar_t* label; };
     constexpr ControlSpec ControlSpecs[] = {
@@ -398,6 +405,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             return 0;
         }
         if (id == NicknameInputId) {
+            if (notification == EN_CHANGE) scheduleSkinLookup();
             if (notification == EN_CHANGE || notification == EN_SETFOCUS || notification == EN_KILLFOCUS) redraw();
             return 0;
         }
@@ -425,6 +433,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         else if (wParam == InstallationProgressTimerId) consumeInstallationProgress();
         else if (wParam == PlaytimeTimerId) { flushPlaytime(); updateTrayTooltip(); redraw(); }
         else if (wParam == LeaderboardTimerId) fetchLeaderboardAsync();
+        else if (wParam == SkinLookupTimerId) { KillTimer(window_, SkinLookupTimerId); startSkinLookup(); redraw(); }
         else if (wParam == ServerRetryTimerId) {
             // Quietly check whether the file server came back; the state only changes on an answer.
             if (serverOffline_ && !fileServerPending_ && viewState_.playEnabled && !updatingLauncher_ &&
@@ -473,6 +482,16 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             if (playtimeSyncThread_.joinable()) playtimeSyncThread_.join();
             fetchLeaderboardAsync();
         }
+        redraw();
+        return 0;
+    }
+    case SkinLookupResultMessage:
+    {
+        std::unique_ptr<SkinLookupResult> result(reinterpret_cast<SkinLookupResult*>(lParam));
+        if (!result) return 0;
+        const auto key = skinKey(result->name);
+        if (skinPending_ == key) skinPending_.clear();
+        skins_[key] = std::move(*result);
         redraw();
         return 0;
     }
@@ -571,6 +590,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         if (result && result->success) {
             microsoftIdentity_ = result->identity;
             pendingIdentity_ = microsoftIdentity_;
+            startSkinLookup();
             pendingNickname_ = microsoftIdentity_.name;
             redraw();
             startGame();
@@ -834,6 +854,13 @@ HomeModel MainPage::homeModel(bool preview) const
     player.nicknameEmpty = nickname.empty();
     player.nicknameValid = NicknameStore::isValid(nickname);
     player.identitySelection = preview ? (originalMode_ ? 1.0F : 0.0F) : identitySelection_;
+    if (!preview) {
+        const auto name = avatarName();
+        const auto* skin = cachedSkin(name);
+        player.skinFound = skin && skin->outcome == SkinLookupOutcome::Found;
+        if (player.skinFound) player.face = &skin->face;
+        player.skinLoading = !skinPending_.empty() && skinKey(name) == skinPending_;
+    }
     const auto now = wallClock();
     const auto record = playSession_.active() ? playSession_.snapshot(PlaySession::Clock::now(), now) : playtime_;
     player.playing = playSession_.active() || viewState_.operation == LauncherOperation::MinecraftRunning;
@@ -1090,7 +1117,7 @@ void MainPage::redraw(bool animationFrame)
     const bool hero = home && !installation_.visible;
     const bool ambient = ambientMotion_ && hero && GetForegroundWindow() == window_;
     const bool running = motionEnabled_ && IsWindowVisible(window_) && !IsIconic(window_) && !closing_ &&
-        (unsettled || indeterminate || (hero && (ambient || portalEntrance_ < 1 || portalHovered_ || portalEnergy_ > .005F || portalBurst_ > 0)));
+        (unsettled || indeterminate || (home && !skinPending_.empty()) || (hero &&(ambient || portalEntrance_ < 1 || portalHovered_ || portalEnergy_ > .005F || portalBurst_ > 0)));
     if (running && !animationTimer_) {
         previousFrame_ = std::chrono::steady_clock::now();
         animationTimer_ = SetTimer(window_, AnimationTimerId, USER_TIMER_MINIMUM, nullptr) != 0;
@@ -1217,7 +1244,7 @@ void MainPage::animate()
         for (std::size_t i = 0; i < std::size(playAfter); ++i) playMoved |= playAfter[i] != playBefore[i];
         if (playMoved)
             markContent({Layout::Play.X, Layout::Play.Y, Layout::PlayMenu.GetRight() - Layout::Play.X, Layout::Play.Height}, 16);
-        if (ambientNow || playing) markContent(Layout::Avatar, 18);
+        if (ambientNow || playing || !skinPending_.empty()) markContent(Layout::Avatar, 18);
         if (working || playing) markContent({Layout::StatusLine.X - 12, Layout::StatusLine.Y - 4, 32, 32});
         // Status dots pulse while their card is in an "in progress" tone.
         if (motionEnabled_ && viewState_.statusCards.size() >= 3)
@@ -1265,6 +1292,7 @@ void MainPage::createNicknameInput()
     SendMessage(nicknameInput_, EM_SETLIMITTEXT, 16, 0);
     SendMessage(nicknameInput_, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, 0);
     SetWindowTheme(nicknameInput_, L"DarkMode_Explorer", nullptr);
+    scheduleSkinLookup();  // show the saved nickname's skin shortly after opening
 }
 
 MainPage::Control* MainPage::findControl(int id)
@@ -1673,10 +1701,10 @@ void MainPage::handleCommand(int id, int)
     case PlayButtonId: handlePrimaryAction(); break;
     case PlayMenuButtonId: showPlayMenu(); break;
     case OfflineButtonId:
-        if (viewState_.playEnabled) { originalMode_ = false; redraw(); }
+        if (viewState_.playEnabled) { originalMode_ = false; startSkinLookup(); redraw(); }
         break;
     case OriginalButtonId:
-        if (viewState_.playEnabled) { originalMode_ = true; redraw(); }
+        if (viewState_.playEnabled) { originalMode_ = true; startSkinLookup(); redraw(); }
         break;
     case VersionEternalButtonId:
     case VersionVanillaButtonId:
@@ -2223,6 +2251,41 @@ void MainPage::fetchLeaderboardAsync()
         if (stop.stop_requested()) return;
         auto* transferred = new LeaderboardResult(std::move(result));
         if (!PostMessageW(window, LeaderboardResultMessage, 0, reinterpret_cast<LPARAM>(transferred))) delete transferred;
+    });
+}
+
+std::wstring MainPage::avatarName() const
+{
+    return originalMode_ ? microsoftIdentity_.name : nicknameText();
+}
+
+const SkinLookupResult* MainPage::cachedSkin(const std::wstring& name) const
+{
+    const auto found = skins_.find(skinKey(name));
+    return found == skins_.end() ? nullptr : &found->second;
+}
+
+void MainPage::scheduleSkinLookup()
+{
+    // Wait until typing pauses, so each keystroke does not query Mojang.
+    if (window_) SetTimer(window_, SkinLookupTimerId, 600, nullptr);
+}
+
+void MainPage::startSkinLookup()
+{
+    const auto name = avatarName();
+    if (!playtimeSyncEnabled_ || !NicknameStore::isValid(name)) return;
+    const auto* cached = cachedSkin(name);
+    if (cached && cached->outcome != SkinLookupOutcome::Unavailable) return;
+    const auto key = skinKey(name);
+    if (skinPending_ == key) return;
+    skinPending_ = key;
+    // Replacing the thread cancels a lookup for a name that is no longer shown.
+    skinThread_ = std::jthread([window = window_, name](std::stop_token stop) {
+        auto result = SkinLookup::lookup(name, stop);
+        if (stop.stop_requested()) return;
+        auto* transferred = new SkinLookupResult(std::move(result));
+        if (!PostMessageW(window, SkinLookupResultMessage, 0, reinterpret_cast<LPARAM>(transferred))) delete transferred;
     });
 }
 

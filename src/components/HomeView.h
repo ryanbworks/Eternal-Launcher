@@ -1,6 +1,7 @@
 #pragma once
 
 #include "components/Buttons.h"
+#include "services/SkinLookup.h"
 #include "types/LauncherState.h"
 
 #include <objidl.h>
@@ -21,6 +22,11 @@ struct PlayerCardModel
     bool nicknameValid = true;
     bool nicknameEmpty = false;
     float identitySelection = 0;
+    // Face drawn in the avatar: the account's skin when the nickname is an original
+    // account, otherwise the default face. `skinLoading` while the lookup runs.
+    const SkinFace* face = nullptr;
+    bool skinLoading = false;
+    bool skinFound = false;
     // Replace the group-related status while the 1.8.9 is the selected game.
     std::wstring statusHeadline;
     std::wstring statusMessage;
@@ -84,7 +90,7 @@ public:
               const ControlVisuals& visuals, bool drawHero) const;
     static void drawPlayerCard(Gdiplus::Graphics& graphics, const PlayerCardModel& model, const ControlVisuals& visuals);
     static void drawAvatar(Gdiplus::Graphics& graphics, const Gdiplus::RectF& bounds, const Gdiplus::Color& status,
-                           bool blink = false);
+                           const SkinFace& face, float shimmer = -1);
 private:
     static void drawPlayButton(Gdiplus::Graphics& graphics, const PlayerCardModel& model, const ControlVisuals& visuals);
     void drawTiles(Gdiplus::Graphics& graphics, const HomeModel& model) const;

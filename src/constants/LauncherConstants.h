@@ -79,6 +79,7 @@ namespace LauncherConstants
     inline constexpr UINT_PTR PlaytimeTimerId = 2004;
     inline constexpr UINT_PTR ServerRetryTimerId = 2005;
     inline constexpr UINT_PTR LeaderboardTimerId = 2006;
+    inline constexpr UINT_PTR SkinLookupTimerId = 2007;
 
     inline constexpr UINT FileServerResultMessage = WM_APP + 1;
     inline constexpr UINT JavaRuntimeProgressMessage = WM_APP + 2;
@@ -95,4 +96,5 @@ namespace LauncherConstants
     inline constexpr UINT TrayIconMessage = WM_APP + 13;
     inline constexpr UINT PlaytimeSyncMessage = WM_APP + 14;
     inline constexpr UINT LeaderboardResultMessage = WM_APP + 15;
+    inline constexpr UINT SkinLookupResultMessage = WM_APP + 16;
 }

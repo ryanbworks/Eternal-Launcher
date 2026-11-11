@@ -18,6 +18,7 @@
 #include "services/ModInventory.h"
 #include "services/PlaytimeApi.h"
 #include "services/PlaytimeStore.h"
+#include "services/SkinLookup.h"
 #include "types/LauncherState.h"
 
 #include <windows.h>
@@ -138,6 +139,12 @@ private:
     void startPlaytimeSync(const PlaytimeRecord& local);
     void fetchLeaderboardAsync();
     std::wstring rankingName() const;
+
+    // Avatar: the skin face of the nickname (or Microsoft account) in use.
+    std::wstring avatarName() const;
+    void scheduleSkinLookup();
+    void startSkinLookup();
+    const SkinLookupResult* cachedSkin(const std::wstring& name) const;
     void finishPlaySession();
     void updateTrayTooltip();
     void hideToTray(bool closedByUser);
@@ -278,6 +285,10 @@ private:
     std::optional<std::uint64_t> serverTotalSeconds_;
     std::wstring serverTotalName_;
 
+    // Skin faces by lowercase name. Unavailable results are retried on the next lookup.
+    std::map<std::wstring, SkinLookupResult> skins_;
+    std::wstring skinPending_;
+
     // The service is accessed through the generic interface to keep the page
     // independent of WinHTTP and of the web server used in the infrastructure.
     std::unique_ptr<IFileServerService> fileServerService_;
@@ -299,6 +310,7 @@ private:
     std::jthread newsThread_;
     std::jthread leaderboardThread_;
     std::jthread playtimeSyncThread_;
+    std::jthread skinThread_;
     // Last member: destruction joins before any state captured by the worker is destroyed.
     std::jthread launcherUpdateThread_;
     // Last: all captured services, tracking state and HWND outlive this worker.

@@ -2,6 +2,7 @@
 #include "services/NewsFeed.h"
 #include "services/PlaytimeApi.h"
 #include "services/PlaytimeStore.h"
+#include "services/SkinLookup.h"
 
 #include <windows.h>
 
@@ -112,6 +113,47 @@ namespace {
         check(!ModInventory::add(directory,root/L"readme.txt",error),"only .jar files can be added");
         check(ModInventory::formatSize(512)==L"1 KB" && ModInventory::formatSize(5*1024*1024+512*1024)==L"5,5 MB","sizes use a decimal comma");
     }
+
+    std::string base64(std::string_view text) {
+        static constexpr char alphabet[]="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        std::string out;std::uint32_t buffer=0;int bits=0;
+        for(const unsigned char c:text) {buffer=(buffer<<8)|c;bits+=8;while(bits>=6){bits-=6;out.push_back(alphabet[(buffer>>bits)&63]);}}
+        if(bits) out.push_back(alphabet[(buffer<<(6-bits))&63]);
+        while(out.size()%4) out.push_back('=');
+        return out;
+    }
+    std::string sessionProfile(std::string_view textures) {
+        return R"({"id":"069a79f444e94726a5befca90e38aaf5","name":"Notch","properties":[{"name":"textures","value":")"+base64(textures)+R"("}]})";
+    }
+
+    void skins() {
+        check(SkinLookup::parseProfileId(R"({"id":"069a79f444e94726a5befca90e38aaf5","name":"Notch"})")==std::string("069a79f444e94726a5befca90e38aaf5"),
+            "profile id is read from the name lookup");
+        check(!SkinLookup::parseProfileId(R"({"id":"../../evil","name":"x"})") && !SkinLookup::parseProfileId("not json"),
+            "anything but a 32-digit hex id is refused");
+        check(SkinLookup::base64Decode(base64("eternal launcher"))=="eternal launcher","base64 round trip");
+
+        const auto url=SkinLookup::parseSkinUrl(sessionProfile(R"({"textures":{"SKIN":{"url":"http://textures.minecraft.net/texture/1a4af718455d4aab528e7a61f86fa25e6a369d1768dcb13f7df319a713eb810b"}}})"));
+        check(url && *url==L"https://textures.minecraft.net/texture/1a4af718455d4aab528e7a61f86fa25e6a369d1768dcb13f7df319a713eb810b",
+            "skin URL comes from the textures property and is upgraded to HTTPS");
+        check(!SkinLookup::parseSkinUrl(sessionProfile(R"({"textures":{"SKIN":{"url":"http://evil.example/texture/abc"}}})")),
+            "skins from other hosts are refused");
+        check(!SkinLookup::parseSkinUrl(sessionProfile(R"({"textures":{"SKIN":{"url":"http://textures.minecraft.net/texture/../x"}}})")),
+            "texture paths must be a plain hash");
+        check(!SkinLookup::parseSkinUrl(sessionProfile(R"({"textures":{}})")),"accounts without a custom skin have no URL");
+
+        std::vector<std::uint32_t> skin(64*64,0);
+        for(int y=8;y<16;++y) for(int x=8;x<16;++x) skin[static_cast<std::size_t>(y*64+x)]=0xFFAA0000U;
+        auto face=SkinLookup::composeFace(skin.data(),64,64,64);
+        check(face.pixels[0]==0xFFAA0000U && face.pixels[63]==0xFFAA0000U,"face comes from the 8,8 region");
+        skin[static_cast<std::size_t>(9*64+41)]=0xFF0000FFU;
+        face=SkinLookup::composeFace(skin.data(),64,64,64);
+        check(face.pixels[9]==0xFF0000FFU && face.pixels[0]==0xFFAA0000U,"opaque hat pixels cover the face");
+        for(int y=8;y<16;++y) for(int x=40;x<48;++x) skin[static_cast<std::size_t>(y*64+x)]=0xFF000000U;
+        face=SkinLookup::composeFace(skin.data(),64,32,64);
+        check(face.pixels[9]==0xFFAA0000U,"a flat legacy hat fill is ignored");
+        check(SkinLookup::composeFace(skin.data(),16,16,16).pixels==SkinLookup::defaultFace().pixels,"undersized skins use the default face");
+    }
 }
 
 int main()
@@ -126,6 +168,7 @@ int main()
     leaderboard();
     news();
     mods(root);
+    skins();
     std::filesystem::remove_all(root,ignored);
     std::cout << "Launcher services failures: " << failures << '\n';
     return failures ? 1 : 0;
