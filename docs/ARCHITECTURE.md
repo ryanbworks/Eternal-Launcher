@@ -54,6 +54,8 @@ Components only draw the data they receive. They never touch the network or disk
   recycles player mods.
 - `PlaytimeStore` / `PlaySession`: total and last play time in `playtime.json`.
 - `PlaytimeApi`: server-side play time session, one-time import and leaderboard.
+- `SkinLookup`: finds the skin of a nickname through Mojang's public API and composes
+  the 8 × 8 face shown in the player card.
 
 ### Notification area and play time
 
