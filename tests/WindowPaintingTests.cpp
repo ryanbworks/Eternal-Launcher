@@ -169,9 +169,15 @@ public:
             "help page exposes its actions");
         SendMessageW(control(page,NavHomeId),BM_CLICK,0,0);
         check(page.page_==LauncherPage::Home,"home navigation");
-        page.originalMode_=true;page.syncControls();
-        check(!shown(page.nicknameInput_) && !shown(control(page,EditNicknameButtonId)),"original account hides the nickname field");
-        page.originalMode_=false;page.syncControls();
+        check(shown(control(page,OfflineButtonId)) && shown(control(page,OriginalButtonId)),"home shows both account mode cards");
+        SendMessageW(control(page,OriginalButtonId),BM_CLICK,0,0);
+        check(page.originalMode_ && !shown(page.nicknameInput_) && !shown(control(page,EditNicknameButtonId)),
+            "original account hides the nickname field");
+        SendMessageW(control(page,OfflineButtonId),BM_CLICK,0,0);
+        check(!page.originalMode_ && shown(page.nicknameInput_),"the nickname card switches back from the original account");
+        SendMessageW(control(page,NavVersionsId),BM_CLICK,0,0);
+        check(!shown(control(page,OfflineButtonId)),"the nickname card button does not cover the versions page");
+        SendMessageW(control(page,NavHomeId),BM_CLICK,0,0);
     }
 
     static void newsAndMods(MainPage& page) {

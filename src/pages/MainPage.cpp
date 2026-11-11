@@ -1372,10 +1372,10 @@ bool MainPage::controlVisible(int id) const
     case NicknameInputId:
     case EditNicknameButtonId:
         return home && !originalMode_;
-    case OfflineButtonId:
     case VersionEternalButtonId:
     case VersionVanillaButtonId:
         return page_ == LauncherPage::Versions;
+    case OfflineButtonId:
     case OriginalButtonId:
     case VersionChangeButtonId:
     case PlayButtonId:
