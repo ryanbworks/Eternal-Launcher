@@ -81,7 +81,7 @@ class HomeView
 {
 public:
     void draw(Gdiplus::Graphics& graphics, const HomeModel& model, const HeroComponent& hero,
-              const ControlVisuals& visuals, bool drawLeftColumn) const;
+              const ControlVisuals& visuals, bool drawHero) const;
     static void drawPlayerCard(Gdiplus::Graphics& graphics, const PlayerCardModel& model, const ControlVisuals& visuals);
     static void drawAvatar(Gdiplus::Graphics& graphics, const Gdiplus::RectF& bounds, const Gdiplus::Color& status,
                            bool blink = false);

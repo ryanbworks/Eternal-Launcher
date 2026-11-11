@@ -370,7 +370,8 @@ public:
         page.redraw();
         const auto cancel=control(page,CancelInstallationButtonId);
         check(shown(cancel) && shown(control(page,InstallationLogButtonId)),"installation exposes native cancel and log controls");
-        check(!shown(control(page,NewsAllButtonId)) && shown(control(page,PlayButtonId)),"installation replaces the left column only");
+        check(shown(control(page,NewsAllButtonId)) && !shown(control(page,ToastNewsButtonId)) && shown(control(page,PlayButtonId)),
+            "installation replaces the hero only; news and the player card stay");
         check(!IsWindowEnabled(control(page,PlayButtonId)) && IsWindowEnabled(cancel),"preparation blocks play and allows cancellation");
         const auto attempt=page.installation_.attempt;
         SendMessageW(page.window_,WM_COMMAND,MAKEWPARAM(PlayButtonId,BN_CLICKED),reinterpret_cast<LPARAM>(control(page,PlayButtonId)));
@@ -572,6 +573,11 @@ public:
         page.installation_.begin();page.viewState_.playEnabled=false;
         page.installation_.progress.activity=InstallationActivity::Downloading;page.installation_.progress.percent=80;page.redraw();tick(page);
         check(page.installationFill_>0 && page.installationFill_<80,"real transfer fill eases toward the current percentage");
+        check(page.installation_.visible && shown(control(page,CancelInstallationButtonId)) && shown(control(page,NewsAllButtonId)) &&
+            (page.viewState_.news.empty() || shown(control(page,NewsCardFirstId))),
+            "the installation panel only replaces the hero, so news stays usable");
+        check(Layout::InstallationCancel.GetBottom()<=Layout::Hero.GetBottom() && Layout::InstallationLog.GetBottom()<=Layout::Hero.GetBottom(),
+            "installation actions fit inside the hero slot");
         ++page.installation_.progress.transferId;page.redraw();
         check(page.installationFill_==0,"new transfer cannot inherit the previous animated fill");
         page.installation_.steps[0]=InstallationStepState::Complete;page.redraw();

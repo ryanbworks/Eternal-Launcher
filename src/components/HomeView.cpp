@@ -94,9 +94,9 @@ void HomeView::drawAvatar(Gdiplus::Graphics& g, const Gdiplus::RectF& b, const G
 }
 
 void HomeView::draw(Gdiplus::Graphics& g, const HomeModel& model, const HeroComponent& hero,
-                    const ControlVisuals& visuals, bool drawLeftColumn) const
+                    const ControlVisuals& visuals, bool drawHero) const
 {
-    if (drawLeftColumn) {
+    if (drawHero) {
         hero.draw(g, Layout::Hero, model.reveal, model.energy, model.phase, model.drift, model.chips);
         if (model.toast && model.toastReveal > .01F) {
             // The toast drops in from the top edge of the landscape.
@@ -115,10 +115,10 @@ void HomeView::draw(Gdiplus::Graphics& g, const HomeModel& model, const HeroComp
                 Buttons::Style::Link, std::nullopt, false, 12.5F);
             g.Restore(saved);
         }
-        drawTiles(g, model);
-        drawNews(g, model, hero, visuals);
-        drawRanking(g, model);
     }
+    drawTiles(g, model);
+    drawNews(g, model, hero, visuals);
+    drawRanking(g, model);
     drawPlayerCard(g, model.player, visuals);
 }
 

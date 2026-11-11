@@ -137,14 +137,17 @@ components:
 ## Installation tracking extension
 
 The main page remains Operate mode. During game preparation, error or cancellation,
-`InstallationPanelComponent` occupies the existing left area (36,112,744,592).
-It uses the same indigo surface, Segoe UI operational typography, violet active
-selection and semantic status colors. Six continuous rows replace the cinematic
-landscape, installation columns and news for this state only. The right access
-console stays in place and shows the current stage and disabled primary action.
+`InstallationPanelComponent` takes the hero's slot (`Layout::Installation`, the
+same 792 × 356 rectangle as `Layout::Hero`). It uses the same indigo surface,
+Segoe UI operational typography, violet active selection and semantic status
+colors. Only the cinematic landscape is replaced: the status tiles, news and
+ranking stay visible and clickable, so preparing the game never hides the rest
+of Home. The right access console stays in place and shows the current stage
+and disabled primary action.
 
-The current row uses a tonal selection and a readable state label. Below the
-rows are the actual activity, transfer bytes/optional percentage, a flat progress
+The six stages are a horizontal stepper joined by a line that turns green as
+steps finish. Below it, a tonal detail box shows the actual activity, transfer
+bytes/optional percentage, a flat progress
 track, speed/conditional ETA and verified/reused counts. Checking, hashing,
 extraction and Forge execution use an indeterminate track. Errors and cancellation
 replace transfer details with recovery copy; the primary action becomes Retry or

@@ -53,10 +53,16 @@ namespace Layout
     inline const Rect Toast{546, 84, 330, 40};
     inline const Rect ToastButton{758, 89, 110, 30};
 
-    // Installation panel (replaces the left column while preparing).
-    inline const Rect Installation{100, 68, 792, 708};
-    inline const Rect InstallationLog{130, 700, 140, 46};
-    inline const Rect InstallationCancel{662, 700, 200, 46};
+    // Everything left of the player card: hero, tiles, news and ranking.
+    inline const Rect LeftColumn{100, 68, 792, 708};
+
+    // Installation panel. It takes the hero's slot while preparing, so the status
+    // tiles, news and ranking below stay readable and clickable.
+    inline const Rect Installation = Hero;
+    inline const Rect InstallationStepper{130, 188, 732, 58};
+    inline const Rect InstallationDetail{130, 256, 732, 92};
+    inline const Rect InstallationLog{130, 362, 140, 42};
+    inline const Rect InstallationCancel{662, 362, 200, 42};
 
     // Shared page header.
     inline const Rect PageTitle{100, 84, 760, 40};

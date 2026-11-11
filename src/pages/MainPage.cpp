@@ -1206,7 +1206,7 @@ void MainPage::animate()
         const bool playing = playSession_.active() || viewState_.operation == LauncherOperation::MinecraftRunning;
         if (heroVisible) {
             markContent(Layout::Hero, 2);  // particles drift every frame
-            if (portalEntrance_ != entranceBefore) markContent(Layout::Installation, 24);  // tiles and cards rise
+            if (portalEntrance_ != entranceBefore) markContent(Layout::LeftColumn, 24);  // tiles and cards rise
         }
         if (toastReveal_ != toastBefore) markContent(Layout::Hero, 2);
         if (identitySelection_ != selectionBefore)
@@ -1220,7 +1220,7 @@ void MainPage::animate()
         if (ambientNow || playing) markContent(Layout::Avatar, 18);
         if (working || playing) markContent({Layout::StatusLine.X - 12, Layout::StatusLine.Y - 4, 32, 32});
         // Status dots pulse while their card is in an "in progress" tone.
-        if (heroVisible && motionEnabled_ && viewState_.statusCards.size() >= 3)
+        if (motionEnabled_ && viewState_.statusCards.size() >= 3)
             for (int i = 0; i < 3; ++i)
                 if (viewState_.statusCards[static_cast<std::size_t>(2 - i)].tone == StatusTone::Information) {
                     const auto tile = Layout::tile(i);
@@ -1367,7 +1367,9 @@ bool MainPage::controlVisible(int id) const
 {
     if (chromeControl(id)) return true;
     const bool home = page_ == LauncherPage::Home;
-    const bool leftColumn = home && !installation_.visible;
+    // The installation panel only covers the hero, so the news below stays usable.
+    const bool leftColumn = home;
+    const bool heroVisible = home && !installation_.visible;
     switch (id) {
     case NicknameInputId:
     case EditNicknameButtonId:
@@ -1389,7 +1391,7 @@ bool MainPage::controlVisible(int id) const
     case RetryServerButtonId:
         return home && serverOffline_ && !vanillaSelected_ && updateWarning_.empty() && viewState_.playEnabled && !installation_.visible;
     case ToastNewsButtonId:
-        return leftColumn && toastVisible_;
+        return heroVisible && toastVisible_;
     case NewsAllButtonId:
         return leftColumn;
     case InstallationLogButtonId:
