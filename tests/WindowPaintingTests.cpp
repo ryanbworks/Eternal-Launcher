@@ -204,6 +204,11 @@ public:
             "help page exposes its actions");
         SendMessageW(control(page,NavHomeId),BM_CLICK,0,0);
         check(page.page_==LauncherPage::Home,"home navigation");
+        SendMessageW(control(page,LevelsButtonId),BM_CLICK,0,0);
+        check(page.levelsOpen_ && shown(control(page,LevelsCloseButtonId)) && !shown(control(page,SpotlightReadButtonId)),
+            "Tempo jogado opens every level over the landscape");
+        check(page.handleKeyboard(escape) && !page.levelsOpen_ && page.page_==LauncherPage::Home && !shown(control(page,LevelsCloseButtonId)),
+            "Escape closes the levels and stays home");
         check(shown(control(page,OfflineButtonId)) && shown(control(page,OriginalButtonId)),"home shows both account mode cards");
         SendMessageW(control(page,OriginalButtonId),BM_CLICK,0,0);
         check(page.originalMode_ && !shown(page.nicknameInput_) && !shown(control(page,EditNicknameButtonId)),

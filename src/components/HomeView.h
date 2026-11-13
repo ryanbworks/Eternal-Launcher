@@ -126,6 +126,11 @@ struct HomeModel
     // Mods the server added, removed or updated since the player last looked; shown in
     // place of the landscape while set.
     const ModpackChanges* modpackChanges = nullptr;
+    // Every level at once, over the landscape.
+    bool levels = false;
+    float levelsReveal = 0;
+    std::uint64_t levelsSeconds = 0;
+    bool levelsKnown = false;  // the server's play time is known
 };
 
 class HeroComponent;
@@ -149,12 +154,14 @@ private:
     void drawSpotlight(Gdiplus::Graphics& graphics, const HomeModel& model, const ControlVisuals& visuals) const;
     void drawCelebration(Gdiplus::Graphics& graphics, const HomeModel& model, const ControlVisuals& visuals) const;
     void drawModpackChanges(Gdiplus::Graphics& graphics, const HomeModel& model, const ControlVisuals& visuals) const;
+    void drawLevels(Gdiplus::Graphics& graphics, const HomeModel& model, const ControlVisuals& visuals) const;
 public:
     // Light and deep tone of each play-time level.
     static Gdiplus::Color tierLight(int level);
     static Gdiplus::Color tierDeep(int level);
     // A faceted gem in the level's colors, used as the level's emblem.
-    static void drawTierGem(Gdiplus::Graphics& graphics, const Gdiplus::RectF& bounds, int level);
+    // `locked` draws it in grey, for a level not reached yet.
+    static void drawTierGem(Gdiplus::Graphics& graphics, const Gdiplus::RectF& bounds, int level, bool locked = false);
 private:
     static void drawPodiumRow(Gdiplus::Graphics& graphics, const Gdiplus::RectF& line, const RankingRowModel& row,
                               float time, bool ambient);

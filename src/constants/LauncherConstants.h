@@ -49,6 +49,8 @@ namespace LauncherConstants
     inline constexpr int CelebrationButtonId = 1136;
     inline constexpr int ModpackChangesOkButtonId = 1137;
     inline constexpr int ModpackChangesModsButtonId = 1138;
+    inline constexpr int LevelsButtonId = 1139;       // the Tempo jogado stat
+    inline constexpr int LevelsCloseButtonId = 1140;
     inline constexpr int RetryServerButtonId = 1131;
     inline constexpr int VersionEternalButtonId = 1132;
     inline constexpr int VersionVanillaButtonId = 1133;

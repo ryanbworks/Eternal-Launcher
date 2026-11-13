@@ -62,6 +62,8 @@ namespace
         {EditNicknameButtonId, false, true, L"Editar nickname"},
         {OfflineButtonId, false, true, L"Nickname"},
         {OriginalButtonId, false, true, L"Conta original"},
+        {LevelsButtonId, false, true, L"Ver todos os níveis"},
+        {LevelsCloseButtonId, false, true, L"Fechar níveis"},
         {VersionEternalButtonId, false, true, L"Modpack Eternal"},
         {VersionVanillaButtonId, false, true, L"Minecraft 1.8.9"},
         {VersionChangeButtonId, false, true, L"Trocar versão"},
@@ -1017,6 +1019,15 @@ HomeModel MainPage::homeModel(bool preview) const
     model.phase = animationPhase_;
     model.drift = preview ? 0 : particlePhase_;
     model.modpackChanges = modpackChangesVisible_ ? &modpackChanges_ : nullptr;
+    model.levels = levelsOpen_;
+    model.levelsReveal = preview ? (levelsOpen_ ? 1.0F : 0.0F) : levelsReveal_;
+    if (preview) {
+        model.levelsKnown = previewLevelsSeconds_ > 0;
+        model.levelsSeconds = previewLevelsSeconds_;
+    } else if (const auto seconds = serverSecondsForAccount()) {
+        model.levelsKnown = true;
+        model.levelsSeconds = *seconds;
+    }
     model.celebration = celebration_;
     model.celebrationSeconds = celebrationSeconds_;
     model.celebrationReveal = preview ? (celebration_ > 0 ? 1.0F : 0.0F) : celebrationReveal_;
@@ -1157,6 +1168,7 @@ void MainPage::updateMotionPreference()
         navIndicator_ = navigationTarget();
         spotlightReveal_ = spotlightTarget();
         celebrationReveal_ = celebrationTarget();
+        levelsReveal_ = levelsTarget();
         playSweep_ = 1; playPulse_ = 0;
         settingsPage_.settle();
     }
@@ -1206,7 +1218,7 @@ void MainPage::redraw(bool animationFrame)
     const bool pressed = findControl(PlayButtonId) && findControl(PlayButtonId)->window &&
         (SendMessageW(findControl(PlayButtonId)->window, BM_GETSTATE, 0, 0) & BST_PUSHED) != 0;
     unsettled |= std::abs(navIndicator_ - navigationTarget()) > .75F || std::abs(spotlightReveal_ - spotlightTarget()) > .01F ||
-        std::abs(celebrationReveal_ - celebrationTarget()) > .01F;
+        std::abs(celebrationReveal_ - celebrationTarget()) > .01F || std::abs(levelsReveal_ - levelsTarget()) > .01F;
     unsettled |= playSweep_ < 1 || playPulse_ > 0 || std::abs(playPress_ - (pressed ? 1.0F : 0.0F)) > .01F ||
         std::abs(playLight_ - playLightTarget_) > .005F;
     for (const auto& mod : mods_.user) {
@@ -1225,6 +1237,7 @@ void MainPage::redraw(bool animationFrame)
         portalEntrance_ = 1; portalEnergy_ = 0; portalBurst_ = 0; pageFade_ = 1;
         completionPulse_ = {};
         navIndicator_ = navigationTarget(); spotlightReveal_ = spotlightTarget(); celebrationReveal_ = celebrationTarget();
+        levelsReveal_ = levelsTarget();
         playSweep_ = 1; playPulse_ = 0; playPress_ = pressed ? 1.0F : 0.0F; playLight_ = playLightTarget_;
         for (const auto& mod : mods_.user) modKnobs_[mod.name] = mod.enabled ? 1.0F : 0.0F;
         settingsPage_.settle();
@@ -1321,6 +1334,7 @@ void MainPage::animate()
     approach(navIndicator_, navigationTarget(), 50, .75F);
     approach(spotlightReveal_, spotlightTarget(), 90, .01F);
     approach(celebrationReveal_, celebrationTarget(), 140, .01F);
+    approach(levelsReveal_, levelsTarget(), 70, .01F);
     playSweep_ = std::min(1.0F, playSweep_ + dt / 560);
     playPulse_ = std::max(0.0F, playPulse_ - dt / 420);
     const auto* play = findControl(PlayButtonId);
@@ -1456,13 +1470,31 @@ float MainPage::navigationTarget() const
 
 float MainPage::spotlightTarget() const
 {
-    return spotlightIndex() >= 0 && celebration_ == 0 && !modpackChangesVisible_ && page_ == LauncherPage::Home &&
+    return spotlightIndex() >= 0 && celebration_ == 0 && !modpackChangesVisible_ && !levelsOpen_ && page_ == LauncherPage::Home &&
         !installation_.visible ? 1.0F : 0.0F;
 }
 
 float MainPage::celebrationTarget() const
 {
-    return celebration_ > 0 && !modpackChangesVisible_ && page_ == LauncherPage::Home && !installation_.visible ? 1.0F : 0.0F;
+    return celebration_ > 0 && !modpackChangesVisible_ && !levelsOpen_ && page_ == LauncherPage::Home && !installation_.visible ? 1.0F : 0.0F;
+}
+
+float MainPage::levelsTarget() const
+{
+    return levelsOpen_ && page_ == LauncherPage::Home && !installation_.visible ? 1.0F : 0.0F;
+}
+
+void MainPage::showLevels(bool open)
+{
+    if (levelsOpen_ == open) return;
+    levelsOpen_ = open;
+    redraw();
+    // Closing returns focus to the card that opened it.
+    if (!open)
+        if (const auto* stat = findControl(LevelsButtonId); stat && stat->window && GetFocus() != stat->window) {
+            const HWND focus = GetFocus();
+            if (!focus || !(GetWindowLongPtrW(focus, GWL_STYLE) & WS_VISIBLE)) SetFocus(stat->window);
+        }
 }
 
 void MainPage::syncModKnobs()
@@ -1511,6 +1543,8 @@ Gdiplus::RectF MainPage::controlBounds(int id) const
     case QuickLogsButtonId: return Layout::quickAction(2);
     case SpotlightReadButtonId: return Layout::SpotlightRead;
     case CelebrationButtonId: return Layout::CelebrationButton;
+    case LevelsButtonId: return Layout::stat(1);
+    case LevelsCloseButtonId: return Layout::LevelsClose;
     case ModpackChangesOkButtonId: return Layout::ModpackChangesOk;
     case ModpackChangesModsButtonId: return Layout::ModpackChangesMods;
     case SpotlightDismissButtonId: return Layout::SpotlightDismiss;
@@ -1556,7 +1590,8 @@ bool MainPage::controlVisible(int id) const
     // The installation panel only covers the hero, so the news below stays usable.
     const bool leftColumn = home;
     // The modpack changelog takes the landscape's slot, with its own buttons.
-    const bool heroVisible = home && !installation_.visible && !modpackChangesVisible_;
+    // The levels panel covers both while it is open.
+    const bool heroVisible = home && !installation_.visible && !modpackChangesVisible_ && !levelsOpen_;
     switch (id) {
     case NicknameInputId:
     case EditNicknameButtonId:
@@ -1584,7 +1619,11 @@ bool MainPage::controlVisible(int id) const
         return heroVisible && celebration_ > 0;
     case ModpackChangesOkButtonId:
     case ModpackChangesModsButtonId:
-        return home && !installation_.visible && modpackChangesVisible_;
+        return home && !installation_.visible && modpackChangesVisible_ && !levelsOpen_;
+    case LevelsButtonId:
+        return home;
+    case LevelsCloseButtonId:
+        return home && !installation_.visible && levelsOpen_;
     case ScreenshotsRefreshButtonId:
     case ScreenshotsMineTabId:
     case ScreenshotsGroupTabId:
@@ -1711,6 +1750,12 @@ std::wstring MainPage::controlLabel(int id) const
         if (galleryTab_)
             return index < galleryPhotos_.size() ? L"Captura de " + galleryPhotos_[index].name : std::wstring{};
         return index < screenshots_.size() ? L"Captura de " + ScreenshotLibrary::formatDate(screenshots_[index].modified) : std::wstring{};
+    }
+    if (id == LevelsButtonId) {
+        if (const auto seconds = serverSecondsForAccount())
+            return L"Tempo jogado " + PlaytimeStore::formatDuration(*seconds) + L", nível " + RankTier::name(RankTier::level(*seconds)) +
+                L". Ver todos os níveis";
+        return L"Ver todos os níveis de tempo de jogo";
     }
     if (id == ScreenshotsMineTabId) return galleryTab_ ? L"Minhas capturas" : L"Minhas capturas (selecionada)";
     if (id == ScreenshotsGroupTabId) return galleryTab_ ? L"Galeria do grupo (selecionada)" : L"Galeria do grupo";
@@ -1844,6 +1889,7 @@ bool MainPage::handleKeyboard(MSG& message)
                 return true;
             }
         }
+        if (message.wParam == VK_ESCAPE && page_ == LauncherPage::Home && levelsOpen_) { showLevels(false); return true; }
         if (message.wParam == VK_ESCAPE && page_ != LauncherPage::Home) { showPage(LauncherPage::Home); return true; }
         if (message.wParam == VK_RETURN) {
             const HWND focus = GetFocus();
@@ -2007,6 +2053,8 @@ void MainPage::handleCommand(int id, int)
     case CelebrationButtonId:
         dismissCelebration();
         break;
+    case LevelsButtonId: showLevels(!levelsOpen_); break;
+    case LevelsCloseButtonId: showLevels(false); break;
     case ModpackChangesOkButtonId:
         acknowledgeModpackChanges();
         if (const auto* play = findControl(PlayButtonId); play && play->window) SetFocus(play->window);
@@ -3664,6 +3712,7 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
         viewerImage_.reset(); viewerImagePath_.clear(); screenshotsMessage_.clear();
         previewRankingHours_ = {312, 167, 96};
         celebration_ = 0; previewTier_ = 0;
+        levelsOpen_ = false; previewLevelsSeconds_ = 0;
         modpackChangesVisible_ = false; modpackChanges_ = {};
         page_ = LauncherPage::Home;
         newsFirst_ = 0; newsLoading_ = false; newsError_.clear();
@@ -3702,6 +3751,16 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
     if (!save(L"achievement-max.png", 1)) return false;
     celebration_ = 0;
     if (!save(L"player-tier.png", 1)) return false;
+    // Every level, opened from Tempo jogado.
+    levelsOpen_ = true; previewLevelsSeconds_ = 96 * 3600 + 20 * 60;
+    if (!save(L"levels.png", 1)) return false;
+    previewLevelsSeconds_ = 4 * 3600; previewTier_ = 1;
+    if (!save(L"levels-start.png", 1)) return false;
+    previewLevelsSeconds_ = 330 * 3600; previewTier_ = 5;
+    if (!save(L"levels-max.png", 1)) return false;
+    previewLevelsSeconds_ = 0; previewTier_ = 0;
+    if (!save(L"levels-unknown.png", 1)) return false;
+    levelsOpen_ = false;
     // Podium at the first play-time levels.
     ready(); previewRankingHours_ = {60, 30, 8};
     if (!save(L"ranking-early.png", 1)) return false;

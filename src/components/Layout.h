@@ -57,6 +57,10 @@ namespace Layout
     // A play-time level reached: a card centered on the landscape.
     inline const Rect Celebration{266, 88, 460, 316};
     inline const Rect CelebrationButton{416, 344, 160, 42};
+    // Every play-time level, opened from the Tempo jogado stat.
+    inline const Rect Levels{124, 88, 744, 316};
+    inline const Rect LevelsClose{808, 104, 44, 40};
+    inline Rect levelColumn(int index) { return {152 + static_cast<float>(index) * 140, 184, 128, 200}; }
     // Modpack changelog: takes the landscape's slot until it is acknowledged.
     inline const Rect ModpackChangesMods{636, 96, 112, 38};
     inline const Rect ModpackChangesOk{756, 96, 112, 38};

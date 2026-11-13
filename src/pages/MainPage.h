@@ -182,6 +182,8 @@ private:
     void checkMilestone();
     void dismissCelebration();
     float celebrationTarget() const;
+    float levelsTarget() const;
+    void showLevels(bool open);
 
     // Screenshots.
     ScreenshotsModel screenshotsModel(bool preview) const;
@@ -316,6 +318,10 @@ private:
     std::uint64_t celebrationSeconds_ = 0;
     std::wstring celebrationName_;
     float celebrationReveal_ = 0;
+    // Every level, opened from the Tempo jogado stat.
+    bool levelsOpen_ = false;
+    float levelsReveal_ = 0;
+    std::uint64_t previewLevelsSeconds_ = 0;
 
     // Screenshots.
     ScreenshotsView screenshotsView_;
