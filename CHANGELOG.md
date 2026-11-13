@@ -21,6 +21,8 @@ and versions use [SemVer](https://semver.org/) plus a codename.
   server and the ones the group shared. Preview any of them front and back, use it on
   your account or save it to your library. Share a library skin with one click; you can
   take it back later, and anyone can report one. Served by the `eternal-gallery` service.
+  A search field finds the skin of any original Minecraft account by nickname (or of a
+  Conta Eternal), ready to use or save.
 - **First access hint.** The sign-in panel and the player card explain that a reserved
   Conta Eternal signs in the first time with the nickname alone, then gets a password.
 

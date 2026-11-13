@@ -50,4 +50,18 @@ namespace SkinLookup
 
     // Blocking; run it on a worker thread.
     [[nodiscard]] SkinLookupResult lookup(const std::wstring& name, std::stop_token stop);
+
+    // The whole skin of an original account, to explore and copy.
+    struct OriginalSkin
+    {
+        SkinLookupOutcome outcome = SkinLookupOutcome::Unavailable;
+        std::wstring name;   // as the account writes it
+        bool custom = false; // false: the account uses a default skin
+        bool slim = false;
+        std::string png;
+    };
+    // The "slim" model flag of a sessionserver profile's skin.
+    [[nodiscard]] bool parseSlim(std::string_view json);
+    // Blocking; NotFound for names that are not valid nicknames or have no account.
+    [[nodiscard]] OriginalSkin fetchOriginal(const std::wstring& name, std::stop_token stop);
 }

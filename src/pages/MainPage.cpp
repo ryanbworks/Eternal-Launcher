@@ -96,6 +96,8 @@ namespace
         {ModsAddButtonId, false, true, L"Adicionar mod"},
         {SkinMineTabId, false, true, L"Minhas skins"},
         {SkinExploreTabId, false, true, L"Explorar skins"},
+        {SkinSearchInputId, false, true, nullptr},
+        {SkinSearchButtonId, false, true, L"Buscar skin pelo nick"},
         {SkinFolderButtonId, false, true, L"Abrir pasta de skins"},
         {SkinAddButtonId, false, true, L"Adicionar skin"},
         {SkinRefreshButtonId, false, true, L"Atualizar skins"},
@@ -237,6 +239,8 @@ MainPage::~MainPage()
     skinFetchThread_.request_stop();
     exploreThread_.request_stop();
     exploreActionThread_.request_stop();
+    skinSearchThread_.request_stop();
+    if (skinSearchThread_.joinable()) skinSearchThread_.join();
     if (skinActionThread_.joinable()) skinActionThread_.join();
     if (skinFetchThread_.joinable()) skinFetchThread_.join();
     if (exploreThread_.joinable()) exploreThread_.join();
@@ -506,6 +510,13 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         if (id == NicknameInputId) {
             if (notification == EN_CHANGE) scheduleSkinLookup();
             if (notification == EN_CHANGE || notification == EN_SETFOCUS || notification == EN_KILLFOCUS) redraw();
+            return 0;
+        }
+        if (id == SkinSearchInputId) {
+            if (notification == EN_SETFOCUS || notification == EN_KILLFOCUS) {
+                markContent(Layout::SkinsSearch, 4);
+                redraw(true);
+            }
             return 0;
         }
         if (id == LoginUserInputId || id == LoginPasswordInputId || id == LoginConfirmInputId) {
@@ -1635,6 +1646,16 @@ void MainPage::createControls()
             controls_.push_back({spec.id, edit, false});
             continue;
         }
+        if (spec.id == SkinSearchInputId) {
+            skinSearch_ = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
+                0, 0, 0, 0, window_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(spec.id)), instance_, nullptr);
+            if (!skinSearch_) continue;
+            SendMessageW(skinSearch_, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(L"Buscar skin por nick"));
+            SendMessageW(skinSearch_, EM_SETLIMITTEXT, 16, 0);
+            SetWindowTheme(skinSearch_, L"DarkMode_Explorer", nullptr);
+            controls_.push_back({spec.id, skinSearch_, false});
+            continue;
+        }
         const DWORD style = WS_CHILD | BS_OWNERDRAW | (spec.tabStop ? WS_TABSTOP : 0);
         const auto window = CreateWindowExW(0, L"BUTTON", spec.label, style, 0, 0, 0, 0, window_,
             reinterpret_cast<HMENU>(static_cast<INT_PTR>(spec.id)), instance_, nullptr);
@@ -1748,6 +1769,8 @@ Gdiplus::RectF MainPage::controlBounds(int id) const
     case SkinShareButtonId: return Layout::SkinsShare;
     case SkinSaveButtonId: return Layout::SkinsReset;
     case SkinRefreshButtonId: return Layout::SkinsRefresh;
+    case SkinSearchInputId: return Layout::SkinsSearch;
+    case SkinSearchButtonId: return Layout::SkinsSearchGo;
     case SkinMineTabId: return Layout::skinsTab(0);
     case SkinExploreTabId: return Layout::skinsTab(1);
     case SkinClassicButtonId: return Layout::SkinsClassic;
@@ -1851,6 +1874,8 @@ bool MainPage::controlVisible(int id) const
         return page_ == LauncherPage::Skins && !skinExplore_;
     case SkinRefreshButtonId:
     case SkinSaveButtonId:
+    case SkinSearchInputId:
+    case SkinSearchButtonId:
         return page_ == LauncherPage::Skins && skinExplore_;
     case SkinUseButtonId:
         return page_ == LauncherPage::Skins && eternalSignedIn();
@@ -1865,13 +1890,13 @@ bool MainPage::controlVisible(int id) const
     case SkinRemoveButtonId:
         if (skinExplore_) {
             const auto* skin = exploreSkin(exploreSelected_);
-            return page_ == LauncherPage::Skins && skin && !skin->group && skinsShared_.byId(skin->id);
+            return page_ == LauncherPage::Skins && skin && !skin->group && !skin->searched && skinsShared_.byId(skin->id);
         }
         return page_ == LauncherPage::Skins && skinSelected_ > 0 && static_cast<std::size_t>(skinSelected_) <= skinLibrary_.size();
     case SkinReportButtonId:
     {
         const auto* skin = skinExplore_ ? exploreSkin(exploreSelected_) : nullptr;
-        return page_ == LauncherPage::Skins && skin && !skin->group && !skinsShared_.byId(skin->id);
+        return page_ == LauncherPage::Skins && skin && !skin->group && !skin->searched && !skinsShared_.byId(skin->id);
     }
     case LoginUserInputId:
     case LoginPasswordInputId:
@@ -2006,6 +2031,8 @@ bool MainPage::controlEnabled(int id) const
         return exploreSkin(exploreSelected_) != nullptr;
     case SkinRefreshButtonId:
         return !exploreLoading_;
+    case SkinSearchButtonId:
+        return !skinSearching_;
     case SkinShareButtonId:
     case SkinReportButtonId:
         return !skinSharing_;
@@ -2069,6 +2096,7 @@ std::wstring MainPage::controlLabel(int id) const
     if (inRange(id, SkinCardFirstId, SkinCardCount) && skinExplore_) {
         const auto* skin = exploreSkin(static_cast<int>(exploreRow_ * Layout::SkinColumns) + id - SkinCardFirstId);
         if (!skin) return {};
+        if (skin->searched) return L"Skin de " + skin->title + L", encontrada na busca";
         return skin->group ? L"Skin de " + skin->title + L", jogador do servidor" : L"Skin " + skin->title + L", compartilhada por " + skin->author;
     }
     if (id == SkinMineTabId) return skinExplore_ ? L"Minhas skins" : L"Minhas skins (selecionada)";
@@ -2118,6 +2146,10 @@ void MainPage::layoutControls()
             // Inside the drawn well, after its icon, one line tall.
             const float line = 20;
             bounds = {bounds.X + 40, bounds.Y + (bounds.Height - line) / 2, bounds.Width - 54, line};
+        } else if (control.id == SkinSearchInputId) {
+            // Between the magnifier and the go button.
+            const float line = 20;
+            bounds = {bounds.X + 40, bounds.Y + (bounds.Height - line) / 2, bounds.Width - 40 - 46, line};
         }
         const int x = static_cast<int>(std::floor(ox + bounds.X * s)), y = static_cast<int>(std::floor(oy + bounds.Y * s));
         const int right = static_cast<int>(std::ceil(ox + bounds.GetRight() * s));
@@ -2139,7 +2171,7 @@ void MainPage::layoutControls()
         const HFONT font = CreateFontW(-static_cast<int>(std::round(15 * s)), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, Theme::FontFamily);
         if (font) {
-            for (const HWND edit : {loginUser_, loginPassword_, loginConfirm_}) if (edit) SendMessageW(edit, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+            for (const HWND edit : {loginUser_, loginPassword_, loginConfirm_, skinSearch_}) if (edit) SendMessageW(edit, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
             if (loginFont_) DeleteObject(loginFont_);
             loginFont_ = font;
         }
@@ -2162,7 +2194,7 @@ void MainPage::syncControls()
         if (!enabled || !visible) control.hovered = false;
         // Text fields keep what the player typed; only buttons take their label from here.
         if (control.id == NicknameInputId || control.id == LoginUserInputId || control.id == LoginPasswordInputId ||
-            control.id == LoginConfirmInputId) continue;
+            control.id == LoginConfirmInputId || control.id == SkinSearchInputId) continue;
         const auto label = controlLabel(control.id);
         std::array<wchar_t, 256> current{};
         GetWindowTextW(control.window, current.data(), static_cast<int>(current.size()));
@@ -2253,6 +2285,7 @@ bool MainPage::handleKeyboard(MSG& message)
                 return true;
             }
         }
+        if (message.wParam == VK_RETURN && skinSearch_ && GetFocus() == skinSearch_) { searchSkin(); return true; }
         if (message.wParam == VK_ESCAPE && page_ == LauncherPage::Home && levelsOpen_) { showLevels(false); return true; }
         if (message.wParam == VK_ESCAPE && page_ != LauncherPage::Home) { showPage(LauncherPage::Home); return true; }
         if (message.wParam == VK_RETURN) {
@@ -2382,6 +2415,7 @@ void MainPage::handleCommand(int id, int)
     case SkinShareButtonId: shareLibrarySkin(); break;
     case SkinReportButtonId: reportCommunitySkin(); break;
     case SkinSaveButtonId: saveExploreSkin(); break;
+    case SkinSearchButtonId: searchSkin(); break;
     case SkinClassicButtonId: skinSlimChoice_ = false; redraw(); break;
     case SkinSlimButtonId: skinSlimChoice_ = true; redraw(); break;
     case SkinUseButtonId: useSelectedSkin(); break;
@@ -3569,15 +3603,18 @@ SkinsModel MainPage::skinsModel(bool preview) const
         model.exploreUnavailable = exploreUnavailable_;
         for (int i = 0; i < static_cast<int>(exploreCount()); ++i) {
             const auto* skin = exploreSkin(i);
-            model.cards.push_back({skin->title, &skin->texture, skin->slim, false, skin->group});
+            model.cards.push_back({skin->title, &skin->texture, skin->slim, false, skin->group, skin->searched});
         }
         if (const auto* skin = exploreSkin(exploreSelected_)) {
-            const bool mine = !skin->group && skinsShared_.byId(skin->id);
-            model.selectedDetail = skin->group ? std::wstring(L"Em uso no servidor")
-                                               : mine ? std::wstring(L"Compartilhada por você") : L"Compartilhada por " + skin->author;
+            const bool community = !skin->group && !skin->searched;
+            const bool mine = community && skinsShared_.byId(skin->id);
+            model.selectedDetail = skin->searched ? skin->author : skin->group ? std::wstring(L"Em uso no servidor")
+                                 : mine ? std::wstring(L"Compartilhada por você") : L"Compartilhada por " + skin->author;
             model.selectedMine = mine;
-            model.selectedCommunity = !skin->group;
+            model.selectedCommunity = community;
         }
+        model.searching = skinSearching_;
+        model.searchPreview = preview ? previewSkinSearch_ : std::wstring{};
         return model;
     }
     model.cards.push_back({currentSkinKnown_ && !currentSkin_ ? L"Padrão" : L"Sua skin atual",
@@ -3603,7 +3640,8 @@ std::wstring MainPage::librarySourceKey(std::size_t libraryIndex) const
 const MainPage::ExploreSkin* MainPage::exploreSkin(int index) const
 {
     if (index < 0) return nullptr;
-    const auto i = static_cast<std::size_t>(index);
+    if (exploreSearch_ && index == 0) return &*exploreSearch_;
+    const auto i = static_cast<std::size_t>(index) - (exploreSearch_ ? 1 : 0);
     if (i < exploreGroup_.size()) return &exploreGroup_[i];
     if (i - exploreGroup_.size() < exploreCommunity_.size()) return &exploreCommunity_[i - exploreGroup_.size()];
     return nullptr;
@@ -3680,11 +3718,71 @@ void MainPage::loadExplore()
     redraw();
 }
 
+void MainPage::searchSkin()
+{
+    if (skinSearching_ || !skinSearch_) return;
+    std::array<wchar_t, 32> text{};
+    GetWindowTextW(skinSearch_, text.data(), static_cast<int>(text.size()));
+    std::wstring name(text.data());
+    while (!name.empty() && name.back() == L' ') name.pop_back();
+    while (!name.empty() && name.front() == L' ') name.erase(name.begin());
+    if (name.empty()) { SetFocus(skinSearch_); return; }
+    if (!NicknameStore::isValid(name)) { setSkinsMessage(L"Nicks têm de 3 a 16 letras, números ou _.", true); return; }
+    skinSearching_ = true;
+    setSkinsMessage(L"Buscando a skin de " + name + L"...");
+    if (skinSearchThread_.joinable()) skinSearchThread_.join();
+    skinSearchThread_ = std::jthread([window = window_, accounts = accountsBaseUrl_, name](std::stop_token stop) {
+        auto* event = new SkinEvent;
+        event->kind = SkinEvent::Kind::Search;
+        event->id = name;
+        // Original accounts first (the point of searching), then the Conta Eternal of that name.
+        auto original = SkinLookup::fetchOriginal(name, stop);
+        bool unavailable = original.outcome == SkinLookupOutcome::Unavailable;
+        bool defaultSkin = original.outcome == SkinLookupOutcome::Found && !original.custom;
+        if (original.custom) {
+            if (auto texture = SkinRenderer::decode(original.png))
+                event->explore.push_back({{}, original.name, L"Conta original do Minecraft", false, original.slim, std::move(original.png),
+                                          std::move(*texture), true});
+        } else if (!stop.stop_requested()) {
+            for (const auto& profile : EternalAccount::lookupProfiles(accounts, {name}, stop)) {
+                const auto skin = EternalAccount::fetchSkin(accounts, profile.uuid, stop);
+                if (!skin) { unavailable = true; continue; }
+                if (!skin->custom || skin->png.empty()) { defaultSkin = true; continue; }
+                if (auto texture = SkinRenderer::decode(skin->png))
+                    event->explore.push_back({{}, profile.name, L"Conta Eternal", false, skin->slim, skin->png, std::move(*texture), true});
+            }
+        }
+        if (event->explore.empty())
+            event->error = defaultSkin ? name + L" usa a skin padrão do Minecraft." :
+                           unavailable ? L"Não foi possível buscar agora. Tente de novo em instantes." :
+                                         L"Nenhuma conta com o nick " + name + L" foi encontrada.";
+        if (!PostMessageW(window, SkinEventMessage, 0, reinterpret_cast<LPARAM>(event))) delete event;
+    });
+    layoutControls();
+    redraw();
+}
+
 void MainPage::handleExploreEvent(SkinEvent& event)
 {
+    if (event.kind == SkinEvent::Kind::Search) {
+        if (skinSearchThread_.joinable()) skinSearchThread_.join();
+        skinSearching_ = false;
+        if (event.explore.empty()) {
+            setSkinsMessage(event.error, true);
+            layoutControls();
+            return;
+        }
+        exploreSearch_ = std::move(event.explore.front());
+        exploreSelected_ = 0;
+        exploreRow_ = 0;
+        skinSlimChoice_ = exploreSearch_->slim;
+        setSkinsMessage(L"Skin de " + exploreSearch_->title + L" encontrada. Use ou salve na sua biblioteca.");
+        layoutControls();
+        return;
+    }
     const auto selectedKey = [this] {
         const auto* skin = exploreSkin(exploreSelected_);
-        return skin ? (skin->group ? L"g:" + skin->title : L"c:" + skin->id) : std::wstring{};
+        return skin ? (skin->searched ? L"s:" + skin->title : skin->group ? L"g:" + skin->title : L"c:" + skin->id) : std::wstring{};
     }();
     switch (event.kind) {
     case SkinEvent::Kind::ExploreCommunity:
@@ -3737,7 +3835,7 @@ void MainPage::handleExploreEvent(SkinEvent& event)
     bool kept = false;
     for (int i = 0; i < static_cast<int>(exploreCount()); ++i) {
         const auto* skin = exploreSkin(i);
-        if (!selectedKey.empty() && (skin->group ? L"g:" + skin->title : L"c:" + skin->id) == selectedKey) { exploreSelected_ = i; kept = true; }
+        if (!selectedKey.empty() && (skin->searched ? L"s:" + skin->title : skin->group ? L"g:" + skin->title : L"c:" + skin->id) == selectedKey) { exploreSelected_ = i; kept = true; }
     }
     exploreRow_ = std::min(exploreRow_, SkinsView::lastFirstRow(exploreCount()));
     // A newly selected skin brings its own arm model; a kept one keeps the player's choice.
@@ -3801,7 +3899,7 @@ void MainPage::shareLibrarySkin()
 void MainPage::removeCommunitySkin()
 {
     const auto* skin = exploreSkin(exploreSelected_);
-    if (skinSharing_ || !skin || skin->group) return;
+    if (skinSharing_ || !skin || skin->group || skin->searched) return;
     const auto* mine = skinsShared_.byId(skin->id);
     if (!mine) return;
     const auto prompt = L"Tirar \"" + skin->title + L"\" de Explorar?\n\nEla continua na sua biblioteca.";
@@ -3821,7 +3919,7 @@ void MainPage::removeCommunitySkin()
 void MainPage::reportCommunitySkin()
 {
     const auto* skin = exploreSkin(exploreSelected_);
-    if (skinSharing_ || !skin || skin->group) return;
+    if (skinSharing_ || !skin || skin->group || skin->searched) return;
     const auto prompt = L"Denunciar \"" + skin->title + L"\", de " + skin->author +
         L"?\n\nUse para skins ofensivas. Com algumas denúncias ela some de Explorar até um admin olhar.";
     if (MessageBoxW(window_, prompt.c_str(), L"Denunciar skin", MB_OKCANCEL | MB_ICONWARNING | MB_DEFBUTTON2) != IDOK) return;
@@ -4824,6 +4922,11 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
         if (!save(L"skins-explore.png", 1)) return false;
         exploreSelected_ = 1; skinSlimChoice_ = false;
         if (!save(L"skins-explore-player.png", 1)) return false;
+        exploreSearch_ = ExploreSkin{{}, L"Technoblade", L"Conta original do Minecraft", false, false, "", makeSkin(20, false), true};
+        exploreSelected_ = 0; skinSlimChoice_ = false; previewSkinSearch_ = L"Technoblade";
+        skinsMessage_ = L"Skin de Technoblade encontrada. Use ou salve na sua biblioteca.";
+        if (!save(L"skins-explore-search.png", 1)) return false;
+        exploreSearch_.reset(); previewSkinSearch_.clear(); skinsMessage_.clear();
         exploreGroup_.clear(); exploreCommunity_.clear(); exploreSelected_ = 0; exploreLoading_ = true;
         if (!save(L"skins-explore-loading.png", 1)) return false;
         exploreLoading_ = false;

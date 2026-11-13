@@ -529,6 +529,19 @@ namespace {
         check(!SkinLookup::parseSkinUrl(sessionProfile(R"({"textures":{"SKIN":{"url":"http://textures.minecraft.net/texture/../x"}}})")),
             "texture paths must be a plain hash");
         check(!SkinLookup::parseSkinUrl(sessionProfile(R"({"textures":{}})")),"accounts without a custom skin have no URL");
+        check(SkinLookup::parseSlim(sessionProfile(R"({"textures":{"SKIN":{"url":"x","metadata":{"model":"slim"}}}})")) &&
+              !SkinLookup::parseSlim(sessionProfile(R"({"textures":{"SKIN":{"url":"x"}}})")),"the slim model comes from the skin metadata");
+        check(SkinLookup::fetchOriginal(L"a/b", {}).outcome==SkinLookupOutcome::NotFound &&
+              SkinLookup::fetchOriginal(L"ab", {}).outcome==SkinLookupOutcome::NotFound,"invalid nicknames are not looked up");
+        // Against Mojang, when asked: ETERNAL_MOJANG_TEST=1 (Notch has used a custom skin for years).
+        std::array<wchar_t,8> mojang{};
+        if(GetEnvironmentVariableW(L"ETERNAL_MOJANG_TEST",mojang.data(),static_cast<DWORD>(mojang.size()))) {
+            const auto notch=SkinLookup::fetchOriginal(L"notch",{});
+            check(notch.outcome==SkinLookupOutcome::Found && notch.custom && notch.name==L"Notch" && notch.png.size()>100,
+                  "an original account's whole skin downloads, with the name as the account writes it");
+            check(SkinLookup::fetchOriginal(L"zz_no_such_nick9",{}).outcome==SkinLookupOutcome::NotFound,"unknown nicknames are not found");
+            std::cout << "mojang integration: ran\n";
+        }
 
         std::vector<std::uint32_t> skin(64*64,0);
         for(int y=8;y<16;++y) for(int x=8;x<16;++x) skin[static_cast<std::size_t>(y*64+x)]=0xFFAA0000U;

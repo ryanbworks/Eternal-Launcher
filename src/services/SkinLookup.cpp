@@ -8,6 +8,7 @@
 #include <gdiplus.h>
 
 #include <algorithm>
+#include <cctype>
 #include <memory>
 
 namespace
@@ -113,6 +114,64 @@ std::optional<std::wstring> SkinLookup::parseSkinUrl(std::string_view json)
         return std::nullopt;
     }
     return std::nullopt;
+}
+
+bool SkinLookup::parseSlim(std::string_view json)
+{
+    const auto root = JsonValue::parse(json);
+    const auto* properties = root ? root->find("properties") : nullptr;
+    const auto* list = properties ? properties->arrayValue() : nullptr;
+    if (!list) return false;
+    for (const auto& property : *list) {
+        const auto* name = property.find("name");
+        const auto* value = property.find("value");
+        if (!name || !value || !name->stringValue() || *name->stringValue() != "textures" || !value->stringValue()) continue;
+        const auto textures = JsonValue::parse(base64Decode(*value->stringValue()));
+        const auto* all = textures ? textures->find("textures") : nullptr;
+        const auto* skin = all ? all->find("SKIN") : nullptr;
+        const auto* metadata = skin ? skin->find("metadata") : nullptr;
+        const auto* model = metadata ? metadata->find("model") : nullptr;
+        return model && model->stringValue() && *model->stringValue() == "slim";
+    }
+    return false;
+}
+
+SkinLookup::OriginalSkin SkinLookup::fetchOriginal(const std::wstring& name, std::stop_token stop)
+{
+    OriginalSkin result;
+    result.name = name;
+    const bool valid = name.size() >= 3 && name.size() <= 16 && std::all_of(name.begin(), name.end(), [](wchar_t c) {
+        return (c >= L'0' && c <= L'9') || (c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z') || c == L'_';
+    });
+    if (!valid) { result.outcome = SkinLookupOutcome::NotFound; return result; }
+    const HttpDownloadClient http;
+    const auto profile = http.getText(L"https://api.mojang.com/users/profiles/minecraft/" + name, stop);
+    if (stop.stop_requested()) return result;
+    if (profile.statusCode == 404 || profile.statusCode == 204 || (profile.success && profile.content.empty())) {
+        result.outcome = SkinLookupOutcome::NotFound;
+        return result;
+    }
+    if (!profile.success) return result;
+    const auto id = parseProfileId(profile.content);
+    if (!id) { result.outcome = SkinLookupOutcome::NotFound; return result; }
+    if (const auto document = JsonValue::parse(profile.content))
+        if (const auto* canonical = document->find("name"); canonical && canonical->stringValue() && canonical->stringValue()->size() <= 16) {
+            const auto& text = *canonical->stringValue();
+            if (std::all_of(text.begin(), text.end(), [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; }))
+                result.name.assign(text.begin(), text.end());
+        }
+
+    const auto session = http.getText(L"https://sessionserver.mojang.com/session/minecraft/profile/" + std::wstring(id->begin(), id->end()), stop);
+    if (stop.stop_requested() || !session.success) return result;
+    const auto url = parseSkinUrl(session.content);
+    if (!url) { result.outcome = SkinLookupOutcome::Found; return result; }  // a default skin
+    const auto skin = http.getText(*url, stop);
+    if (stop.stop_requested() || !skin.success || skin.content.empty() || skin.content.size() > 64 * 1024) return result;
+    result.outcome = SkinLookupOutcome::Found;
+    result.custom = true;
+    result.slim = parseSlim(session.content);
+    result.png = skin.content;
+    return result;
 }
 
 SkinFace SkinLookup::composeFace(const std::uint32_t* pixels, int width, int height, int stride)

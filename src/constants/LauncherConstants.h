@@ -78,6 +78,8 @@ namespace LauncherConstants
     inline constexpr int SkinSaveButtonId = 1334;
     inline constexpr int SkinReportButtonId = 1335;
     inline constexpr int SkinRefreshButtonId = 1336;
+    inline constexpr int SkinSearchInputId = 1337;
+    inline constexpr int SkinSearchButtonId = 1338;
     inline constexpr int RetryServerButtonId = 1131;
     inline constexpr int VersionEternalButtonId = 1132;
     inline constexpr int VersionVanillaButtonId = 1133;

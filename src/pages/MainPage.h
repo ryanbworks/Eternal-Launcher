@@ -198,10 +198,11 @@ private:
         bool slim = false;
         std::string png;
         SkinTexture texture;
+        bool searched = false;  // found by nickname; `author` then says where
     };
     struct SkinEvent
     {
-        enum class Kind { Current, Upload, Reset, ExploreGroup, ExploreCommunity, Share, CommunityRemove, CommunityReport } kind = Kind::Current;
+        enum class Kind { Current, Upload, Reset, ExploreGroup, ExploreCommunity, Share, CommunityRemove, CommunityReport, Search } kind = Kind::Current;
         std::optional<EternalSkin> skin;
         bool success = false;
         std::wstring error;
@@ -215,7 +216,8 @@ private:
     };
     void showSkinsTab(bool explore);
     void loadExplore();
-    std::size_t exploreCount() const { return exploreGroup_.size() + exploreCommunity_.size(); }
+    std::size_t exploreCount() const { return (exploreSearch_ ? 1 : 0) + exploreGroup_.size() + exploreCommunity_.size(); }
+    void searchSkin();
     const ExploreSkin* exploreSkin(int index) const;
     void selectExplore(int index);
     void saveExploreSkin();
@@ -413,6 +415,11 @@ private:
     std::size_t exploreRow_ = 0;
     bool skinSharing_ = false;
     GallerySharedStore skinsShared_;
+    // The skin found by nickname, first in Explorar.
+    std::optional<ExploreSkin> exploreSearch_;
+    bool skinSearching_ = false;
+    HWND skinSearch_ = nullptr;
+    std::wstring previewSkinSearch_;
 
     // Modpack changelog since the list the player last acknowledged.
     ModpackChanges modpackChanges_;
@@ -532,6 +539,7 @@ private:
     std::jthread galleryActionThread_;
     std::jthread exploreThread_;
     std::jthread exploreActionThread_;
+    std::jthread skinSearchThread_;
     // Last member: destruction joins before any state captured by the worker is destroyed.
     std::jthread launcherUpdateThread_;
     // Last: all captured services, tracking state and HWND outlive this worker.

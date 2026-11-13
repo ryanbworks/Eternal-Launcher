@@ -674,7 +674,7 @@ void SkinsView::draw(Gdiplus::Graphics& g, const SkinsModel& m, const ControlVis
     std::wstring subtitle = !m.message.empty() ? m.message :
         m.explore ? (m.exploreLoading && m.cards.empty() ? L"Buscando as skins do grupo..." :
                      m.exploreUnavailable && m.cards.empty() ? L"O servidor não respondeu agora. Tente atualizar daqui a pouco." :
-                     L"Skins de quem joga no servidor e as que o grupo compartilhou.") :
+                     L"Skins do servidor, do grupo e de qualquer conta original.") :
         m.signedIn ? L"A skin de " + m.account + L" aparece para todo mundo no servidor." :
         L"Entre na sua Conta Eternal para trocar de skin.";
     header(g, L"Skins", subtitle, m.messageError || (m.explore && m.exploreUnavailable && m.cards.empty() && m.message.empty()));
@@ -685,6 +685,24 @@ void SkinsView::draw(Gdiplus::Graphics& g, const SkinsModel& m, const ControlVis
         auto refresh = visuals(SkinRefreshButtonId);
         if (m.exploreLoading) refresh.enabled = false;
         Buttons::drawIcon(g, Layout::SkinsRefresh, Icons::Icon::Refresh, refresh, false, 18);
+        // Search by nickname: a well like the sign-in fields, holding the native EDIT.
+        const auto& well = Layout::SkinsSearch;
+        const bool focused = visuals(SkinSearchInputId).focused;
+        fillRoundedRectangle(g, well, 12, Theme::SurfaceElevated);
+        drawRoundedRectangle(g, {well.X + .5F, well.Y + .5F, well.Width - 1, well.Height - 1}, 12, focused ? Theme::Accent : Theme::OutlineSubtle,
+            focused ? 1.6F : 1.0F);
+        Icons::draw(g, Icons::Icon::Search, {well.X + 13, well.Y + 14, 16, 16}, focused ? Theme::AccentLight : Theme::TextMuted, 1.8F);
+        if (!m.searchPreview.empty())
+            drawTextLine(g, m.searchPreview, {well.X + 40, well.Y, well.Width - 90, well.Height}, 14, Gdiplus::FontStyleRegular, Theme::TextPrimary);
+        if (m.searching) {
+            const auto& go = Layout::SkinsSearchGo;
+            Gdiplus::Pen arc(Theme::AccentLight, 2.2F);
+            arc.SetStartCap(Gdiplus::LineCapRound);
+            arc.SetEndCap(Gdiplus::LineCapRound);
+            g.DrawArc(&arc, go.X + 9, go.Y + 9, 18.0F, 18.0F, std::fmod(m.time * 360, 360.0F), 250);
+        } else {
+            Buttons::drawIcon(g, Layout::SkinsSearchGo, Icons::Icon::ChevronRight, visuals(SkinSearchButtonId), false, 16);
+        }
     } else {
         Buttons::draw(g, Layout::SkinsFolder, L"Abrir pasta", visuals(SkinFolderButtonId), Buttons::Style::Ghost, Icons::Icon::Folder);
         Buttons::draw(g, Layout::SkinsAdd, L"Adicionar skin", visuals(SkinAddButtonId), Buttons::Style::Primary, Icons::Icon::Plus);
@@ -763,7 +781,8 @@ void SkinsView::draw(Gdiplus::Graphics& g, const SkinsModel& m, const ControlVis
         const float room = stage.Width - 48 - 80;
         const float width = std::min(room, measureText(g, m.selectedDetail, 12, Gdiplus::FontStyleRegular) * 1.1F + 12);
         const float x = stage.GetRight() - 24 - width;
-        Icons::draw(g, selected->group ? Icons::Icon::Users : Icons::Icon::Share, {x - 19, infoY + 32, 13, 13}, Theme::AccentLight, 1.8F);
+        const auto icon = selected->searched ? Icons::Icon::Search : selected->group ? Icons::Icon::Users : Icons::Icon::Share;
+        Icons::draw(g, icon, {x - 19, infoY + 32, 13, 13}, Theme::AccentLight, 1.8F);
         drawTextLine(g, m.selectedDetail, {x, infoY + 30, width, 18}, 12, Gdiplus::FontStyleRegular, Theme::TextSecondary,
             Gdiplus::StringAlignmentFar);
     }
@@ -819,7 +838,8 @@ void SkinsView::draw(Gdiplus::Graphics& g, const SkinsModel& m, const ControlVis
         const wchar_t* title = m.exploreLoading ? L"Buscando skins" : m.exploreUnavailable ? L"Servidor indisponível" : L"Nada por aqui ainda";
         const wchar_t* text = m.exploreLoading ? L"Só um instante." :
             m.exploreUnavailable ? L"Não foi possível buscar as skins agora. Tente atualizar daqui a pouco." :
-            L"Em Minhas skins, escolha uma da sua biblioteca e use Compartilhar.\nEla aparece aqui para todo mundo do grupo.";
+            L"Busque a skin de qualquer conta original pelo nick, no campo lá em cima.\n"
+            L"Ou, em Minhas skins, compartilhe uma da sua biblioteca com o grupo.";
         drawDisplayText(g, title, {library.X, top + 94, library.Width, 32}, 20, Theme::TextPrimary, Gdiplus::StringAlignmentCenter,
             Gdiplus::StringAlignmentCenter);
         drawText(g, text, {library.X + 60, top + 134, library.Width - 120, 48}, 13.5F, Gdiplus::FontStyleRegular, Theme::TextSecondary,
@@ -839,11 +859,12 @@ void SkinsView::draw(Gdiplus::Graphics& g, const SkinsModel& m, const ControlVis
         const Gdiplus::RectF figure{b.X + (b.Width - 56) / 2, b.Y + 12, 56, 112};
         if (item.texture) SkinRenderer::drawBody(g, *item.texture, figure, item.slim, false);
         else silhouette(g, figure, Gdiplus::Color(255, 58, 56, 82));
-        if (item.group) {
-            // A player's skin on the server, not a shared one.
+        if (item.group || item.searched) {
+            // A player's skin on the server, or the one found by nickname; not a shared one.
             const Gdiplus::RectF chip{b.X + 8, b.Y + 8, 24, 24};
             fillPill(g, chip, chosen ? Theme::Accent : Theme::Glass);
-            Icons::draw(g, Icons::Icon::Users, {chip.X + 5, chip.Y + 5, 14, 14}, chosen ? Theme::AccentInk : Theme::AccentLight, 1.8F);
+            Icons::draw(g, item.searched ? Icons::Icon::Search : Icons::Icon::Users, {chip.X + 5, chip.Y + 5, 14, 14},
+                chosen ? Theme::AccentInk : Theme::AccentLight, 1.8F);
         }
         if (item.current) {
             // The skin in use says so where its name would be.

@@ -153,6 +153,10 @@ library (`skins/` in the data folder). Explorar loads two sources on a worker:
   (`/authlib-injector/api/profiles/minecraft`), then each player's session profile and
   texture. Players on the default skin are left out.
 
+The search field looks a nickname up on Mojang's public APIs (`SkinLookup::fetchOriginal`:
+profile, session profile, then the texture from `textures.minecraft.net` only) and, when
+there is no original account, on the Drasl. The result comes first in the grid.
+
 A skin from Explorar can be used on the account (the same upload as a library skin) or
 saved to the library.
 

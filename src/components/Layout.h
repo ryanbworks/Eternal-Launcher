@@ -151,6 +151,9 @@ namespace Layout
     inline const Rect SkinsTabs{548, 86, 380, 40};
     inline Rect skinsTab(int index) { return {552 + static_cast<float>(index) * 186, 90, 186, 32}; }
     inline const Rect SkinsRefresh{1208, 84, 48, 44};
+    // Explorar: find the skin of any nickname (a well holding an EDIT, and its go button).
+    inline const Rect SkinsSearch{940, 84, 256, 44};
+    inline const Rect SkinsSearchGo{1156, 88, 36, 36};
     inline const Rect SkinsClassic{124, 594, 192, 38};
     inline const Rect SkinsSlim{324, 594, 192, 38};
     inline const Rect SkinsUse{124, 650, 392, 48};

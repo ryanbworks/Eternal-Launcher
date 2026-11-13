@@ -249,6 +249,10 @@ void Icons::draw(Gdiplus::Graphics& g, Icon icon, const Gdiplus::RectF& b,
         p.line(8.2F, 10.8F, 15.8F, 6.7F);
         p.line(8.2F, 13.2F, 15.8F, 17.3F);
         break;
+    case Icon::Search:
+        p.circle(10.5F, 10.5F, 6.5F);
+        p.line(15.3F, 15.3F, 20.5F, 20.5F);
+        break;
     case Icon::Flag:
         p.line(5, 21, 5, 4);
         p.lines({{5, 4}, {19, 4}, {16, 8.5F}, {19, 13}, {5, 13}});

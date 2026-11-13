@@ -131,6 +131,7 @@ struct SkinCard
     bool slim = false;
     bool current = false;                  // the skin the account uses right now
     bool group = false;                    // Explorar: a player's skin on the server
+    bool searched = false;                 // Explorar: found by nickname
 };
 
 struct SkinsModel
@@ -158,6 +159,8 @@ struct SkinsModel
     bool selectedMine = false;        // Explorar: shared from this computer
     bool selectedCommunity = false;   // Explorar: a shared skin (reportable)
     bool sharing = false;             // a share, removal or report is running
+    bool searching = false;           // a nickname search is running
+    std::wstring searchPreview;       // previews only: text drawn in the search field
 };
 
 class SkinsView
