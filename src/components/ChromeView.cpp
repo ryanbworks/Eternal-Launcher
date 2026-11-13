@@ -73,6 +73,7 @@ void ChromeView::draw(Gdiplus::Graphics& g, float width, float height, LauncherP
         {NavNewsId, Icons::Icon::News, LauncherPage::News},
         {NavModsId, Icons::Icon::Mods, LauncherPage::Mods},
         {NavScreenshotsId, Icons::Icon::Image, LauncherPage::Screenshots},
+        {NavSkinsId, Icons::Icon::Shirt, LauncherPage::Skins},
         {NavSettingsId, Icons::Icon::Settings, LauncherPage::Settings}};
     // One selection pill travels between the icons, with an accent bar on the rail edge.
     const Gdiplus::RectF indicator{14, indicatorY, 48, 48};

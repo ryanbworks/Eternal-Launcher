@@ -2,6 +2,7 @@
 
 #include "components/Buttons.h"
 #include "services/ModInventory.h"
+#include "components/SkinRenderer.h"
 #include "services/ScreenshotLibrary.h"
 #include "types/LauncherState.h"
 
@@ -120,6 +121,40 @@ public:
 private:
     void drawGrid(Gdiplus::Graphics& graphics, const ScreenshotsModel& model, const ControlVisuals& visuals) const;
     void drawViewer(Gdiplus::Graphics& graphics, const ScreenshotsModel& model, const ControlVisuals& visuals) const;
+};
+
+// One skin of the Skins page: the account's current skin or one of the library.
+struct SkinCard
+{
+    std::wstring name;
+    const SkinTexture* texture = nullptr;  // null: the default skin (or still loading)
+    bool slim = false;
+    bool current = false;                  // the skin the account uses right now
+};
+
+struct SkinsModel
+{
+    std::vector<SkinCard> cards;
+    int selected = 0;
+    std::size_t firstRow = 0;
+    bool signedIn = false;
+    std::wstring account;
+    bool currentLoading = false;
+    bool busy = false;          // an upload or reset is running
+    bool slimChoice = false;    // model chosen for the selected skin
+    bool selectedRemovable = false;
+    std::wstring message;
+    bool messageError = false;
+    float entrance = 1;
+    float time = 0;
+};
+
+class SkinsView
+{
+public:
+    static constexpr std::size_t Visible = 12;
+    void draw(Gdiplus::Graphics& graphics, const SkinsModel& model, const ControlVisuals& visuals) const;
+    static std::size_t lastFirstRow(std::size_t cards);
 };
 
 struct HelpModel

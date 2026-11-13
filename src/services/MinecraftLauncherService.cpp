@@ -221,9 +221,10 @@ MinecraftLaunchResult MinecraftLauncherService::launch(const MinecraftIdentity& 
 
     // The command receives the selected identity before Java starts.
     MinecraftLaunchCommandBuilder commandBuilder;
-    if (identity.online() && (identity.uuid.size() != 32 || identity.clientId.empty()))
+    if (identity.online() && (identity.uuid.size() != 32 || (identity.clientId.empty() && !identity.eternal())))
     {
-        return {false, L"A sessão Microsoft está incompleta. Entre novamente.", 0,
+        return {false, identity.eternal() ? L"A sessão da Conta Eternal está incompleta. Entre novamente."
+                                          : L"A sessão Microsoft está incompleta. Entre novamente.", 0,
                 MinecraftLaunchIssue::InvalidNickname};
     }
     return startProcess(javaPath, commandBuilder.build(identity, javaPath, gamePath, settings_), gamePath,

@@ -259,6 +259,10 @@ void Icons::draw(Gdiplus::Graphics& g, Icon icon, const Gdiplus::RectF& b,
         p.arc(16.5F, 8, 3, 300, 210);
         p.arc(17, 20.5F, 5, 220, 140);
         break;
+    case Icon::Shirt:
+        p.polygon({{8, 3.5F}, {4, 6}, {2.5F, 10.5F}, {6, 12}, {6.5F, 20.5F}, {17.5F, 20.5F}, {18, 12}, {21.5F, 10.5F}, {20, 6}, {16, 3.5F}});
+        p.arc(12, 3.5F, 4, 0, 180);
+        break;
     case Icon::Sparkle:
     {
         // Four-pointed star with pinched sides.

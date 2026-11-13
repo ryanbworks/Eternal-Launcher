@@ -1,4 +1,8 @@
 #include "components/HomeView.h"
+#include "components/SkinRenderer.h"
+#include "services/EternalAccount.h"
+#include <wincrypt.h>
+#include <shlwapi.h>
 #include "services/GalleryApi.h"
 #include "services/MilestoneStore.h"
 #include "services/ModpackChangelog.h"
@@ -212,6 +216,143 @@ namespace {
         Gdiplus::GdiplusShutdown(token);
     }
 
+    void eternalAccount(const std::filesystem::path& root) {
+        const auto ok=EternalAccount::parseAuthentication(R"({"accessToken":"abc.def","clientToken":"c1",
+            "selectedProfile":{"id":"0123456789ABCDEF0123456789abcdef","name":"Steve"}})","fallback");
+        check(ok.success && ok.session.name==L"Steve" && ok.session.uuid==L"0123456789abcdef0123456789abcdef" &&
+              ok.session.accessToken=="abc.def" && ok.session.clientToken=="c1","authentication responses are read, UUIDs lowercased");
+        const auto dashed=EternalAccount::parseAuthentication(R"({"accessToken":"t","selectedProfile":{"id":"01234567-89ab-cdef-0123-456789abcdef","name":"Ana"}})","mine");
+        check(dashed.success && dashed.session.uuid.size()==32 && dashed.session.clientToken=="mine","dashed UUIDs and a missing client token");
+        check(!EternalAccount::parseAuthentication(R"({"accessToken":"t","availableProfiles":[]})","x").success,
+            "an account without a player is refused with a message");
+        check(!EternalAccount::parseAuthentication("{oops","x").success,"garbage is refused");
+
+        // A textures property: base64 of {"textures":{"SKIN":{"url":...,"metadata":{"model":"slim"}}}}.
+        const std::string textures=R"({"textures":{"SKIN":{"url":"https://accounts.test/drasl/texture/skin/a.png","metadata":{"model":"slim"}}}})";
+        DWORD size=0;CryptBinaryToStringA(reinterpret_cast<const BYTE*>(textures.data()),static_cast<DWORD>(textures.size()),CRYPT_STRING_BASE64|CRYPT_STRING_NOCRLF,nullptr,&size);
+        std::string encoded(size,'\0');
+        CryptBinaryToStringA(reinterpret_cast<const BYTE*>(textures.data()),static_cast<DWORD>(textures.size()),CRYPT_STRING_BASE64|CRYPT_STRING_NOCRLF,encoded.data(),&size);
+        encoded.resize(size);
+        std::wstring url;
+        const auto skin=EternalAccount::parseProfileTextures(R"({"id":"x","name":"Steve","properties":[{"name":"textures","value":")"+encoded+R"("}]})",url);
+        check(skin && skin->custom && skin->slim && url==L"https://accounts.test/drasl/texture/skin/a.png","profile textures give the skin URL and model");
+        const auto plain=EternalAccount::parseProfileTextures(R"({"id":"x","name":"Steve","properties":[]})",url);
+        check(plain && !plain->custom && url.empty(),"no textures means the default skin");
+
+        const auto body=EternalAccount::multipartSkin("B","PNGDATA",true);
+        check(body.find("name=\"variant\"\r\n\r\nslim\r\n")!=std::string::npos && body.find("filename=\"skin.png\"")!=std::string::npos &&
+              body.find("PNGDATA\r\n--B--")!=std::string::npos,"multipart skin upload");
+        check(EternalAccount::agentArgument(L"C:\\x\\a.jar",L"https://accounts.test/")==L"C:\\x\\a.jar=https://accounts.test/authlib-injector",
+            "javaagent argument");
+
+        // PNG headers: 64 x 64 passes, other sizes and non-PNGs do not.
+        const auto pngHeader=[](unsigned w,unsigned h){
+            std::string png("\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR",16);
+            for(int s=24;s>=0;s-=8) png.push_back(static_cast<char>((w>>s)&0xFF));
+            for(int s=24;s>=0;s-=8) png.push_back(static_cast<char>((h>>s)&0xFF));
+            return png+std::string(20,'\0');
+        };
+        std::wstring error;
+        check(EternalAccount::validSkinPng(pngHeader(64,64),error) && EternalAccount::validSkinPng(pngHeader(64,32),error),"64 x 64 and 64 x 32 skins pass");
+        check(!EternalAccount::validSkinPng(pngHeader(128,128),error) && error.find(L"128")!=std::wstring::npos,"other sizes are refused with their size");
+        check(!EternalAccount::validSkinPng("GIF89a....................",error),"non-PNG files are refused");
+
+        // The session store keeps the token encrypted and reads it back.
+        const auto directory=root/L"account";
+        EternalSession session{L"Steve",L"0123456789abcdef0123456789abcdef","secret-token","client"};
+        check(EternalSessionStore::save(directory,session),"session saves");
+        std::ifstream raw(directory/L"account.dat",std::ios::binary);
+        const std::string onDisk((std::istreambuf_iterator<char>(raw)),std::istreambuf_iterator<char>());
+        raw.close();
+        check(onDisk.find("secret-token")==std::string::npos && onDisk.find("Steve")!=std::string::npos,"the token is never written in clear");
+        const auto loaded=EternalSessionStore::load(directory);
+        check(loaded && loaded->accessToken=="secret-token" && loaded->name==L"Steve" && loaded->clientToken=="client","session loads back");
+        EternalSessionStore::clear(directory);
+        check(!EternalSessionStore::load(directory),"signing out removes the session");
+        check(EternalAccount::newClientToken().size()==32 && EternalAccount::newClientToken()!=EternalAccount::newClientToken(),"client tokens are random");
+
+        // Against a real Drasl, when one is given: ETERNAL_ACCOUNTS_TEST_URL, _USER, _PASSWORD.
+        std::array<wchar_t,256> accounts{},user{},password{};
+        if(!GetEnvironmentVariableW(L"ETERNAL_ACCOUNTS_TEST_URL",accounts.data(),256) || !GetEnvironmentVariableW(L"ETERNAL_ACCOUNTS_TEST_USER",user.data(),256) ||
+           !GetEnvironmentVariableW(L"ETERNAL_ACCOUNTS_TEST_PASSWORD",password.data(),256)) return;
+        const auto wrong=EternalAccount::authenticate(accounts.data(),user.data(),L"definitely-wrong","client");
+        check(!wrong.success && wrong.rejected && wrong.errorMessage==L"Usuário ou senha incorretos.","a wrong password is rejected in Portuguese");
+        const auto signedIn=EternalAccount::authenticate(accounts.data(),user.data(),password.data(),EternalAccount::newClientToken());
+        check(signedIn.success && signedIn.session.valid(),"the account signs in");
+        if(!signedIn.success) return;
+        // Minecraft's offline UUID for the player's name: MD5("OfflinePlayer:<name>") as a version 3 UUID.
+        {
+            std::string seed="OfflinePlayer:";
+            for(const wchar_t c:signedIn.session.name) seed.push_back(static_cast<char>(c)); // nicknames are ASCII
+            BCRYPT_ALG_HANDLE algorithm=nullptr;BCryptOpenAlgorithmProvider(&algorithm,BCRYPT_MD5_ALGORITHM,nullptr,0);
+            std::array<unsigned char,16> digest{};
+            BCryptHash(algorithm,nullptr,0,reinterpret_cast<PUCHAR>(const_cast<char*>(seed.data())),static_cast<ULONG>(seed.size()),digest.data(),16);
+            BCryptCloseAlgorithmProvider(algorithm,0);
+            digest[6]=static_cast<unsigned char>((digest[6]&0x0F)|0x30);digest[8]=static_cast<unsigned char>((digest[8]&0x3F)|0x80);
+            std::wstring offline;for(const auto b:digest) {wchar_t pair[3];swprintf_s(pair,L"%02x",b);offline+=pair;}
+            check(signedIn.session.uuid==offline,"the account keeps the offline-mode UUID, so the world data carries over");
+        }
+        const auto valid=EternalAccount::ensureValid(accounts.data(),signedIn.session);
+        check(valid.success && valid.session.accessToken==signedIn.session.accessToken,"a fresh token validates");
+
+        Gdiplus::GdiplusStartupInput input;ULONG_PTR token=0;Gdiplus::GdiplusStartup(&token,&input,nullptr);
+        {
+            UINT count=0,encoderBytes=0;Gdiplus::GetImageEncodersSize(&count,&encoderBytes);
+            std::vector<BYTE> bytes(encoderBytes);auto* encoders=reinterpret_cast<Gdiplus::ImageCodecInfo*>(bytes.data());
+            Gdiplus::GetImageEncoders(count,encoderBytes,encoders);
+            CLSID png{};for(UINT i=0;i<count;++i) if(std::wstring_view(encoders[i].MimeType)==L"image/png") png=encoders[i].Clsid;
+            Gdiplus::Bitmap texture(64,64,PixelFormat32bppARGB);
+            {Gdiplus::Graphics g(&texture);Gdiplus::SolidBrush blue(Gdiplus::Color(255,40,90,200));g.FillRectangle(&blue,0,0,64,64);}
+            IStream* stream=SHCreateMemStream(nullptr,0);
+            texture.Save(stream,&png,nullptr);
+            STATSTG stat{};stream->Stat(&stat,STATFLAG_NONAME);
+            std::string skinPng(static_cast<std::size_t>(stat.cbSize.QuadPart),'\0');
+            const LARGE_INTEGER start{};ULONG read=0;stream->Seek(start,STREAM_SEEK_SET,nullptr);
+            stream->Read(skinPng.data(),static_cast<ULONG>(skinPng.size()),&read);stream->Release();
+            std::wstring skinError;
+            check(EternalAccount::uploadSkin(accounts.data(),signedIn.session,skinPng,true,skinError),"a skin uploads with the account's token");
+            const auto current=EternalAccount::fetchSkin(accounts.data(),signedIn.session.uuid);
+            check(current && current->custom && current->slim && !current->png.empty(),"the uploaded skin and its slim model come back");
+            if(current && current->custom) {
+                const auto decoded=SkinRenderer::decode(current->png);
+                check(decoded && (decoded->at(20,20)&0xFFFFFF)==0x285AC8,"the published texture is the one sent");
+            }
+            check(EternalAccount::resetSkin(accounts.data(),signedIn.session,skinError),"the skin resets to the default");
+            const auto reset=EternalAccount::fetchSkin(accounts.data(),signedIn.session.uuid);
+            check(reset && !reset->custom,"after a reset the player has the default skin");
+        }
+        Gdiplus::GdiplusShutdown(token);
+        EternalAccount::signOut(accounts.data(),signedIn.session);
+        const auto revoked=EternalAccount::ensureValid(accounts.data(),signedIn.session);
+        check(!revoked.success && revoked.rejected,"signing out revokes the token on the server");
+        std::cout << "conta eternal integration: ran against ETERNAL_ACCOUNTS_TEST_URL\n";
+    }
+
+    void skinRenderer() {
+        Gdiplus::GdiplusStartupInput input;ULONG_PTR token=0;
+        if(Gdiplus::GdiplusStartup(&token,&input,nullptr)!=Gdiplus::Ok) {check(false,"GDI+ starts");return;}
+        {
+            Gdiplus::Bitmap texture(64,64,PixelFormat32bppARGB);
+            {Gdiplus::Graphics g(&texture);Gdiplus::SolidBrush red(Gdiplus::Color(255,200,0,0));g.FillRectangle(&red,0,0,64,64);}
+            const auto png=GalleryApi::encodeJpeg(texture,90); // any encoded picture works for decode()
+            const auto decoded=SkinRenderer::decode(png);
+            check(decoded && decoded->width==64 && decoded->height==64 && (decoded->at(10,10)>>24)==0xFF,"skins decode to pixels");
+            if(decoded) {
+                check(!SkinRenderer::looksSlim(*decoded),"filled arm columns mean classic arms");
+                auto slim=*decoded;
+                for(int y=20;y<32;++y) {slim.pixels[static_cast<std::size_t>(y*64+54)]=0;slim.pixels[static_cast<std::size_t>(y*64+55)]=0;}
+                check(SkinRenderer::looksSlim(slim),"empty arm columns mean slim arms");
+                Gdiplus::Bitmap canvas(32,64,PixelFormat32bppARGB);
+                {Gdiplus::Graphics g(&canvas);SkinRenderer::drawBody(g,*decoded,{0,0,32,64},false,false);}
+                Gdiplus::Color body;canvas.GetPixel(16,30,&body);
+                check(body.GetA()==255 && body.GetR()>150,"the body is drawn from the texture");
+            }
+            Gdiplus::Bitmap wrong(32,32,PixelFormat32bppARGB);
+            check(!SkinRenderer::decode(GalleryApi::encodeJpeg(wrong,90)),"textures that are not 64 wide are refused");
+        }
+        Gdiplus::GdiplusShutdown(token);
+    }
+
     void rankTiers() {
         check(RankTier::level(0)==1 && RankTier::level(24*3600+3599)==1,"level 1 below 25 h");
         check(RankTier::level(25*3600)==2 && RankTier::level(75*3600)==3 && RankTier::level(150*3600)==4 && RankTier::level(300*3600)==5,
@@ -355,6 +496,8 @@ int main()
     modpackChangelog(root);
     screenshots(root);
     gallery(root);
+    eternalAccount(root);
+    skinRenderer();
     mods(root);
     skins();
     std::filesystem::remove_all(root,ignored);

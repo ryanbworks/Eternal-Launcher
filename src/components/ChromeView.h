@@ -7,7 +7,7 @@
 #include <gdiplus.h>
 
 // The order follows the navigation rail; Help is anchored to its bottom.
-enum class LauncherPage { Home, Versions, News, Mods, Screenshots, Settings, Help };
+enum class LauncherPage { Home, Versions, News, Mods, Screenshots, Skins, Settings, Help };
 
 // Custom title bar and navigation rail, drawn in window-anchored logical units.
 class ChromeView

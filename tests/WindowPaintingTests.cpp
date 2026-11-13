@@ -117,8 +117,8 @@ public:
     static void chromeAndNavigation(MainPage& page) {
         for(const int id:{NavHomeId,NavNewsId,NavModsId,NavScreenshotsId,NavSettingsId,NavHelpId,MinimizeButtonId,MaximizeButtonId,CloseButtonId})
             check(shown(control(page,id)),"window chrome and navigation are always visible");
-        check(shown(control(page,PlayButtonId)) && shown(page.nicknameInput_) && !shown(control(page,ModsAddButtonId)),
-            "home shows the player card only");
+        check(shown(control(page,PlayButtonId)) && !shown(page.nicknameInput_) && !shown(control(page,ModsAddButtonId)),
+            "home shows the player card only, without the old nickname field");
 
         // Native layout follows the uniform logical canvas.
         const float s=page.viewScale_;
@@ -210,11 +210,19 @@ public:
         check(page.handleKeyboard(escape) && !page.levelsOpen_ && page.page_==LauncherPage::Home && !shown(control(page,LevelsCloseButtonId)),
             "Escape closes the levels and stays home");
         check(shown(control(page,OfflineButtonId)) && shown(control(page,OriginalButtonId)),"home shows both account mode cards");
+        // Conta Eternal: playing while signed out asks for the account first.
+        check(!page.eternalSignedIn() && !shown(control(page,AccountSignOutButtonId)),"signed out: no sign-out button");
+        SendMessageW(page.window_,WM_COMMAND,MAKEWPARAM(PlayButtonId,BN_CLICKED),reinterpret_cast<LPARAM>(control(page,PlayButtonId)));
+        check(page.loginOpen_ && page.playAfterLogin_ && shown(page.loginUser_) && shown(page.loginPassword_) &&
+              shown(control(page,LoginSubmitButtonId)) && !shown(control(page,SpotlightReadButtonId)),"Play while signed out opens the sign-in panel");
+        SendMessageW(control(page,LoginSubmitButtonId),BM_CLICK,0,0);
+        check(!page.loginBusy_ && !page.loginError_.empty(),"empty fields are caught before any request");
+        check(page.handleKeyboard(escape) && !page.loginOpen_ && !shown(page.loginUser_),"Escape closes the sign-in panel");
         SendMessageW(control(page,OriginalButtonId),BM_CLICK,0,0);
-        check(page.originalMode_ && !shown(page.nicknameInput_) && !shown(control(page,EditNicknameButtonId)),
-            "original account hides the nickname field");
+        check(page.originalMode_ && !shown(page.nicknameInput_) && !shown(control(page,AccountSignOutButtonId)),
+            "original account shows no Conta Eternal controls");
         SendMessageW(control(page,OfflineButtonId),BM_CLICK,0,0);
-        check(!page.originalMode_ && shown(page.nicknameInput_),"the nickname card switches back from the original account");
+        check(!page.originalMode_,"the Conta Eternal card switches back from the original account");
         SendMessageW(control(page,NavVersionsId),BM_CLICK,0,0);
         check(!shown(control(page,OfflineButtonId)),"the nickname card button does not cover the versions page");
         SendMessageW(control(page,NavHomeId),BM_CLICK,0,0);
@@ -494,7 +502,11 @@ public:
         check(shown(control(page,RetryServerButtonId)) && page.viewState_.statusCards[2].tone==StatusTone::Warning,
             "the outage is shown as a warning with a retry link");
         const int launches=fake.launches;
+        // A signed-in account plays straight away (the Conta Eternal path needs the network).
+        page.originalMode_=true;
+        page.microsoftIdentity_={L"Steve",L"0123456789abcdef0123456789abcdef",L"token",L"",L"client"};
         SendMessageW(page.window_,WM_COMMAND,MAKEWPARAM(PlayButtonId,BN_CLICKED),reinterpret_cast<LPARAM>(control(page,PlayButtonId)));
+        page.originalMode_=false;page.microsoftIdentity_={};
         check(fake.launches==launches+1 && !page.installation_.visible && !page.installation_.running &&
               page.viewState_.operation==LauncherOperation::MinecraftRunning,"offline play launches the local files without preparing");
         fake.running=false;page.pollGameProcess();

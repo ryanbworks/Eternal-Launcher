@@ -33,6 +33,10 @@ public:
     // Uploads raw bytes (application/octet-stream), waiting up to 30 s per step.
     [[nodiscard]] HttpDownloadResult postBinary(std::wstring_view url, const std::string& body,
         std::stop_token stopToken = {}) const;
+    // Any method with extra headers ("Name: value\r\n" lines) and an optional body. Error
+    // responses keep their body in `content`; 204 counts as success.
+    [[nodiscard]] HttpDownloadResult send(std::wstring_view method, std::wstring_view url, const std::wstring& headers,
+        const std::string* body = nullptr, const std::wstring& contentType = {}, std::stop_token stopToken = {}) const;
     [[nodiscard]] HttpDownloadResult downloadFile(
         std::wstring_view url,
         const std::filesystem::path& destination,

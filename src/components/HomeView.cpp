@@ -93,11 +93,12 @@ void HomeView::draw(Gdiplus::Graphics& g, const HomeModel& model, const HeroComp
     } else if (drawHero) {
         hero.draw(g, Layout::Hero, model.reveal, model.energy, model.phase, model.drift, model.chips);
         // The levels panel covers the landscape, so nothing else floats over it meanwhile.
-        const bool levels = model.levels && model.levelsReveal > .01F;
+        const bool levels = (model.levels && model.levelsReveal > .01F) || (model.login && model.loginReveal > .01F);
         if (!levels && model.celebration > 0 && model.celebrationReveal > .01F) drawCelebration(g, model, visuals);
         else if (!levels && model.spotlight && model.spotlightReveal > .01F) drawSpotlight(g, model, visuals);
     }
     if (drawHero && model.levels && model.levelsReveal > .01F) drawLevels(g, model, visuals);
+    if (drawHero && model.login && model.loginReveal > .01F) drawLogin(g, model, visuals);
     drawTiles(g, model);
     drawNews(g, model, hero, visuals);
     drawRanking(g, model);
@@ -256,6 +257,75 @@ void HomeView::drawCelebration(Gdiplus::Graphics& g, const HomeModel& model, con
     Buttons::draw(g, Layout::CelebrationButton, L"Show!", visuals(LauncherConstants::CelebrationButtonId), Buttons::Style::Primary,
         Icons::Icon::Sparkle, false, 14);
     g.Restore(saved);
+}
+
+void HomeView::drawLogin(Gdiplus::Graphics& g, const HomeModel& model, const ControlVisuals& visuals) const
+{
+    using namespace LauncherConstants;
+    const float reveal = easeOut(model.loginReveal);
+    const auto saved = g.Save();
+    auto heroClip = createRoundedPath(Layout::Hero, Theme::PanelRadius);
+    g.SetClip(heroClip.get(), Gdiplus::CombineModeIntersect);
+    Gdiplus::SolidBrush veil(Gdiplus::Color(static_cast<BYTE>(190 * reveal), 9, 9, 15));
+    g.FillRectangle(&veil, Layout::Hero);
+    g.Restore(saved);
+    // The native fields sit at fixed places, so the card itself does not slide.
+    const auto& p = Layout::Login;
+    fillRoundedRectangle(g, p, 20, Gdiplus::Color(static_cast<BYTE>(250 * reveal), 18, 17, 30));
+    {
+        const auto inner = g.Save();
+        auto clip = createRoundedPath(p, 20);
+        g.SetClip(clip.get(), Gdiplus::CombineModeIntersect);
+        Gdiplus::GraphicsPath glow;
+        glow.AddEllipse(p.X - 120, p.Y - 200, 520.0F, 340.0F);
+        Gdiplus::PathGradientBrush light(&glow);
+        light.SetCenterColor(Gdiplus::Color(static_cast<BYTE>(52 * reveal), 165, 130, 255));
+        Gdiplus::Color edge(0, 165, 130, 255);
+        int count = 1;
+        light.SetSurroundColors(&edge, &count);
+        g.FillPath(&light, &glow);
+        g.Restore(inner);
+    }
+    drawRoundedRectangle(g, {p.X + .5F, p.Y + .5F, p.Width - 1, p.Height - 1}, 20, Theme::AccentOutline);
+    if (reveal < .6F) return;
+
+    const Gdiplus::RectF emblem{p.X + 28, p.Y + 26, 44, 44};
+    fillRoundedRectangle(g, emblem, 14, Theme::AccentTint);
+    Icons::draw(g, Icons::Icon::User, {emblem.X + 11, emblem.Y + 11, 22, 22}, Theme::AccentLight, 1.8F);
+    drawText(g, L"CONTA ETERNAL", {emblem.GetRight() + 14, p.Y + 26, 300, 16}, 11, Gdiplus::FontStyleBold, Theme::AccentLight);
+    drawDisplayText(g, L"Entre para jogar", {emblem.GetRight() + 14, p.Y + 42, 300, 30}, 21, Theme::TextPrimary,
+        Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+    const std::wstring notice = !model.loginNotice.empty() ? model.loginNotice : L"Sua conta do grupo. A senha nunca fica salva aqui.";
+    drawTextLine(g, notice, {p.X + 28, p.Y + 84, p.Width - 56, 20}, 12.5F, Gdiplus::FontStyleRegular,
+        model.loginNotice.empty() ? Theme::TextSecondary : Theme::Warning);
+    Buttons::drawIcon(g, Layout::LoginClose, Icons::Icon::Close, visuals(LoginCloseButtonId), false, 16);
+
+    // Fields: a label above a rounded well that holds the native EDIT.
+    const struct { const wchar_t* label; const Gdiplus::RectF* field; int id; Icons::Icon icon; } fields[] = {
+        {L"Usuário", &Layout::LoginUserField, LoginUserInputId, Icons::Icon::User},
+        {L"Senha", &Layout::LoginPasswordField, LoginPasswordInputId, Icons::Icon::Key}};
+    for (const auto& field : fields) {
+        const auto& f = *field.field;
+        const auto v = visuals(field.id);
+        drawText(g, field.label, {f.X, f.Y - 22, 200, 18}, 12, Gdiplus::FontStyleBold, Theme::TextSecondary);
+        fillRoundedRectangle(g, f, 12, Theme::SurfaceElevated);
+        drawRoundedRectangle(g, {f.X + .5F, f.Y + .5F, f.Width - 1, f.Height - 1}, 12, v.focused ? Theme::Accent : Theme::OutlineSubtle,
+            v.focused ? 1.6F : 1.0F);
+        Icons::draw(g, field.icon, {f.X + 13, f.Y + 12, 16, 16}, v.focused ? Theme::AccentLight : Theme::TextMuted, 1.7F);
+    }
+    if (!model.previewLoginUser.empty())
+        drawTextLine(g, model.previewLoginUser, {Layout::LoginUserField.X + 40, Layout::LoginUserField.Y, 300, Layout::LoginUserField.Height},
+            14, Gdiplus::FontStyleRegular, Theme::TextPrimary);
+    if (!model.loginError.empty()) {
+        Icons::draw(g, Icons::Icon::Help, {p.X + 28, Layout::LoginPasswordField.GetBottom() + 9, 14, 14}, Theme::Danger, 1.6F);
+        drawTextLine(g, model.loginError, {p.X + 48, Layout::LoginPasswordField.GetBottom() + 6, p.Width - 76, 20}, 12.5F,
+            Gdiplus::FontStyleRegular, Theme::Danger);
+    }
+    auto submit = visuals(LoginSubmitButtonId);
+    if (model.loginBusy) submit.enabled = false;
+    Buttons::draw(g, Layout::LoginSubmit, model.loginBusy ? L"Entrando..." : L"Entrar", submit, Buttons::Style::Primary,
+        model.loginBusy ? std::nullopt : std::optional<Icons::Icon>(Icons::Icon::Play), false, 14);
+    Buttons::draw(g, Layout::LoginRegister, L"Criar conta", visuals(LoginRegisterButtonId), Buttons::Style::Ghost, Icons::Icon::External, false, 13);
 }
 
 void HomeView::drawLevels(Gdiplus::Graphics& g, const HomeModel& model, const ControlVisuals& visuals) const
@@ -831,28 +901,27 @@ void HomeView::drawPlayerCard(Gdiplus::Graphics& g, const PlayerCardModel& m, co
     if (m.motion && m.playing)
         pulseRing(g, Layout::Avatar.GetRight() - 6, Layout::Avatar.GetBottom() - 6, tone, m.time, 2.2F);
 
-    drawText(g, m.originalMode ? L"CONTA MICROSOFT" : L"JOGANDO COMO", Layout::NicknameKicker, 11, Gdiplus::FontStyleBold, Theme::TextMuted);
+    drawText(g, m.originalMode ? L"CONTA MICROSOFT" : m.eternalName.empty() ? L"CONTA ETERNAL" : L"JOGANDO COMO", Layout::NicknameKicker, 11,
+        Gdiplus::FontStyleBold, Theme::TextMuted);
     if (m.originalMode) {
         drawDisplayText(g, m.microsoftName.empty() ? L"Entrar ao jogar" : m.microsoftName,
             {Layout::NicknameField.X, Layout::NicknameField.Y + 2, Layout::NicknameField.Width, 36}, m.microsoftName.empty() ? 17.0F : 22.0F,
             m.microsoftName.empty() ? Theme::TextSecondary : Theme::TextPrimary, Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
         drawText(g, m.microsoftName.empty() ? L"Requer Minecraft: Java Edition" : L"Conta conectada", Layout::NicknameStatus,
             12, Gdiplus::FontStyleRegular, m.microsoftName.empty() ? Theme::TextMuted : Theme::Success);
+    } else if (!m.eternalName.empty()) {
+        // Signed in to the Conta Eternal: the player's name, and a way out.
+        drawDisplayText(g, m.eternalName, {Layout::NicknameField.X, Layout::NicknameField.Y + 2, Layout::NicknameField.Width - 40, 36}, 22,
+            Theme::TextPrimary, Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+        const Gdiplus::Color signOutHover(255, 52, 30, 40);
+        Buttons::drawIcon(g, Layout::EditNickname, Icons::Icon::Power, visuals(AccountSignOutButtonId), false, 16, &signOutHover);
+        Icons::draw(g, Icons::Icon::Check, {Layout::NicknameStatus.X, Layout::NicknameStatus.Y + 3, 12, 12}, Theme::Success, 1.8F);
+        drawText(g, L"Conta Eternal conectada", {Layout::NicknameStatus.X + 18, Layout::NicknameStatus.Y, Layout::NicknameStatus.Width, 18},
+            12, Gdiplus::FontStyleRegular, Theme::Success);
     } else {
-        const auto editVisual = visuals(NicknameInputId);
-        Gdiplus::Pen underline(editVisual.focused ? Theme::Accent : Gdiplus::Color(255, 59, 58, 82), editVisual.focused ? 2.0F : 1.0F);
-        if (!editVisual.focused) underline.SetDashStyle(Gdiplus::DashStyleDash);
-        g.DrawLine(&underline, Layout::NicknameField.X, Layout::NicknameField.GetBottom(), Layout::NicknameField.GetRight(),
-            Layout::NicknameField.GetBottom());
-        if (!m.previewNickname.empty())
-            drawDisplayText(g, m.previewNickname, Layout::NicknameEdit, 22, Theme::TextPrimary, Gdiplus::StringAlignmentNear,
-                Gdiplus::StringAlignmentCenter);
-        Buttons::drawIcon(g, Layout::EditNickname, Icons::Icon::Pencil, visuals(EditNicknameButtonId), false, 16);
-        const bool ok = m.nicknameValid && !m.nicknameEmpty;
-        if (ok) Icons::draw(g, Icons::Icon::Check, {Layout::NicknameStatus.X, Layout::NicknameStatus.Y + 3, 12, 12}, Theme::Success, 1.8F);
-        drawText(g, ok ? (m.skinFound ? L"Skin da conta original" : L"Nickname válido") : m.nicknameEmpty ? L"Digite seu nickname" : L"Use 3 a 16 letras, números ou _",
-            {Layout::NicknameStatus.X + (ok ? 18.0F : 0.0F), Layout::NicknameStatus.Y, Layout::NicknameStatus.Width, 18}, 12,
-            Gdiplus::FontStyleRegular, ok ? Theme::Success : m.nicknameEmpty ? Theme::TextMuted : Theme::Error);
+        drawDisplayText(g, L"Entrar para jogar", {Layout::NicknameField.X, Layout::NicknameField.Y + 2, Layout::NicknameField.Width, 36}, 17,
+            Theme::TextSecondary, Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+        drawText(g, L"Clique em Jogar para entrar", Layout::NicknameStatus, 12, Gdiplus::FontStyleRegular, Theme::TextMuted);
     }
 
     drawText(g, L"Como entrar", Layout::ModeLabel, 12.5F, Gdiplus::FontStyleBold, Theme::TextSecondary);
@@ -861,7 +930,7 @@ void HomeView::drawPlayerCard(Gdiplus::Graphics& g, const PlayerCardModel& m, co
     const Gdiplus::RectF selection{Layout::OfflineMode.X + (Layout::OriginalMode.X - Layout::OfflineMode.X) * travel,
         Layout::OfflineMode.Y, Layout::OfflineMode.Width, Layout::OfflineMode.Height};
     const struct { const Gdiplus::RectF* bounds; int id; bool selected; Icons::Icon icon; const wchar_t* title; const wchar_t* description; } modes[] = {
-        {&Layout::OfflineMode, OfflineButtonId, !m.originalMode, Icons::Icon::User, L"Nickname", L"Sem login. Para o servidor do grupo."},
+        {&Layout::OfflineMode, OfflineButtonId, !m.originalMode, Icons::Icon::User, L"Conta Eternal", L"Sua conta do grupo, com sua skin."},
         {&Layout::OriginalMode, OriginalButtonId, m.originalMode, Icons::Icon::Key, L"Conta original", L"Entrar com Microsoft e usar sua skin."}};
     for (const auto& mode : modes) {
         const auto& b = *mode.bounds;

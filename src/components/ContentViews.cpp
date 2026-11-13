@@ -642,6 +642,155 @@ void ScreenshotsView::drawViewer(Gdiplus::Graphics& g, const ScreenshotsModel& m
     }
 }
 
+std::size_t SkinsView::lastFirstRow(std::size_t cards)
+{
+    const auto rows = (cards + Layout::SkinColumns - 1) / Layout::SkinColumns;
+    return rows > static_cast<std::size_t>(Layout::SkinRows) ? rows - Layout::SkinRows : 0;
+}
+
+namespace
+{
+    // A grey figure for the default skin (Mojang's own skins are not ours to ship).
+    void silhouette(Gdiplus::Graphics& g, const Gdiplus::RectF& bounds, const Gdiplus::Color& color)
+    {
+        const float cell = std::min(bounds.Width / 16, bounds.Height / 32);
+        const float x = bounds.X + (bounds.Width - 16 * cell) / 2, y = bounds.Y + (bounds.Height - 32 * cell) / 2;
+        Gdiplus::SolidBrush brush(color);
+        const float parts[][4] = {{4, 0, 8, 8}, {4, 8, 8, 12}, {0, 8, 4, 12}, {12, 8, 4, 12}, {4, 20, 4, 12}, {8, 20, 4, 12}};
+        for (const auto& part : parts) g.FillRectangle(&brush, x + part[0] * cell, y + part[1] * cell, part[2] * cell, part[3] * cell);
+    }
+}
+
+void SkinsView::draw(Gdiplus::Graphics& g, const SkinsModel& m, const ControlVisuals& visuals) const
+{
+    using namespace LauncherConstants;
+    std::wstring subtitle = !m.message.empty() ? m.message :
+        m.signedIn ? L"A skin de " + m.account + L" aparece para todo mundo no servidor." :
+        L"Entre na sua Conta Eternal para trocar de skin.";
+    header(g, L"Skins", subtitle, m.messageError);
+    Buttons::draw(g, Layout::SkinsFolder, L"Abrir pasta", visuals(SkinFolderButtonId), Buttons::Style::Ghost, Icons::Icon::Folder);
+    Buttons::draw(g, Layout::SkinsAdd, L"Adicionar skin", visuals(SkinAddButtonId), Buttons::Style::Primary, Icons::Icon::Plus);
+
+    // Stage: the selected skin, front and back, on a lit plate.
+    auto stage = Layout::SkinsStage;
+    stage.Y += rise(m.entrance, 0);
+    card(g, stage);
+    const Gdiplus::RectF plate{stage.X + 16, stage.Y + 16, stage.Width - 32, Layout::SkinsPlateHeight};
+    {
+        const auto saved = g.Save();
+        auto clip = createRoundedPath(plate, 16);
+        g.SetClip(clip.get(), Gdiplus::CombineModeIntersect);
+        Gdiplus::LinearGradientBrush sky(Gdiplus::PointF(0, plate.Y), Gdiplus::PointF(0, plate.GetBottom()),
+            Gdiplus::Color(255, 34, 29, 60), Gdiplus::Color(255, 16, 16, 26));
+        g.FillRectangle(&sky, plate);
+        Gdiplus::GraphicsPath spot;
+        spot.AddEllipse(plate.X + plate.Width / 2 - 200, plate.Y + 40, 400.0F, 320.0F);
+        Gdiplus::PathGradientBrush light(&spot);
+        light.SetCenterColor(Gdiplus::Color(60, 165, 130, 255));
+        Gdiplus::Color edge(0, 165, 130, 255);
+        int count = 1;
+        light.SetSurroundColors(&edge, &count);
+        g.FillPath(&light, &spot);
+        // A floor shadow under each figure.
+        for (const auto* figure : {&Layout::SkinsFront, &Layout::SkinsBack}) {
+            Gdiplus::SolidBrush shadow(Gdiplus::Color(90, 0, 0, 0));
+            g.FillEllipse(&shadow, figure->X + 20, figure->GetBottom() + stage.Y - Layout::SkinsStage.Y - 6, figure->Width - 40, 14.0F);
+        }
+        g.Restore(saved);
+    }
+    const SkinCard* selected = m.selected >= 0 && static_cast<std::size_t>(m.selected) < m.cards.size() ? &m.cards[static_cast<std::size_t>(m.selected)] : nullptr;
+    const float dy = stage.Y - Layout::SkinsStage.Y;
+    const Gdiplus::RectF front{Layout::SkinsFront.X, Layout::SkinsFront.Y + dy, Layout::SkinsFront.Width, Layout::SkinsFront.Height};
+    const Gdiplus::RectF backView{Layout::SkinsBack.X, Layout::SkinsBack.Y + dy, Layout::SkinsBack.Width, Layout::SkinsBack.Height};
+    if (selected && selected->texture) {
+        SkinRenderer::drawBody(g, *selected->texture, front, m.slimChoice, false);
+        SkinRenderer::drawBody(g, *selected->texture, backView, m.slimChoice, true);
+    } else {
+        silhouette(g, front, Gdiplus::Color(255, 58, 56, 82));
+        silhouette(g, backView, Gdiplus::Color(255, 48, 46, 70));
+        if (m.currentLoading && selected && selected->current)
+            drawText(g, L"Carregando...", {plate.X, plate.GetBottom() - 40, plate.Width, 20}, 12.5F, Gdiplus::FontStyleRegular, Theme::TextMuted,
+                Gdiplus::StringAlignmentCenter);
+    }
+    drawText(g, L"FRENTE", {front.X, plate.Y + 12, front.Width, 16}, 10.5F, Gdiplus::FontStyleBold, Theme::TextMuted, Gdiplus::StringAlignmentCenter);
+    drawText(g, L"COSTAS", {backView.X, plate.Y + 12, backView.Width, 16}, 10.5F, Gdiplus::FontStyleBold, Theme::TextMuted, Gdiplus::StringAlignmentCenter);
+    if (m.selectedRemovable) {
+        const Gdiplus::Color removeHover(255, 52, 30, 40);
+        Buttons::drawIcon(g, {Layout::SkinsRemove.X, Layout::SkinsRemove.Y + dy, Layout::SkinsRemove.Width, Layout::SkinsRemove.Height},
+            Icons::Icon::Trash, visuals(SkinRemoveButtonId), false, 17, &removeHover);
+    }
+
+    // Name and model of the selected skin.
+    const float infoY = plate.GetBottom() + 12;
+    drawDisplayText(g, selected ? selected->name : std::wstring(L"Nenhuma skin"), {stage.X + 24, infoY, stage.Width - 48, 28}, 18, Theme::TextPrimary,
+        Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+    drawText(g, L"Braços", {stage.X + 24, infoY + 30, 200, 18}, 12, Gdiplus::FontStyleBold, Theme::TextSecondary);
+    Buttons::draw(g, {Layout::SkinsClassic.X, Layout::SkinsClassic.Y + dy, Layout::SkinsClassic.Width, Layout::SkinsClassic.Height},
+        L"Clássico (4 px)", visuals(SkinClassicButtonId), Buttons::Style::Chip, std::nullopt, !m.slimChoice, 12.5F);
+    Buttons::draw(g, {Layout::SkinsSlim.X, Layout::SkinsSlim.Y + dy, Layout::SkinsSlim.Width, Layout::SkinsSlim.Height},
+        L"Fino (3 px)", visuals(SkinSlimButtonId), Buttons::Style::Chip, std::nullopt, m.slimChoice, 12.5F);
+    const Gdiplus::RectF use{Layout::SkinsUse.X, Layout::SkinsUse.Y + dy, Layout::SkinsUse.Width, Layout::SkinsUse.Height};
+    const Gdiplus::RectF reset{Layout::SkinsReset.X, Layout::SkinsReset.Y + dy, Layout::SkinsReset.Width, Layout::SkinsReset.Height};
+    if (!m.signedIn) {
+        Buttons::draw(g, use, L"Entrar na Conta Eternal", visuals(SkinSignInButtonId), Buttons::Style::Primary, Icons::Icon::User, false, 14);
+    } else {
+        auto useVisual = visuals(SkinUseButtonId);
+        const bool inUse = selected && selected->current && !m.busy;
+        if (m.busy || !selected || !selected->texture) useVisual.enabled = false;
+        Buttons::draw(g, use, m.busy ? L"Enviando..." : inUse ? L"Atualizar modelo dos braços" : L"Usar esta skin", useVisual,
+            Buttons::Style::Primary, m.busy ? std::nullopt : std::optional<Icons::Icon>(Icons::Icon::Check), false, 14);
+        auto resetVisual = visuals(SkinResetButtonId);
+        if (m.busy) resetVisual.enabled = false;
+        Buttons::draw(g, reset, L"Voltar para a skin padrão", resetVisual, Buttons::Style::Ghost, Icons::Icon::Refresh, false, 13);
+    }
+
+    // Library.
+    auto library = Layout::SkinsLibrary;
+    library.Y += rise(m.entrance, 1);
+    card(g, library);
+    drawText(g, L"Sua biblioteca", {library.X + 24, library.Y + 22, 300, 24}, 16, Gdiplus::FontStyleBold, Theme::TextPrimary);
+    drawText(g, L"Skins que você adicionou. Escolha uma e use no servidor.", {library.X + 24, library.Y + 48, 560, 20}, 12.5F,
+        Gdiplus::FontStyleRegular, Theme::TextMuted);
+    const std::size_t first = m.firstRow * Layout::SkinColumns;
+    for (std::size_t slot = 0; slot < Visible && first + slot < m.cards.size(); ++slot) {
+        const auto index = first + slot;
+        const auto& item = m.cards[index];
+        auto b = Layout::skinCard(static_cast<int>(slot));
+        b.Y += library.Y - Layout::SkinsLibrary.Y;
+        const auto v = visuals(SkinCardFirstId + static_cast<int>(slot));
+        const bool chosen = static_cast<int>(index) == m.selected;
+        b.Y -= std::round(3 * v.hover);
+        fillRoundedRectangle(g, b, 14, chosen ? Theme::AccentTint : blend(Theme::SurfaceSunken, Theme::SurfaceElevated, v.hover));
+        const Gdiplus::RectF figure{b.X + (b.Width - 56) / 2, b.Y + 12, 56, 112};
+        if (item.texture) SkinRenderer::drawBody(g, *item.texture, figure, item.slim, false);
+        else silhouette(g, figure, Gdiplus::Color(255, 58, 56, 82));
+        if (item.current) {
+            // The skin in use says so where its name would be.
+            const float width = measureText(g, L"Em uso", 12.5F, Gdiplus::FontStyleBold) + 22;
+            const float x = b.X + (b.Width - width) / 2;
+            Icons::draw(g, Icons::Icon::Check, {x, b.Y + 133, 13, 13}, Theme::AccentLight, 2);
+            drawTextLine(g, L"Em uso", {x + 19, b.Y + 128, width, 22}, 12.5F, Gdiplus::FontStyleBold, Theme::AccentLight);
+        } else {
+            drawTextLine(g, item.name, {b.X + 10, b.Y + 128, b.Width - 20, 22}, 12.5F, Gdiplus::FontStyleBold,
+                chosen ? Theme::TextPrimary : Theme::TextSecondary, Gdiplus::StringAlignmentCenter);
+        }
+        drawRoundedRectangle(g, {b.X + .5F, b.Y + .5F, b.Width - 1, b.Height - 1}, 14,
+            chosen ? Theme::Accent : blend(Theme::OutlineSubtle, Theme::AccentOutline, v.hover), chosen ? 1.6F : 1.0F);
+        if (v.focused) drawFocusRing(g, b, 14, Theme::AccentLight);
+    }
+    if (m.cards.size() <= 1) {
+        const float y = Layout::skinCard(4).Y + library.Y - Layout::SkinsLibrary.Y;
+        drawText(g, L"Use Adicionar skin para trazer um PNG de 64 × 64.\nSites como NameMC e The Skindex têm milhares de skins.",
+            {library.X + 40, y + 40, library.Width - 80, 44}, 13, Gdiplus::FontStyleRegular, Theme::TextSecondary, Gdiplus::StringAlignmentCenter);
+    }
+    const auto rows = (m.cards.size() + Layout::SkinColumns - 1) / Layout::SkinColumns;
+    if (rows > static_cast<std::size_t>(Layout::SkinRows)) {
+        const Gdiplus::RectF list{library.X, Layout::skinCard(0).Y, library.Width - 16, 3 * 172 - 12};
+        const float content = static_cast<float>(rows) * 172 - 12;
+        scrollbar(g, list, content, static_cast<float>(m.firstRow) * (content - list.Height) / std::max(1.0F, static_cast<float>(lastFirstRow(m.cards.size()))));
+    }
+}
+
 void HelpView::draw(Gdiplus::Graphics& g, const HelpModel& m, const ControlVisuals& visuals) const
 {
     using namespace LauncherConstants;

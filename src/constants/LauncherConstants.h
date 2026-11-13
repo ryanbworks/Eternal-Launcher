@@ -34,7 +34,8 @@ namespace LauncherConstants
     inline constexpr int NavHelpId = 1115;
     inline constexpr int NavVersionsId = 1116;
     inline constexpr int NavScreenshotsId = 1117;
-    inline constexpr int NavigationCount = 7;
+    inline constexpr int NavSkinsId = 1118;
+    inline constexpr int NavigationCount = 8;
     // Home.
     inline constexpr int PlayMenuButtonId = 1121;
     inline constexpr int EditNicknameButtonId = 1122;
@@ -51,6 +52,24 @@ namespace LauncherConstants
     inline constexpr int ModpackChangesModsButtonId = 1138;
     inline constexpr int LevelsButtonId = 1139;       // the Tempo jogado stat
     inline constexpr int LevelsCloseButtonId = 1140;
+    // Conta Eternal sign-in.
+    inline constexpr int LoginUserInputId = 1301;
+    inline constexpr int LoginPasswordInputId = 1302;
+    inline constexpr int LoginSubmitButtonId = 1303;
+    inline constexpr int LoginRegisterButtonId = 1304;
+    inline constexpr int LoginCloseButtonId = 1305;
+    inline constexpr int AccountSignOutButtonId = 1306;
+    // Skins page.
+    inline constexpr int SkinCardFirstId = 1311;
+    inline constexpr int SkinCardCount = 12;
+    inline constexpr int SkinUseButtonId = 1323;
+    inline constexpr int SkinResetButtonId = 1324;
+    inline constexpr int SkinAddButtonId = 1325;
+    inline constexpr int SkinFolderButtonId = 1326;
+    inline constexpr int SkinClassicButtonId = 1327;
+    inline constexpr int SkinSlimButtonId = 1328;
+    inline constexpr int SkinRemoveButtonId = 1329;
+    inline constexpr int SkinSignInButtonId = 1330;
     inline constexpr int RetryServerButtonId = 1131;
     inline constexpr int VersionEternalButtonId = 1132;
     inline constexpr int VersionVanillaButtonId = 1133;
@@ -124,4 +143,9 @@ namespace LauncherConstants
     inline constexpr UINT ScreenshotImageMessage = WM_APP + 17;
     // lParam: GalleryEvent* (list, picture, upload, removal or report result).
     inline constexpr UINT GalleryEventMessage = WM_APP + 18;
+    // lParam: EternalAuthResult* (sign-in) / EternalReady* (checked session and agent before playing).
+    inline constexpr UINT EternalAuthMessage = WM_APP + 19;
+    inline constexpr UINT EternalReadyMessage = WM_APP + 20;
+    // lParam: SkinEvent* (current skin fetched, upload or reset finished).
+    inline constexpr UINT SkinEventMessage = WM_APP + 21;
 }

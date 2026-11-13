@@ -24,6 +24,17 @@ namespace LauncherConfig
     // TODO: load the base URL from an external per-environment configuration.
     inline constexpr std::wstring_view FileServerBaseUrl = L"https://eternalfast.aplot.cloud";
     inline constexpr std::wstring_view FileServerLabel = L"Servidor HTTP";
+    // Conta Eternal: the group's account and skin server (Drasl). Overridable with
+    // ETERNAL_ACCOUNTS_URL for local tests.
+    inline constexpr std::wstring_view AccountsBaseUrl = L"https://accountseternal.aplot.cloud";
+    // authlib-injector points the game at the account server. Pinned version and hash.
+    inline constexpr std::wstring_view AuthlibInjectorUrl =
+        L"https://authlib-injector.yushi.moe/artifact/56/authlib-injector-1.2.8.jar";
+    inline constexpr std::wstring_view AuthlibInjectorMirrorUrl =
+        L"https://github.com/yushijinhun/authlib-injector/releases/download/v1.2.8/authlib-injector-1.2.8.jar";
+    inline constexpr std::string_view AuthlibInjectorSha256 =
+        "9c7f4343e6c82034958ffb48c14a2cb0c85928be7283103ce17da00c6d5a7b10";
+    inline constexpr std::wstring_view AuthlibInjectorFileName = L"authlib-injector-1.2.8.jar";
 
     // The official Adoptium API reports the latest portable Temurin 17 ZIP
     // and its SHA-256. The runtime is downloaded straight from the reported source.

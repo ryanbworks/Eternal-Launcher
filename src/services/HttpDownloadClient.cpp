@@ -64,7 +64,7 @@ namespace {
     }
     HttpDownloadResult fetch(std::wstring_view url,const std::filesystem::path* destination,
         std::stop_token stop,const HttpDownloadProgressCallback& progress,const std::string* postBody=nullptr,DWORD waitLimit=0,
-        const wchar_t* contentType=L"Content-Type: application/json\r\n") {
+        const wchar_t* contentType=L"Content-Type: application/json\r\n",const wchar_t* method=nullptr,const std::wstring* extraHeaders=nullptr) {
         HttpDownloadResult result;
         if(stop.stop_requested()) {result.cancelled=true;result.errorMessage=L"Download cancelado.";return result;}
         const auto waitFor=[waitLimit](DWORD normal) {return waitLimit ? waitLimit : normal;};
@@ -87,7 +87,7 @@ namespace {
         std::array<char,64*1024> buffer{}; // Outlives every callback, including cancellation.
         Request request;
         if(!request.ready || !request.closed) {fail(result,InstallationFailure::Network,L"Não foi possível preparar a conexão.");return result;}
-        request.handle=WinHttpOpenRequest(connection.value,postBody ? L"POST" : L"GET",path.c_str(),nullptr,WINHTTP_NO_REFERER,
+        request.handle=WinHttpOpenRequest(connection.value,method ? method : postBody ? L"POST" : L"GET",path.c_str(),nullptr,WINHTTP_NO_REFERER,
             WINHTTP_DEFAULT_ACCEPT_TYPES,parts.nScheme==INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0);
         if(!request.handle) {fail(result,InstallationFailure::Network,L"Não foi possível preparar o download.",GetLastError());return result;}
         DWORD_PTR context=reinterpret_cast<DWORD_PTR>(&request);
@@ -101,8 +101,10 @@ namespace {
             fail(result,InstallationFailure::Network,result.cancelled ? L"Download cancelado." : L"A conexão foi interrompida. Confira sua internet e tente novamente.",request.error.load());
         };
         const DWORD bodySize=postBody ? static_cast<DWORD>(postBody->size()) : 0;
-        if(!pending(WinHttpSendRequest(request.handle,postBody ? contentType : WINHTTP_NO_ADDITIONAL_HEADERS,
-            postBody ? static_cast<DWORD>(-1L) : 0,postBody ? const_cast<char*>(postBody->data()) : nullptr,bodySize,bodySize,context)) ||
+        std::wstring headers=postBody && contentType ? std::wstring(contentType) : std::wstring();
+        if(extraHeaders) headers+=*extraHeaders;
+        if(!pending(WinHttpSendRequest(request.handle,headers.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : headers.c_str(),
+            headers.empty() ? 0 : static_cast<DWORD>(-1L),postBody ? const_cast<char*>(postBody->data()) : nullptr,bodySize,bodySize,context)) ||
             !request.wait(WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE,stop,waitFor(15000))) {networkFailure();return result;}
         request.reset();
         if(!pending(WinHttpReceiveResponse(request.handle,nullptr)) ||
@@ -112,7 +114,22 @@ namespace {
             networkFailure();return result;
         }
         result.statusCode=status;
-        if(status<200 || status>=300) {fail(result,InstallationFailure::Http,L"O servidor respondeu com HTTP "+std::to_wstring(status)+L". Tente novamente mais tarde.");return result;}
+        if(status<200 || status>=300) {
+            fail(result,InstallationFailure::Http,L"O servidor respondeu com HTTP "+std::to_wstring(status)+L". Tente novamente mais tarde.");
+            // API callers read the error body (for example a Yggdrasil error message).
+            if(method || extraHeaders) {
+                request.reset();
+                if(pending(WinHttpQueryDataAvailable(request.handle,nullptr)) && request.wait(WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE,stop,5000)) {
+                    const auto available=std::min<DWORD>(request.availableBytes,static_cast<DWORD>(buffer.size()));
+                    request.reset();
+                    if(available && pending(WinHttpReadData(request.handle,buffer.data(),available,nullptr)) &&
+                        request.wait(WINHTTP_CALLBACK_STATUS_READ_COMPLETE,stop,5000)) result.content.assign(buffer.data(),request.readBytes);
+                }
+            }
+            return result;
+        }
+        // 204 and other bodiless answers are a success for API calls.
+        if(status==204) {result.success=true;return result;}
         wchar_t length[64]{};size=sizeof(length);
         const std::uint64_t total=WinHttpQueryHeaders(request.handle,WINHTTP_QUERY_CONTENT_LENGTH,nullptr,length,&size,nullptr)
             ? _wcstoui64(length,nullptr,10) : 0;
@@ -148,7 +165,7 @@ namespace {
         if(output.is_open()) {output.flush();if(!output) {result.success=false;fail(result,InstallationFailure::Disk,L"Falha ao concluir a gravação do download.");}output.close();}
         if(stop.stop_requested()) {result.success=false;result.cancelled=true;result.errorMessage=L"Download cancelado.";}
         if(result.success && total && received!=total) {result.success=false;fail(result,InstallationFailure::Network,L"O download terminou incompleto. Tente novamente.");}
-        if(!destination && result.success && result.content.empty()) {result.success=false;fail(result,InstallationFailure::Configuration,L"O servidor retornou metadados vazios.");}
+        if(!destination && !method && result.success && result.content.empty()) {result.success=false;fail(result,InstallationFailure::Configuration,L"O servidor retornou metadados vazios.");}
         return result;
     }
 }
@@ -163,6 +180,13 @@ HttpDownloadResult HttpDownloadClient::postJson(std::wstring_view url,const std:
 HttpDownloadResult HttpDownloadClient::postBinary(std::wstring_view url,const std::string& body,std::stop_token stop) const {
     try { return fetch(url,nullptr,stop,{},&body,30000,L"Content-Type: application/octet-stream\r\n"); }
     catch(const std::exception&) {HttpDownloadResult r;fail(r,InstallationFailure::Network,L"Não foi possível enviar os dados.");return r;}
+}
+HttpDownloadResult HttpDownloadClient::send(std::wstring_view method,std::wstring_view url,const std::wstring& headers,
+    const std::string* body,const std::wstring& contentType,std::stop_token stop) const {
+    const std::wstring verb(method);
+    const std::wstring type=contentType.empty() ? std::wstring() : L"Content-Type: "+contentType+L"\r\n";
+    try { return fetch(url,nullptr,stop,{},body,15000,type.empty() ? nullptr : type.c_str(),verb.c_str(),&headers); }
+    catch(const std::exception&) {HttpDownloadResult r;fail(r,InstallationFailure::Network,L"Não foi possível falar com o servidor.");return r;}
 }
 HttpDownloadResult HttpDownloadClient::downloadFile(std::wstring_view url,const std::filesystem::path& destination,
     std::stop_token stop,const HttpDownloadProgressCallback& progress) const {

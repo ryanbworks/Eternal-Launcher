@@ -59,6 +59,8 @@ struct PlayerCardModel
     // Play-time level on the server (0 while unknown) and progress toward the next one.
     int tier = 0;
     float tierProgress = 0;
+    // Conta Eternal: the signed-in player, empty while signed out.
+    std::wstring eternalName;
 };
 
 struct RankingRowModel
@@ -131,6 +133,14 @@ struct HomeModel
     float levelsReveal = 0;
     std::uint64_t levelsSeconds = 0;
     bool levelsKnown = false;  // the server's play time is known
+    // Conta Eternal sign-in panel.
+    bool login = false;
+    float loginReveal = 0;
+    bool loginBusy = false;
+    std::wstring loginError;
+    std::wstring loginNotice;  // why it opened ("Sua sessão expirou...")
+    // Previews only: what the native fields would show.
+    std::wstring previewLoginUser;
 };
 
 class HeroComponent;
@@ -155,6 +165,7 @@ private:
     void drawCelebration(Gdiplus::Graphics& graphics, const HomeModel& model, const ControlVisuals& visuals) const;
     void drawModpackChanges(Gdiplus::Graphics& graphics, const HomeModel& model, const ControlVisuals& visuals) const;
     void drawLevels(Gdiplus::Graphics& graphics, const HomeModel& model, const ControlVisuals& visuals) const;
+    void drawLogin(Gdiplus::Graphics& graphics, const HomeModel& model, const ControlVisuals& visuals) const;
 public:
     // Light and deep tone of each play-time level.
     static Gdiplus::Color tierLight(int level);

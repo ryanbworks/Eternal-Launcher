@@ -255,7 +255,7 @@ std::wstring MinecraftLaunchCommandBuilder::build(
         L"--xuid",
         identity.online() ? identity.xuid : L"",
         L"--userType",
-        identity.online() ? L"msa" : L"legacy",
+        identity.eternal() ? L"mojang" : identity.online() ? L"msa" : L"legacy",
         L"--versionType",
         L"release",
         L"--launchTarget",
@@ -270,6 +270,8 @@ std::wstring MinecraftLaunchCommandBuilder::build(
         L"20230612.114412"
     };
 
+    // Conta Eternal: authlib-injector must load before anything else in the JVM.
+    if (identity.eternal()) arguments.insert(arguments.begin() + 1, L"-javaagent:" + identity.javaAgent);
     arguments.insert(arguments.end(), {L"--width",std::to_wstring(settings.windowWidth),
                                       L"--height",std::to_wstring(settings.windowHeight)});
     if (settings.fullscreen) arguments.push_back(L"--fullscreen");
@@ -303,10 +305,11 @@ std::wstring MinecraftLaunchCommandBuilder::buildVanilla(
         L"--uuid", identity.online() ? identity.uuid : createOfflineUuid(identity.name),
         L"--accessToken", identity.online() ? identity.accessToken : L"0",
         L"--userProperties", L"{}",
-        L"--userType", identity.online() ? L"msa" : L"legacy",
+        L"--userType", identity.eternal() ? L"mojang" : identity.online() ? L"msa" : L"legacy",
         L"--width", std::to_wstring(settings.windowWidth),
         L"--height", std::to_wstring(settings.windowHeight)
     };
+    if (identity.eternal()) arguments.insert(arguments.begin() + 1, L"-javaagent:" + identity.javaAgent);
     if (settings.fullscreen) arguments.push_back(L"--fullscreen");
     return joinArguments(arguments);
 }

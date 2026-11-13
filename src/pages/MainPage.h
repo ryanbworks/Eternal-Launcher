@@ -15,6 +15,7 @@
 #include "services/InstallationCoordinator.h"
 #include "services/LauncherUpdateService.h"
 #include "services/MicrosoftAuthService.h"
+#include "services/EternalAccount.h"
 #include "services/GalleryApi.h"
 #include "services/MilestoneStore.h"
 #include "services/ModInventory.h"
@@ -173,6 +174,37 @@ private:
     void dismissSpotlight();
     void markNewsRead();
 
+    // Conta Eternal.
+    struct EternalReady { EternalAuthResult auth; std::filesystem::path agent; std::wstring error; };
+    void openLogin(bool playAfter, std::wstring notice = {});
+    void closeLogin();
+    void submitLogin();
+    void prepareEternalPlay();
+    void signOutEternal();
+    float loginTarget() const;
+    bool eternalSignedIn() const { return eternalSession_.valid(); }
+    std::wstring avatarCacheName() const;
+    void startEternalSkinLookup();
+
+    // Skins page.
+    struct SkinEvent
+    {
+        enum class Kind { Current, Upload, Reset } kind = Kind::Current;
+        std::optional<EternalSkin> skin;
+        bool success = false;
+        std::wstring error;
+    };
+    SkinsModel skinsModel(bool preview) const;
+    void refreshSkinLibrary();
+    void fetchCurrentSkin();
+    void selectSkin(int index);
+    void addSkin();
+    void removeSkin();
+    void useSelectedSkin();
+    void resetSkin();
+    void setSkinsMessage(std::wstring message, bool error = false);
+    std::filesystem::path skinLibraryDirectory() const;
+
     // Modpack changelog.
     void updateModpackChanges();
     void acknowledgeModpackChanges();
@@ -307,6 +339,36 @@ private:
     std::wstring newsError_;
     NewsReadState newsRead_;
 
+    // Conta Eternal session and its sign-in panel.
+    EternalSession eternalSession_;
+    std::wstring accountsBaseUrl_;
+    HWND loginUser_ = nullptr;
+    HWND loginPassword_ = nullptr;
+    HFONT loginFont_ = nullptr;
+    bool loginOpen_ = false;
+    float loginReveal_ = 0;
+    bool loginBusy_ = false;
+    bool playAfterLogin_ = false;
+    std::wstring loginError_;
+    std::wstring loginNotice_;
+    bool eternalPreparing_ = false;
+
+    // Skins page: index 0 is the account's current skin, then the library files.
+    struct SkinEntry { std::wstring name; std::filesystem::path path; std::string png; SkinTexture texture; bool slim = false; };
+    SkinsView skinsView_;
+    std::vector<SkinEntry> skinLibrary_;
+    std::optional<SkinTexture> currentSkin_;
+    std::string currentSkinPng_;
+    bool currentSkinSlim_ = false;
+    bool currentSkinKnown_ = false;
+    bool currentSkinLoading_ = false;
+    int skinSelected_ = 0;
+    std::size_t skinRow_ = 0;
+    bool skinSlimChoice_ = false;
+    bool skinBusy_ = false;
+    std::wstring skinsMessage_;
+    bool skinsMessageError_ = false;
+
     // Modpack changelog since the list the player last acknowledged.
     ModpackChanges modpackChanges_;
     bool modpackChangesVisible_ = false;
@@ -386,6 +448,8 @@ private:
     std::array<std::uint64_t, 3> previewRankingHours_{312, 167, 96};
     int previewExtraPlayers_ = 0;
     int previewTier_ = 0;
+    std::wstring previewEternalName_ = L"Steve";
+    std::wstring previewLoginUser_;
     float previewRankingScroll_ = 0;
     std::wstring serverTotalName_;
 
@@ -416,6 +480,9 @@ private:
     std::jthread playtimeSyncThread_;
     std::jthread skinThread_;
     std::jthread screenshotThread_;
+    std::jthread eternalThread_;
+    std::jthread skinActionThread_;
+    std::jthread skinFetchThread_;
     std::jthread galleryThread_;
     std::jthread galleryActionThread_;
     // Last member: destruction joins before any state captured by the worker is destroyed.

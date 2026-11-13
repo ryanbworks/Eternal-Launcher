@@ -51,8 +51,14 @@ namespace
         {NavNewsId, true, true, L"Notícias"},
         {NavModsId, true, true, L"Mods"},
         {NavScreenshotsId, true, true, L"Capturas"},
+        {NavSkinsId, true, true, L"Skins"},
         {NavSettingsId, true, true, L"Configurações"},
         {NavHelpId, true, true, L"Ajuda"},
+        {LoginUserInputId, false, true, nullptr},
+        {LoginPasswordInputId, false, true, nullptr},
+        {LoginSubmitButtonId, false, true, L"Entrar na Conta Eternal"},
+        {LoginRegisterButtonId, false, true, L"Criar conta no site"},
+        {LoginCloseButtonId, false, true, L"Fechar"},
         {SpotlightReadButtonId, false, true, L"Ler novidade"},
         {SpotlightDismissButtonId, false, true, L"Ver depois"},
         {CelebrationButtonId, false, true, L"Fechar conquista"},
@@ -60,6 +66,7 @@ namespace
         {ModpackChangesOkButtonId, false, true, L"Entendi as mudanças do modpack"},
         {NicknameInputId, false, true, nullptr},
         {EditNicknameButtonId, false, true, L"Editar nickname"},
+        {AccountSignOutButtonId, false, true, L"Sair da Conta Eternal"},
         {OfflineButtonId, false, true, L"Nickname"},
         {OriginalButtonId, false, true, L"Conta original"},
         {LevelsButtonId, false, true, L"Ver todos os níveis"},
@@ -86,6 +93,20 @@ namespace
         {ModsRefreshButtonId, false, true, L"Atualizar lista"},
         {ModsFolderButtonId, false, true, L"Abrir pasta"},
         {ModsAddButtonId, false, true, L"Adicionar mod"},
+        {SkinFolderButtonId, false, true, L"Abrir pasta de skins"},
+        {SkinAddButtonId, false, true, L"Adicionar skin"},
+        {SkinRemoveButtonId, false, true, L"Remover skin da biblioteca"},
+        {SkinClassicButtonId, false, true, L"Braços clássicos"},
+        {SkinSlimButtonId, false, true, L"Braços finos"},
+        {SkinUseButtonId, false, true, L"Usar esta skin"},
+        {SkinResetButtonId, false, true, L"Voltar para a skin padrão"},
+        {SkinSignInButtonId, false, true, L"Entrar na Conta Eternal"},
+        {SkinCardFirstId, false, true, L"Skin 1"}, {SkinCardFirstId + 1, false, true, L"Skin 2"},
+        {SkinCardFirstId + 2, false, true, L"Skin 3"}, {SkinCardFirstId + 3, false, true, L"Skin 4"},
+        {SkinCardFirstId + 4, false, true, L"Skin 5"}, {SkinCardFirstId + 5, false, true, L"Skin 6"},
+        {SkinCardFirstId + 6, false, true, L"Skin 7"}, {SkinCardFirstId + 7, false, true, L"Skin 8"},
+        {SkinCardFirstId + 8, false, true, L"Skin 9"}, {SkinCardFirstId + 9, false, true, L"Skin 10"},
+        {SkinCardFirstId + 10, false, true, L"Skin 11"}, {SkinCardFirstId + 11, false, true, L"Skin 12"},
         {ScreenshotsMineTabId, false, true, L"Minhas capturas"},
         {ScreenshotsGroupTabId, false, true, L"Galeria do grupo"},
         {ScreenshotsRefreshButtonId, false, true, L"Atualizar capturas"},
@@ -203,6 +224,19 @@ MainPage::~MainPage()
     if (playtimeSyncThread_.joinable()) playtimeSyncThread_.join();
     launcherUpdateThread_.request_stop();
     if (launcherUpdateThread_.joinable()) launcherUpdateThread_.join();
+    eternalThread_.request_stop();
+    if (eternalThread_.joinable()) eternalThread_.join();
+    skinActionThread_.request_stop();
+    skinFetchThread_.request_stop();
+    if (skinActionThread_.joinable()) skinActionThread_.join();
+    if (skinFetchThread_.joinable()) skinFetchThread_.join();
+    for (MSG pending{}; PeekMessageW(&pending, nullptr, SkinEventMessage, SkinEventMessage, PM_REMOVE);)
+        delete reinterpret_cast<SkinEvent*>(pending.lParam);
+    for (MSG pending{}; PeekMessageW(&pending, nullptr, EternalAuthMessage, EternalAuthMessage, PM_REMOVE);)
+        delete reinterpret_cast<EternalAuthResult*>(pending.lParam);
+    for (MSG pending{}; PeekMessageW(&pending, nullptr, EternalReadyMessage, EternalReadyMessage, PM_REMOVE);)
+        delete reinterpret_cast<EternalReady*>(pending.lParam);
+    if (loginFont_) DeleteObject(loginFont_);
     screenshotThread_.request_stop();
     galleryThread_.request_stop();
     galleryActionThread_.request_stop();
@@ -280,6 +314,11 @@ bool MainPage::create(int showCommand, bool checkLauncherUpdate, std::wstring up
     milestones_.load(LauncherSettingsStore::dataDirectory());
     galleryShared_.load(LauncherSettingsStore::dataDirectory());
     galleryBaseUrl_ = GalleryApi::baseUrl();
+    accountsBaseUrl_ = EternalAccount::baseUrl();
+    if (auto session = EternalSessionStore::load(LauncherSettingsStore::dataDirectory())) {
+        eternalSession_ = std::move(*session);
+        startSkinLookup();
+    }
     syncControls();
     portalEntrance_ = motionEnabled_ ? 0.0F : 1.0F;
     portalBurst_ = motionEnabled_ ? 1.0F : 0.0F;
@@ -455,6 +494,14 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             if (notification == EN_CHANGE || notification == EN_SETFOCUS || notification == EN_KILLFOCUS) redraw();
             return 0;
         }
+        if (id == LoginUserInputId || id == LoginPasswordInputId) {
+            if (notification == EN_CHANGE && !loginError_.empty()) { loginError_.clear(); redraw(); }
+            if (notification == EN_SETFOCUS || notification == EN_KILLFOCUS) {
+                markContent(id == LoginUserInputId ? Layout::LoginUserField : Layout::LoginPasswordField, 4);
+                redraw(true);
+            }
+            return 0;
+        }
         if (notification == BN_CLICKED) handleCommand(id, notification);
         return 0;
     }
@@ -520,6 +567,113 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             if (page_ == LauncherPage::News) markNewsRead();
         }
         redraw();
+        return 0;
+    }
+    case SkinEventMessage:
+    {
+        std::unique_ptr<SkinEvent> event(reinterpret_cast<SkinEvent*>(lParam));
+        if (!event) return 0;
+        if (event->kind == SkinEvent::Kind::Current) {
+            if (skinFetchThread_.joinable()) skinFetchThread_.join();
+            currentSkinLoading_ = false;
+            if (event->skin) {
+                currentSkinKnown_ = true;
+                currentSkinSlim_ = event->skin->slim;
+                currentSkinPng_ = event->skin->png;
+                currentSkin_ = event->skin->custom ? SkinRenderer::decode(event->skin->png) : std::nullopt;
+                if (skinSelected_ == 0) skinSlimChoice_ = currentSkinSlim_;
+            }
+        } else {
+            if (skinActionThread_.joinable()) skinActionThread_.join();
+            skinBusy_ = false;
+            if (event->success) {
+                setSkinsMessage(event->kind == SkinEvent::Kind::Upload ? L"Skin trocada! Ela aparece no servidor na próxima vez que você entrar."
+                                                                       : L"Pronto: você voltou para a skin padrão.");
+                // The avatar and the "in use" card follow the new skin.
+                skins_.erase(skinKey(avatarCacheName()));
+                startEternalSkinLookup();
+                fetchCurrentSkin();
+                skinSelected_ = 0;
+            } else {
+                setSkinsMessage(event->error, true);
+            }
+        }
+        redraw();
+        return 0;
+    }
+    case EternalAuthMessage:
+    {
+        std::unique_ptr<EternalAuthResult> result(reinterpret_cast<EternalAuthResult*>(lParam));
+        if (eternalThread_.joinable()) eternalThread_.join();
+        loginBusy_ = false;
+        if (!result) return 0;
+        if (!result->success) {
+            loginError_ = result->errorMessage;
+            if (loginPassword_) { SetWindowTextW(loginPassword_, L""); SetFocus(loginPassword_); }
+            redraw();
+            return 0;
+        }
+        eternalSession_ = std::move(result->session);
+        if (!EternalSessionStore::save(LauncherSettingsStore::dataDirectory(), eternalSession_))
+            MessageBoxW(window_, L"Você entrou, mas não foi possível lembrar a sessão. Na próxima abertura será preciso entrar de novo.",
+                L"Conta Eternal", MB_OK | MB_ICONWARNING);
+        const bool play = playAfterLogin_;
+        closeLogin();
+        startSkinLookup();
+        fetchLeaderboardAsync();
+        if (play) prepareEternalPlay();
+        redraw();
+        return 0;
+    }
+    case EternalReadyMessage:
+    {
+        std::unique_ptr<EternalReady> ready(reinterpret_cast<EternalReady*>(lParam));
+        if (eternalThread_.joinable()) eternalThread_.join();
+        eternalPreparing_ = false;
+        if (!ready) return 0;
+        if (!ready->auth.success) {
+            viewState_.playEnabled = true;
+            viewState_.primaryActionLabel = L"JOGAR";
+            if (ready->auth.rejected) {
+                // The token is gone for good: sign out locally and ask for the password.
+                EternalSessionStore::clear(LauncherSettingsStore::dataDirectory());
+                const auto name = eternalSession_.name;
+                eternalSession_ = {};
+                viewState_.operation = LauncherOperation::ReadyToPlay;
+                viewState_.headline = L"Entre de novo";
+                viewState_.operationMessage = ready->auth.errorMessage;
+                openLogin(true, L"Sua sessão expirou. Entre de novo para jogar.");
+                if (loginUser_) SetWindowTextW(loginUser_, name.c_str());
+                if (loginPassword_) SetFocus(loginPassword_);
+            } else {
+                viewState_.operation = LauncherOperation::AuthenticationError;
+                viewState_.headline = L"Conta Eternal indisponível";
+                viewState_.operationMessage = ready->auth.errorMessage;
+                viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
+            }
+            redraw();
+            return 0;
+        }
+        if (ready->agent.empty()) {
+            viewState_.operation = LauncherOperation::DownloadError;
+            viewState_.headline = L"Falta um componente";
+            viewState_.operationMessage = ready->error;
+            viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
+            viewState_.playEnabled = true;
+            redraw();
+            return 0;
+        }
+        // A refreshed token replaces the stored one.
+        if (ready->auth.session.accessToken != eternalSession_.accessToken) {
+            eternalSession_ = ready->auth.session;
+            (void)EternalSessionStore::save(LauncherSettingsStore::dataDirectory(), eternalSession_);
+        }
+        viewState_.playEnabled = true;
+        pendingNickname_ = eternalSession_.name;
+        pendingIdentity_ = MinecraftIdentity{eternalSession_.name, eternalSession_.uuid,
+            std::wstring(eternalSession_.accessToken.begin(), eternalSession_.accessToken.end()), {}, {},
+            EternalAccount::agentArgument(ready->agent, accountsBaseUrl_)};
+        startGame();
         return 0;
     }
     case GalleryEventMessage:
@@ -936,18 +1090,24 @@ HomeModel MainPage::homeModel(bool preview) const
     player.state = &viewState_;
     player.originalMode = originalMode_;
     player.microsoftName = microsoftIdentity_.name;
-    const auto nickname = preview ? std::wstring(L"Steve") : nicknameText();
-    if (preview && !originalMode_) player.previewNickname = nickname;
+    const auto nickname = preview ? previewEternalName_ : eternalSession_.name;
+    player.eternalName = nickname;
     player.nicknameEmpty = nickname.empty();
     player.nicknameValid = NicknameStore::isValid(nickname);
     player.identitySelection = preview ? (originalMode_ ? 1.0F : 0.0F) : identitySelection_;
     if (!preview) {
-        const auto name = avatarName();
+        const auto name = avatarCacheName();
         const auto* skin = cachedSkin(name);
         player.skinFound = skin && skin->outcome == SkinLookupOutcome::Found;
         if (player.skinFound) player.face = &skin->face;
         player.skinLoading = !skinPending_.empty() && skinKey(name) == skinPending_;
     }
+    model.login = loginOpen_;
+    model.loginReveal = preview ? (loginOpen_ ? 1.0F : 0.0F) : loginReveal_;
+    model.loginBusy = loginBusy_;
+    model.loginError = loginError_;
+    model.loginNotice = loginNotice_;
+    if (preview && loginOpen_) model.previewLoginUser = previewLoginUser_;
     const auto now = wallClock();
     const auto record = playSession_.active() ? playSession_.snapshot(PlaySession::Clock::now(), now) : playtime_;
     player.playing = playSession_.active() || viewState_.operation == LauncherOperation::MinecraftRunning;
@@ -1128,6 +1288,9 @@ void MainPage::render(Gdiplus::Graphics& g, float width, float height, bool prev
     case LauncherPage::Screenshots:
         screenshotsView_.draw(g, screenshotsModel(preview), visuals);
         break;
+    case LauncherPage::Skins:
+        skinsView_.draw(g, skinsModel(preview), visuals);
+        break;
     case LauncherPage::Settings:
         settingsPage_.draw(g, preview);
         break;
@@ -1169,6 +1332,7 @@ void MainPage::updateMotionPreference()
         spotlightReveal_ = spotlightTarget();
         celebrationReveal_ = celebrationTarget();
         levelsReveal_ = levelsTarget();
+        loginReveal_ = loginTarget();
         playSweep_ = 1; playPulse_ = 0;
         settingsPage_.settle();
     }
@@ -1218,7 +1382,8 @@ void MainPage::redraw(bool animationFrame)
     const bool pressed = findControl(PlayButtonId) && findControl(PlayButtonId)->window &&
         (SendMessageW(findControl(PlayButtonId)->window, BM_GETSTATE, 0, 0) & BST_PUSHED) != 0;
     unsettled |= std::abs(navIndicator_ - navigationTarget()) > .75F || std::abs(spotlightReveal_ - spotlightTarget()) > .01F ||
-        std::abs(celebrationReveal_ - celebrationTarget()) > .01F || std::abs(levelsReveal_ - levelsTarget()) > .01F;
+        std::abs(celebrationReveal_ - celebrationTarget()) > .01F || std::abs(levelsReveal_ - levelsTarget()) > .01F ||
+        std::abs(loginReveal_ - loginTarget()) > .01F;
     unsettled |= playSweep_ < 1 || playPulse_ > 0 || std::abs(playPress_ - (pressed ? 1.0F : 0.0F)) > .01F ||
         std::abs(playLight_ - playLightTarget_) > .005F;
     for (const auto& mod : mods_.user) {
@@ -1238,6 +1403,7 @@ void MainPage::redraw(bool animationFrame)
         completionPulse_ = {};
         navIndicator_ = navigationTarget(); spotlightReveal_ = spotlightTarget(); celebrationReveal_ = celebrationTarget();
         levelsReveal_ = levelsTarget();
+        loginReveal_ = loginTarget();
         playSweep_ = 1; playPulse_ = 0; playPress_ = pressed ? 1.0F : 0.0F; playLight_ = playLightTarget_;
         for (const auto& mod : mods_.user) modKnobs_[mod.name] = mod.enabled ? 1.0F : 0.0F;
         settingsPage_.settle();
@@ -1335,6 +1501,7 @@ void MainPage::animate()
     approach(spotlightReveal_, spotlightTarget(), 90, .01F);
     approach(celebrationReveal_, celebrationTarget(), 140, .01F);
     approach(levelsReveal_, levelsTarget(), 70, .01F);
+    approach(loginReveal_, loginTarget(), 60, .01F);
     playSweep_ = std::min(1.0F, playSweep_ + dt / 560);
     playPulse_ = std::max(0.0F, playPulse_ - dt / 420);
     const auto* play = findControl(PlayButtonId);
@@ -1421,6 +1588,18 @@ void MainPage::createControls()
             controls_.push_back({NicknameInputId, nicknameInput_, false});
             continue;
         }
+        if (spec.id == LoginUserInputId || spec.id == LoginPasswordInputId) {
+            const bool password = spec.id == LoginPasswordInputId;
+            const auto edit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL | (password ? ES_PASSWORD : 0),
+                0, 0, 0, 0, window_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(spec.id)), instance_, nullptr);
+            if (!edit) continue;
+            SendMessageW(edit, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(password ? L"Sua senha" : L"Seu usuário"));
+            SendMessageW(edit, EM_SETLIMITTEXT, password ? 128 : 32, 0);
+            SetWindowTheme(edit, L"DarkMode_Explorer", nullptr);
+            (password ? loginPassword_ : loginUser_) = edit;
+            controls_.push_back({spec.id, edit, false});
+            continue;
+        }
         const DWORD style = WS_CHILD | BS_OWNERDRAW | (spec.tabStop ? WS_TABSTOP : 0);
         const auto window = CreateWindowExW(0, L"BUTTON", spec.label, style, 0, 0, 0, 0, window_,
             reinterpret_cast<HMENU>(static_cast<INT_PTR>(spec.id)), instance_, nullptr);
@@ -1470,13 +1649,13 @@ float MainPage::navigationTarget() const
 
 float MainPage::spotlightTarget() const
 {
-    return spotlightIndex() >= 0 && celebration_ == 0 && !modpackChangesVisible_ && !levelsOpen_ && page_ == LauncherPage::Home &&
+    return spotlightIndex() >= 0 && celebration_ == 0 && !modpackChangesVisible_ && !levelsOpen_ && !loginOpen_ && page_ == LauncherPage::Home &&
         !installation_.visible ? 1.0F : 0.0F;
 }
 
 float MainPage::celebrationTarget() const
 {
-    return celebration_ > 0 && !modpackChangesVisible_ && !levelsOpen_ && page_ == LauncherPage::Home && !installation_.visible ? 1.0F : 0.0F;
+    return celebration_ > 0 && !modpackChangesVisible_ && !levelsOpen_ && !loginOpen_ && page_ == LauncherPage::Home && !installation_.visible ? 1.0F : 0.0F;
 }
 
 float MainPage::levelsTarget() const
@@ -1524,7 +1703,17 @@ Gdiplus::RectF MainPage::controlBounds(int id) const
     case NavNewsId: return Layout::navButton(2);
     case NavModsId: return Layout::navButton(3);
     case NavScreenshotsId: return Layout::navButton(4);
-    case NavSettingsId: return Layout::navButton(5);
+    case NavSkinsId: return Layout::navButton(5);
+    case NavSettingsId: return Layout::navButton(6);
+    case SkinFolderButtonId: return Layout::SkinsFolder;
+    case SkinAddButtonId: return Layout::SkinsAdd;
+    case SkinRemoveButtonId: return Layout::SkinsRemove;
+    case SkinClassicButtonId: return Layout::SkinsClassic;
+    case SkinSlimButtonId: return Layout::SkinsSlim;
+    case SkinUseButtonId:
+    case SkinSignInButtonId:
+        return Layout::SkinsUse;
+    case SkinResetButtonId: return Layout::SkinsReset;
     case NavHelpId: return Layout::sidebarHelp(chromeHeight());
     case NicknameInputId: return Layout::NicknameEdit;
     case EditNicknameButtonId: return Layout::EditNickname;
@@ -1543,6 +1732,12 @@ Gdiplus::RectF MainPage::controlBounds(int id) const
     case QuickLogsButtonId: return Layout::quickAction(2);
     case SpotlightReadButtonId: return Layout::SpotlightRead;
     case CelebrationButtonId: return Layout::CelebrationButton;
+    case LoginUserInputId: return Layout::LoginUserField;
+    case LoginPasswordInputId: return Layout::LoginPasswordField;
+    case LoginSubmitButtonId: return Layout::LoginSubmit;
+    case LoginRegisterButtonId: return Layout::LoginRegister;
+    case LoginCloseButtonId: return Layout::LoginClose;
+    case AccountSignOutButtonId: return Layout::EditNickname;
     case LevelsButtonId: return Layout::stat(1);
     case LevelsCloseButtonId: return Layout::LevelsClose;
     case ModpackChangesOkButtonId: return Layout::ModpackChangesOk;
@@ -1580,6 +1775,7 @@ Gdiplus::RectF MainPage::controlBounds(int id) const
     if (inRange(id, NewsCardFirstId, NewsCardCount)) return Layout::newsCard(id - NewsCardFirstId);
     if (inRange(id, NewsLinkFirstId, NewsLinkCount)) return Layout::newsLink(id - NewsLinkFirstId);
     if (inRange(id, ScreenshotCardFirstId, ScreenshotCardCount)) return Layout::screenshotCard(id - ScreenshotCardFirstId);
+    if (inRange(id, SkinCardFirstId, SkinCardCount)) return Layout::skinCard(id - SkinCardFirstId);
     return {};
 }
 
@@ -1591,11 +1787,31 @@ bool MainPage::controlVisible(int id) const
     const bool leftColumn = home;
     // The modpack changelog takes the landscape's slot, with its own buttons.
     // The levels panel covers both while it is open.
-    const bool heroVisible = home && !installation_.visible && !modpackChangesVisible_ && !levelsOpen_;
+    const bool heroVisible = home && !installation_.visible && !modpackChangesVisible_ && !levelsOpen_ && !loginOpen_;
     switch (id) {
     case NicknameInputId:
     case EditNicknameButtonId:
-        return home && !originalMode_;
+        return false;  // nickname mode is gone: the Conta Eternal replaced it
+    case AccountSignOutButtonId:
+        return home && !originalMode_ && eternalSignedIn();
+    case SkinFolderButtonId:
+    case SkinAddButtonId:
+    case SkinClassicButtonId:
+    case SkinSlimButtonId:
+        return page_ == LauncherPage::Skins;
+    case SkinUseButtonId:
+    case SkinResetButtonId:
+        return page_ == LauncherPage::Skins && eternalSignedIn();
+    case SkinSignInButtonId:
+        return page_ == LauncherPage::Skins && !eternalSignedIn();
+    case SkinRemoveButtonId:
+        return page_ == LauncherPage::Skins && skinSelected_ > 0 && static_cast<std::size_t>(skinSelected_) <= skinLibrary_.size();
+    case LoginUserInputId:
+    case LoginPasswordInputId:
+    case LoginSubmitButtonId:
+    case LoginRegisterButtonId:
+    case LoginCloseButtonId:
+        return home && !installation_.visible && loginOpen_;
     case VersionEternalButtonId:
     case VersionVanillaButtonId:
         return page_ == LauncherPage::Versions;
@@ -1619,11 +1835,11 @@ bool MainPage::controlVisible(int id) const
         return heroVisible && celebration_ > 0;
     case ModpackChangesOkButtonId:
     case ModpackChangesModsButtonId:
-        return home && !installation_.visible && modpackChangesVisible_ && !levelsOpen_;
+        return home && !installation_.visible && modpackChangesVisible_ && !levelsOpen_ && !loginOpen_;
     case LevelsButtonId:
         return home;
     case LevelsCloseButtonId:
-        return home && !installation_.visible && levelsOpen_;
+        return home && !installation_.visible && levelsOpen_ && !loginOpen_;
     case ScreenshotsRefreshButtonId:
     case ScreenshotsMineTabId:
     case ScreenshotsGroupTabId:
@@ -1672,6 +1888,10 @@ bool MainPage::controlVisible(int id) const
         const auto index = screenshotRow_ * Layout::ScreenshotColumns + static_cast<std::size_t>(id - ScreenshotCardFirstId);
         return page_ == LauncherPage::Screenshots && screenshotViewer_ < 0 && index < shotCount();
     }
+    if (inRange(id, SkinCardFirstId, SkinCardCount)) {
+        const auto index = skinRow_ * Layout::SkinColumns + static_cast<std::size_t>(id - SkinCardFirstId);
+        return page_ == LauncherPage::Skins && index < 1 + skinLibrary_.size();
+    }
     return false;
 }
 
@@ -1696,6 +1916,17 @@ bool MainPage::controlEnabled(int id) const
         return installation_.running && !installation_.cancelling;
     case ModsAddButtonId:
         return !gameRunning() && !installation_.running;
+    case LoginUserInputId:
+    case LoginPasswordInputId:
+    case LoginSubmitButtonId:
+        return !loginBusy_;
+    case AccountSignOutButtonId:
+        return !gameRunning() && !installation_.running && !eternalPreparing_;
+    case SkinUseButtonId:
+        return !skinBusy_ && (skinSelected_ == 0 ? currentSkin_.has_value() : static_cast<std::size_t>(skinSelected_) <= skinLibrary_.size());
+    case SkinResetButtonId:
+    case SkinAddButtonId:
+        return !skinBusy_;
     case ViewerShareButtonId:
         if (const auto* shot = currentScreenshot())
             return !galleryBusy_ && !galleryShared_.bySource(GallerySharedStore::sourceKey(shot->path, shot->size));
@@ -1724,10 +1955,10 @@ std::wstring MainPage::controlLabel(int id) const
     default: break;
     }
     if (inRange(id, NavHomeId, NavigationCount)) {
-        // Indexed by id: Home, News, Mods, Settings, Help, Versions, Screenshots.
-        const wchar_t* names[] = {L"Início", L"Notícias", L"Mods", L"Configurações", L"Ajuda", L"Versões", L"Capturas"};
+        // Indexed by id: Home, News, Mods, Settings, Help, Versions, Screenshots, Skins.
+        const wchar_t* names[] = {L"Início", L"Notícias", L"Mods", L"Configurações", L"Ajuda", L"Versões", L"Capturas", L"Skins"};
         const LauncherPage pages[] = {LauncherPage::Home, LauncherPage::News, LauncherPage::Mods, LauncherPage::Settings, LauncherPage::Help,
-            LauncherPage::Versions, LauncherPage::Screenshots};
+            LauncherPage::Versions, LauncherPage::Screenshots, LauncherPage::Skins};
         const auto index = static_cast<std::size_t>(id - NavHomeId);
         std::wstring label = names[index];
         if (id == NavNewsId) {
@@ -1751,6 +1982,13 @@ std::wstring MainPage::controlLabel(int id) const
             return index < galleryPhotos_.size() ? L"Captura de " + galleryPhotos_[index].name : std::wstring{};
         return index < screenshots_.size() ? L"Captura de " + ScreenshotLibrary::formatDate(screenshots_[index].modified) : std::wstring{};
     }
+    if (inRange(id, SkinCardFirstId, SkinCardCount)) {
+        const auto index = skinRow_ * Layout::SkinColumns + static_cast<std::size_t>(id - SkinCardFirstId);
+        if (index == 0) return L"Sua skin atual";
+        return index <= skinLibrary_.size() ? L"Skin " + skinLibrary_[index - 1].name : std::wstring{};
+    }
+    if (id == SkinClassicButtonId) return skinSlimChoice_ ? L"Braços clássicos" : L"Braços clássicos (selecionado)";
+    if (id == SkinSlimButtonId) return skinSlimChoice_ ? L"Braços finos (selecionado)" : L"Braços finos";
     if (id == LevelsButtonId) {
         if (const auto seconds = serverSecondsForAccount())
             return L"Tempo jogado " + PlaytimeStore::formatDuration(*seconds) + L", nível " + RankTier::name(RankTier::level(*seconds)) +
@@ -1783,6 +2021,10 @@ void MainPage::layoutControls()
             // The single-line EDIT draws its text at the top; size it to one line of the display face.
             const float line = 30;
             bounds = {bounds.X, bounds.Y + (bounds.Height - line) / 2, bounds.Width, line};
+        } else if (control.id == LoginUserInputId || control.id == LoginPasswordInputId) {
+            // Inside the drawn well, after its icon, one line tall.
+            const float line = 20;
+            bounds = {bounds.X + 40, bounds.Y + (bounds.Height - line) / 2, bounds.Width - 54, line};
         }
         const int x = static_cast<int>(std::floor(ox + bounds.X * s)), y = static_cast<int>(std::floor(oy + bounds.Y * s));
         const int right = static_cast<int>(std::ceil(ox + bounds.GetRight() * s));
@@ -1798,6 +2040,15 @@ void MainPage::layoutControls()
             SendMessage(nicknameInput_, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
             if (inputFont_) DeleteObject(inputFont_);
             inputFont_ = font;
+        }
+    }
+    if (loginUser_ || loginPassword_) {
+        const HFONT font = CreateFontW(-static_cast<int>(std::round(15 * s)), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, Theme::FontFamily);
+        if (font) {
+            for (const HWND edit : {loginUser_, loginPassword_}) if (edit) SendMessageW(edit, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+            if (loginFont_) DeleteObject(loginFont_);
+            loginFont_ = font;
         }
     }
     settingsPage_.layout(viewScale_, offsetX_, offsetY_);
@@ -1825,7 +2076,7 @@ void MainPage::syncControls()
     if (page_ == LauncherPage::Settings) settingsPage_.setLocked(!viewState_.playEnabled || gameRunning());
     // Never leave keyboard focus on a control that just disappeared.
     if (focused && focused != window_ && IsChild(window_, focused) && !(GetWindowLongPtrW(focused, GWL_STYLE) & WS_VISIBLE)) {
-        const int navigation[] = {NavHomeId, NavVersionsId, NavNewsId, NavModsId, NavScreenshotsId, NavSettingsId, NavHelpId};
+        const int navigation[] = {NavHomeId, NavVersionsId, NavNewsId, NavModsId, NavScreenshotsId, NavSkinsId, NavSettingsId, NavHelpId};
         if (const auto* control = findControl(navigation[static_cast<int>(page_)]); control && control->window)
             SetFocus(control->window);
     }
@@ -1889,6 +2140,12 @@ bool MainPage::handleKeyboard(MSG& message)
                 return true;
             }
         }
+        if (message.wParam == VK_ESCAPE && page_ == LauncherPage::Home && loginOpen_) { closeLogin(); return true; }
+        if (message.wParam == VK_RETURN && loginOpen_ && (GetFocus() == loginUser_ || GetFocus() == loginPassword_)) {
+            if (GetFocus() == loginUser_ && GetWindowTextLengthW(loginPassword_) == 0) SetFocus(loginPassword_);
+            else submitLogin();
+            return true;
+        }
         if (message.wParam == VK_ESCAPE && page_ == LauncherPage::Home && levelsOpen_) { showLevels(false); return true; }
         if (message.wParam == VK_ESCAPE && page_ != LauncherPage::Home) { showPage(LauncherPage::Home); return true; }
         if (message.wParam == VK_RETURN) {
@@ -1938,6 +2195,12 @@ void MainPage::showPage(LauncherPage page)
     }
     if (page == LauncherPage::Mods) { refreshMods(); modsMessage_.clear(); modsMessageError_ = false; }
     if (page == LauncherPage::News) markNewsRead();
+    if (page == LauncherPage::Skins) {
+        skinsMessage_.clear();
+        skinsMessageError_ = false;
+        refreshSkinLibrary();
+        fetchCurrentSkin();
+    }
     if (page == LauncherPage::Screenshots) {
         screenshotsMessage_.clear();
         screenshotsMessageError_ = false;
@@ -1952,7 +2215,7 @@ void MainPage::showPage(LauncherPage page)
     redraw();
     // Keyboard focus follows the page: a control of the previous page never keeps it.
     if (focused && focused != window_ && IsChild(window_, focused) && !(GetWindowLongPtrW(focused, GWL_STYLE) & WS_VISIBLE)) {
-        const int navigation[] = {NavHomeId, NavVersionsId, NavNewsId, NavModsId, NavScreenshotsId, NavSettingsId, NavHelpId};
+        const int navigation[] = {NavHomeId, NavVersionsId, NavNewsId, NavModsId, NavScreenshotsId, NavSkinsId, NavSettingsId, NavHelpId};
         if (const auto* control = findControl(navigation[static_cast<int>(page_)]); control && control->window)
             SetFocus(control->window);
     }
@@ -1977,6 +2240,10 @@ void MainPage::handleCommand(int id, int)
         openScreenshot(static_cast<int>(screenshotRow_ * Layout::ScreenshotColumns) + id - ScreenshotCardFirstId);
         return;
     }
+    if (inRange(id, SkinCardFirstId, SkinCardCount)) {
+        selectSkin(static_cast<int>(skinRow_ * Layout::SkinColumns) + id - SkinCardFirstId);
+        return;
+    }
     const auto logs = gameDirectory() / L"logs";
     switch (id) {
     case MinimizeButtonId: PostMessageW(window_, WM_SYSCOMMAND, SC_MINIMIZE, 0); break;
@@ -1993,6 +2260,15 @@ void MainPage::handleCommand(int id, int)
         if (page_ == LauncherPage::Screenshots) closeScreenshot();
         else showPage(LauncherPage::Screenshots);
         break;
+    case NavSkinsId: showPage(LauncherPage::Skins); break;
+    case SkinFolderButtonId: openPath(skinLibraryDirectory(), true); break;
+    case SkinAddButtonId: addSkin(); break;
+    case SkinRemoveButtonId: removeSkin(); break;
+    case SkinClassicButtonId: skinSlimChoice_ = false; redraw(); break;
+    case SkinSlimButtonId: skinSlimChoice_ = true; redraw(); break;
+    case SkinUseButtonId: useSelectedSkin(); break;
+    case SkinResetButtonId: resetSkin(); break;
+    case SkinSignInButtonId: openLogin(false); break;
     case NavSettingsId: showPage(LauncherPage::Settings); break;
     case NavHelpId: showPage(LauncherPage::Help); break;
     case PlayButtonId: handlePrimaryAction(); break;
@@ -2053,6 +2329,12 @@ void MainPage::handleCommand(int id, int)
     case CelebrationButtonId:
         dismissCelebration();
         break;
+    case LoginSubmitButtonId: submitLogin(); break;
+    case LoginCloseButtonId: closeLogin(); break;
+    case LoginRegisterButtonId:
+        ShellExecuteW(window_, L"open", EternalAccount::registrationUrl(accountsBaseUrl_).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        break;
+    case AccountSignOutButtonId: signOutEternal(); break;
     case LevelsButtonId: showLevels(!levelsOpen_); break;
     case LevelsCloseButtonId: showLevels(false); break;
     case ModpackChangesOkButtonId:
@@ -2165,6 +2447,11 @@ void MainPage::scrollContent(int delta, Gdiplus::PointF point)
         const auto last = static_cast<int>(count > NewsView::Visible ? count - NewsView::Visible : 0);
         const int first = std::clamp(static_cast<int>(newsFirst_) - notches, 0, last);
         if (static_cast<std::size_t>(first) != newsFirst_) { newsFirst_ = static_cast<std::size_t>(first); redraw(); }
+    } else if (page_ == LauncherPage::Skins) {
+        if (!Layout::SkinsLibrary.Contains(point.X, point.Y)) return;
+        const int last = static_cast<int>(SkinsView::lastFirstRow(1 + skinLibrary_.size()));
+        const int row = std::clamp(static_cast<int>(skinRow_) - notches, 0, last);
+        if (static_cast<std::size_t>(row) != skinRow_) { skinRow_ = static_cast<std::size_t>(row); redraw(); }
     } else if (page_ == LauncherPage::Screenshots) {
         if (screenshotViewer_ >= 0) {
             // In the viewer the wheel steps through the pictures.
@@ -2964,22 +3251,306 @@ void MainPage::handlePrimaryAction()
         startGame();
         return;
     }
-    pendingNickname_ = nicknameText();
-    pendingIdentity_ = MinecraftIdentity{pendingNickname_};
-    if (!NicknameStore::isValid(pendingNickname_)) {
-        viewState_.operation = LauncherOperation::InvalidNickname;
-        viewState_.headline = L"Confira seu nickname";
-        viewState_.operationMessage = L"Use de 3 a 16 letras, números ou underline antes de jogar.";
-        viewState_.primaryActionLabel = L"TENTAR NOVAMENTE";
-        redraw();
-        SetFocus(nicknameInput_);
-        return;
+    // Conta Eternal: sign in first, then check the session and the agent before playing.
+    if (!eternalSignedIn()) { openLogin(true); return; }
+    prepareEternalPlay();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Conta Eternal
+// ---------------------------------------------------------------------------------------------
+
+float MainPage::loginTarget() const
+{
+    return loginOpen_ && page_ == LauncherPage::Home && !installation_.visible ? 1.0F : 0.0F;
+}
+
+void MainPage::openLogin(bool playAfter, std::wstring notice)
+{
+    playAfterLogin_ = playAfter;
+    loginNotice_ = std::move(notice);
+    loginError_.clear();
+    if (page_ != LauncherPage::Home) showPage(LauncherPage::Home);
+    levelsOpen_ = false;
+    loginOpen_ = true;
+    // Players coming from nickname mode keep their name as the username.
+    if (loginUser_ && GetWindowTextLengthW(loginUser_) == 0) {
+        const auto saved = NicknameStore::load(LauncherSettingsStore::dataDirectory());
+        if (!saved.empty()) SetWindowTextW(loginUser_, saved.c_str());
     }
-    if (!NicknameStore::save(LauncherSettingsStore::dataDirectory(), pendingNickname_)) {
-        MessageBox(window_, L"Não foi possível salvar o nickname. O jogo ainda pode iniciar, "
-                   L"mas talvez você precise digitá-lo novamente na próxima abertura.", L"Nickname", MB_OK | MB_ICONWARNING);
+    redraw();
+    const HWND target = loginUser_ && GetWindowTextLengthW(loginUser_) == 0 ? loginUser_ : loginPassword_;
+    if (target) SetFocus(target);
+}
+
+void MainPage::closeLogin()
+{
+    if (!loginOpen_) return;
+    loginOpen_ = false;
+    loginBusy_ = false;
+    loginError_.clear();
+    loginNotice_.clear();
+    if (loginPassword_) SetWindowTextW(loginPassword_, L"");
+    redraw();
+    if (const auto* play = findControl(PlayButtonId); play && play->window) SetFocus(play->window);
+}
+
+void MainPage::submitLogin()
+{
+    if (loginBusy_ || !loginUser_ || !loginPassword_) return;
+    std::array<wchar_t, 64> user{};
+    GetWindowTextW(loginUser_, user.data(), static_cast<int>(user.size()));
+    // The password lives only in this buffer and the request, and is wiped right after.
+    std::array<wchar_t, 160> password{};
+    GetWindowTextW(loginPassword_, password.data(), static_cast<int>(password.size()));
+    std::wstring username = user.data();
+    while (!username.empty() && username.back() == L' ') username.pop_back();
+    while (!username.empty() && username.front() == L' ') username.erase(username.begin());
+    if (username.empty()) { loginError_ = L"Digite seu usuário."; SetFocus(loginUser_); redraw(); return; }
+    if (password[0] == 0) { loginError_ = L"Digite sua senha."; SetFocus(loginPassword_); redraw(); return; }
+    loginBusy_ = true;
+    loginError_.clear();
+    if (eternalThread_.joinable()) eternalThread_.join();
+    std::wstring secret(password.data());
+    SecureZeroMemory(password.data(), password.size() * sizeof(wchar_t));
+    const auto clientToken = eternalSession_.clientToken.empty() ? EternalAccount::newClientToken() : eternalSession_.clientToken;
+    eternalThread_ = std::jthread([window = window_, url = accountsBaseUrl_, username, secret = std::move(secret), clientToken]
+                                  (std::stop_token stop) mutable {
+        auto* result = new EternalAuthResult(EternalAccount::authenticate(url, username, secret, clientToken, stop));
+        SecureZeroMemory(secret.data(), secret.size() * sizeof(wchar_t));
+        if (!PostMessageW(window, EternalAuthMessage, 0, reinterpret_cast<LPARAM>(result))) delete result;
+    });
+    redraw();
+}
+
+void MainPage::prepareEternalPlay()
+{
+    if (eternalPreparing_ || !eternalSignedIn()) return;
+    eternalPreparing_ = true;
+    viewState_.operation = LauncherOperation::SigningIn;
+    viewState_.headline = L"Conferindo sua conta";
+    viewState_.operationMessage = L"Confirmando a Conta Eternal de " + eternalSession_.name + L"...";
+    viewState_.primaryActionLabel = L"CONECTANDO";
+    viewState_.playEnabled = false;
+    redraw();
+    if (eternalThread_.joinable()) eternalThread_.join();
+    eternalThread_ = std::jthread([window = window_, url = accountsBaseUrl_, session = eternalSession_,
+                                      data = LauncherSettingsStore::dataDirectory()](std::stop_token stop) {
+        auto* ready = new EternalReady;
+        ready->auth = EternalAccount::ensureValid(url, session, stop);
+        if (ready->auth.success) ready->agent = EternalAccount::ensureAuthlibInjector(data, ready->error, stop);
+        if (!PostMessageW(window, EternalReadyMessage, 0, reinterpret_cast<LPARAM>(ready))) delete ready;
+    });
+}
+
+void MainPage::signOutEternal()
+{
+    if (!eternalSignedIn() || gameRunning() || installation_.running) return;
+    const auto prompt = L"Sair da Conta Eternal de " + eternalSession_.name + L"?\n\nPara jogar de novo será preciso digitar a senha.";
+    if (MessageBoxW(window_, prompt.c_str(), L"Sair da conta", MB_OKCANCEL | MB_ICONQUESTION | MB_DEFBUTTON2) != IDOK) return;
+    // Revoking the token on the server is best effort; the local session goes now.
+    std::thread([url = accountsBaseUrl_, session = eternalSession_] { EternalAccount::signOut(url, session); }).detach();
+    EternalSessionStore::clear(LauncherSettingsStore::dataDirectory());
+    eternalSession_ = {};
+    serverTotalSeconds_.reset();
+    redraw();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Skins
+// ---------------------------------------------------------------------------------------------
+
+std::filesystem::path MainPage::skinLibraryDirectory() const
+{
+    return LauncherSettingsStore::dataDirectory() / L"skins";
+}
+
+SkinsModel MainPage::skinsModel(bool preview) const
+{
+    SkinsModel model;
+    model.signedIn = preview || eternalSignedIn();
+    model.account = preview ? previewEternalName_ : eternalSession_.name;
+    model.currentLoading = currentSkinLoading_;
+    model.busy = skinBusy_;
+    model.selected = skinSelected_;
+    model.firstRow = skinRow_;
+    model.slimChoice = skinSlimChoice_;
+    model.selectedRemovable = skinSelected_ > 0 && static_cast<std::size_t>(skinSelected_) <= skinLibrary_.size();
+    model.message = skinsMessage_;
+    model.messageError = skinsMessageError_;
+    model.entrance = preview ? 1.0F : pageFade_;
+    model.time = preview ? 0.0F : time_;
+    model.cards.push_back({currentSkinKnown_ && !currentSkin_ ? L"Padrão" : L"Sua skin atual",
+        currentSkin_ ? &*currentSkin_ : nullptr, currentSkinSlim_, true});
+    for (const auto& entry : skinLibrary_) model.cards.push_back({entry.name, &entry.texture, entry.slim, false});
+    return model;
+}
+
+void MainPage::refreshSkinLibrary()
+{
+    const auto selectedPath = skinSelected_ > 0 && static_cast<std::size_t>(skinSelected_) <= skinLibrary_.size()
+        ? skinLibrary_[static_cast<std::size_t>(skinSelected_ - 1)].path : std::filesystem::path{};
+    skinLibrary_.clear();
+    std::error_code error;
+    const auto directory = skinLibraryDirectory();
+    if (std::filesystem::is_directory(directory, error)) {
+        for (std::filesystem::directory_iterator it(directory, error), end; !error && it != end; it.increment(error)) {
+            std::error_code ignored;
+            if (!it->is_regular_file(ignored) || it->path().extension() != L".png" || it->file_size(ignored) > 512 * 1024) continue;
+            std::ifstream input(it->path(), std::ios::binary);
+            std::string png((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+            auto texture = SkinRenderer::decode(png);
+            if (!texture) continue;
+            const bool slim = SkinRenderer::looksSlim(*texture);
+            skinLibrary_.push_back({it->path().stem().wstring(), it->path(), std::move(png), std::move(*texture), slim});
+        }
     }
-    startGame();
+    std::sort(skinLibrary_.begin(), skinLibrary_.end(), [](const SkinEntry& a, const SkinEntry& b) {
+        return _wcsicmp(a.name.c_str(), b.name.c_str()) < 0;
+    });
+    skinSelected_ = 0;
+    for (std::size_t i = 0; !selectedPath.empty() && i < skinLibrary_.size(); ++i)
+        if (skinLibrary_[i].path == selectedPath) skinSelected_ = static_cast<int>(i + 1);
+    skinRow_ = std::min(skinRow_, SkinsView::lastFirstRow(1 + skinLibrary_.size()));
+    skinSlimChoice_ = skinSelected_ == 0 ? currentSkinSlim_ : skinLibrary_[static_cast<std::size_t>(skinSelected_ - 1)].slim;
+}
+
+void MainPage::fetchCurrentSkin()
+{
+    if (!eternalSignedIn() || currentSkinLoading_) return;
+    currentSkinLoading_ = true;
+    if (skinFetchThread_.joinable()) skinFetchThread_.join();
+    skinFetchThread_ = std::jthread([window = window_, url = accountsBaseUrl_, uuid = eternalSession_.uuid](std::stop_token stop) {
+        auto* event = new SkinEvent;
+        event->kind = SkinEvent::Kind::Current;
+        event->skin = EternalAccount::fetchSkin(url, uuid, stop);
+        if (!PostMessageW(window, SkinEventMessage, 0, reinterpret_cast<LPARAM>(event))) delete event;
+    });
+}
+
+void MainPage::selectSkin(int index)
+{
+    if (index < 0 || static_cast<std::size_t>(index) > skinLibrary_.size()) return;
+    skinSelected_ = index;
+    skinSlimChoice_ = index == 0 ? currentSkinSlim_ : skinLibrary_[static_cast<std::size_t>(index - 1)].slim;
+    skinsMessage_.clear();
+    skinsMessageError_ = false;
+    redraw();
+}
+
+void MainPage::addSkin()
+{
+    std::array<wchar_t, 32768> file{};
+    OPENFILENAMEW dialog{sizeof(OPENFILENAMEW)};
+    dialog.hwndOwner = window_;
+    dialog.lpstrFilter = L"Skins do Minecraft (*.png)\0*.png\0\0";
+    dialog.lpstrFile = file.data();
+    dialog.nMaxFile = static_cast<DWORD>(file.size());
+    dialog.lpstrTitle = L"Adicionar skin";
+    dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+    if (!GetOpenFileNameW(&dialog)) return;
+    const std::filesystem::path source(file.data());
+    std::ifstream input(source, std::ios::binary);
+    std::string png((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    std::wstring error;
+    if (!EternalAccount::validSkinPng(png, error)) { setSkinsMessage(error, true); return; }
+    if (!SkinRenderer::decode(png)) { setSkinsMessage(L"Não foi possível ler esta skin.", true); return; }
+    const auto directory = skinLibraryDirectory();
+    std::error_code ignored;
+    std::filesystem::create_directories(directory, ignored);
+    // Keep the file's name; a number keeps two skins with the same name apart.
+    auto target = directory / source.filename();
+    for (int n = 2; std::filesystem::exists(target, ignored); ++n)
+        target = directory / (source.stem().wstring() + L" (" + std::to_wstring(n) + L").png");
+    std::filesystem::copy_file(source, target, ignored);
+    if (ignored) { setSkinsMessage(L"Não foi possível copiar a skin para a biblioteca.", true); return; }
+    refreshSkinLibrary();
+    for (std::size_t i = 0; i < skinLibrary_.size(); ++i)
+        if (skinLibrary_[i].path == target) {
+            selectSkin(static_cast<int>(i + 1));
+            skinRow_ = std::min((i + 1) / Layout::SkinColumns, SkinsView::lastFirstRow(1 + skinLibrary_.size()));
+        }
+    setSkinsMessage(target.stem().wstring() + L" entrou na sua biblioteca.");
+}
+
+void MainPage::removeSkin()
+{
+    if (skinSelected_ <= 0 || static_cast<std::size_t>(skinSelected_) > skinLibrary_.size()) return;
+    const auto entry = skinLibrary_[static_cast<std::size_t>(skinSelected_ - 1)];
+    const auto prompt = L"Mover \"" + entry.name + L"\" para a Lixeira?\n\nIsso só tira a skin da biblioteca; a skin em uso não muda.";
+    if (MessageBoxW(window_, prompt.c_str(), L"Remover skin", MB_OKCANCEL | MB_ICONQUESTION | MB_DEFBUTTON2) != IDOK) return;
+    std::wstring error;
+    if (!ScreenshotLibrary::remove(entry.path, error)) { setSkinsMessage(L"Não foi possível remover a skin.", true); return; }
+    skinSelected_ = 0;
+    refreshSkinLibrary();
+    setSkinsMessage(entry.name + L" foi para a Lixeira.");
+}
+
+void MainPage::useSelectedSkin()
+{
+    if (skinBusy_ || !eternalSignedIn()) return;
+    std::string png;
+    if (skinSelected_ == 0) png = currentSkinPng_;  // same picture, new arm model
+    else if (static_cast<std::size_t>(skinSelected_) <= skinLibrary_.size()) png = skinLibrary_[static_cast<std::size_t>(skinSelected_ - 1)].png;
+    if (png.empty()) return;
+    skinBusy_ = true;
+    setSkinsMessage(L"Enviando a skin...");
+    if (skinActionThread_.joinable()) skinActionThread_.join();
+    skinActionThread_ = std::jthread([window = window_, url = accountsBaseUrl_, session = eternalSession_, png, slim = skinSlimChoice_]
+                                     (std::stop_token) {
+        auto* event = new SkinEvent;
+        event->kind = SkinEvent::Kind::Upload;
+        event->success = EternalAccount::uploadSkin(url, session, png, slim, event->error);
+        if (!PostMessageW(window, SkinEventMessage, 0, reinterpret_cast<LPARAM>(event))) delete event;
+    });
+}
+
+void MainPage::resetSkin()
+{
+    if (skinBusy_ || !eternalSignedIn()) return;
+    if (MessageBoxW(window_, L"Voltar para a skin padrão?\n\nSuas skins da biblioteca continuam aqui.", L"Skin padrão",
+            MB_OKCANCEL | MB_ICONQUESTION | MB_DEFBUTTON2) != IDOK) return;
+    skinBusy_ = true;
+    if (skinActionThread_.joinable()) skinActionThread_.join();
+    skinActionThread_ = std::jthread([window = window_, url = accountsBaseUrl_, session = eternalSession_](std::stop_token) {
+        auto* event = new SkinEvent;
+        event->kind = SkinEvent::Kind::Reset;
+        event->success = EternalAccount::resetSkin(url, session, event->error);
+        if (!PostMessageW(window, SkinEventMessage, 0, reinterpret_cast<LPARAM>(event))) delete event;
+    });
+    redraw();
+}
+
+void MainPage::setSkinsMessage(std::wstring message, bool error)
+{
+    skinsMessage_ = std::move(message);
+    skinsMessageError_ = error;
+    redraw();
+}
+
+std::wstring MainPage::avatarCacheName() const
+{
+    // Eternal skins and Mojang skins of the same name are different pictures.
+    return originalMode_ ? avatarName() : L"eternal:" + avatarName();
+}
+
+void MainPage::startEternalSkinLookup()
+{
+    if (!eternalSignedIn()) return;
+    const auto key = skinKey(avatarCacheName());
+    if (skinPending_ == key) return;
+    skinPending_ = key;
+    skinThread_ = std::jthread([window = window_, url = accountsBaseUrl_, uuid = eternalSession_.uuid, name = avatarCacheName()]
+                               (std::stop_token stop) {
+        auto* result = new SkinLookupResult{name, SkinLookupOutcome::Unavailable, {}};
+        if (const auto skin = EternalAccount::fetchSkin(url, uuid, stop)) {
+            result->outcome = SkinLookupOutcome::NotFound;
+            if (skin->custom)
+                if (const auto face = SkinLookup::decodeFace(skin->png)) { result->outcome = SkinLookupOutcome::Found; result->face = *face; }
+        }
+        if (stop.stop_requested()) { delete result; return; }
+        if (!PostMessageW(window, SkinLookupResultMessage, 0, reinterpret_cast<LPARAM>(result))) delete result;
+    });
 }
 
 bool MainPage::offlineReady() const
@@ -3187,7 +3758,7 @@ void MainPage::fetchNewsAsync()
 
 std::wstring MainPage::rankingName() const
 {
-    return originalMode_ ? microsoftIdentity_.name : nicknameText();
+    return originalMode_ ? microsoftIdentity_.name : eternalSession_.name;
 }
 
 void MainPage::fetchLeaderboardAsync()
@@ -3206,7 +3777,7 @@ void MainPage::fetchLeaderboardAsync()
 
 std::wstring MainPage::avatarName() const
 {
-    return originalMode_ ? microsoftIdentity_.name : nicknameText();
+    return originalMode_ ? microsoftIdentity_.name : eternalSession_.name;
 }
 
 const SkinLookupResult* MainPage::cachedSkin(const std::wstring& name) const
@@ -3223,6 +3794,12 @@ void MainPage::scheduleSkinLookup()
 
 void MainPage::startSkinLookup()
 {
+    if (!originalMode_) {
+        if (!playtimeSyncEnabled_) return;
+        const auto* cached = cachedSkin(avatarCacheName());
+        if (!cached || cached->outcome == SkinLookupOutcome::Unavailable) startEternalSkinLookup();
+        return;
+    }
     const auto name = avatarName();
     if (!playtimeSyncEnabled_ || !NicknameStore::isValid(name)) return;
     const auto* cached = cachedSkin(name);
@@ -3713,6 +4290,8 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
         previewRankingHours_ = {312, 167, 96};
         celebration_ = 0; previewTier_ = 0;
         levelsOpen_ = false; previewLevelsSeconds_ = 0;
+        loginOpen_ = false; loginError_.clear(); loginNotice_.clear(); previewEternalName_ = L"Steve"; previewLoginUser_.clear();
+        skinLibrary_.clear(); currentSkin_.reset(); skinSelected_ = 0; skinRow_ = 0; skinsMessage_.clear();
         modpackChangesVisible_ = false; modpackChanges_ = {};
         page_ = LauncherPage::Home;
         newsFirst_ = 0; newsLoading_ = false; newsError_.clear();
@@ -3734,6 +4313,49 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
     ready(); page_ = LauncherPage::News;
     viewState_.news[0].unread = true; viewState_.news[1].unread = true;
     if (!save(L"news-unread.png", 1)) return false;
+    // Conta Eternal: signed out, and the sign-in panel.
+    ready(); previewEternalName_.clear();
+    if (!save(L"eternal-signed-out.png", 1)) return false;
+    loginOpen_ = true; previewLoginUser_ = L"Steve";
+    if (!save(L"login.png", 1)) return false;
+    loginError_ = L"Usuário ou senha incorretos.";
+    if (!save(L"login-error.png", 1)) return false;
+    // Skins page with generated skins.
+    {
+        const auto makeSkin = [](int seed, bool slim) {
+            SkinTexture skin;
+            skin.pixels.assign(64 * 64, 0);
+            const auto put = [&skin](int x0, int y0, int w, int h, std::uint32_t color, int noise) {
+                for (int y = y0; y < y0 + h; ++y)
+                    for (int x = x0; x < x0 + w; ++x) {
+                        const int shade = ((x * 31 + y * 17) % 3 - 1) * noise;
+                        const auto channel = [&](int shift) { return static_cast<std::uint32_t>(std::clamp(static_cast<int>((color >> shift) & 0xFF) + shade, 0, 255)); };
+                        skin.pixels[static_cast<std::size_t>(y * 64 + x)] = 0xFF000000u | channel(16) << 16 | channel(8) << 8 | channel(0);
+                    }
+            };
+            const std::uint32_t shirts[] = {0x3A7BD5, 0xC0392B, 0x27AE60, 0x8E44AD, 0xE67E22, 0x16A085};
+            const std::uint32_t hair[] = {0x3B2314, 0xD4A017, 0x1C1C1C, 0x8B4513, 0xC0C0C0, 0x5B3A29};
+            const auto shirt = shirts[seed % 6], skinTone = 0xC69C6Du, pants = 0x2C3E70u;
+            put(0, 8, 32, 8, skinTone, 6); put(8, 0, 16, 8, hair[seed % 6], 8); put(0, 8, 32, 2, hair[seed % 6], 8);  // head
+            put(8, 12, 2, 1, 0xFFFFFF, 0); put(9, 12, 1, 1, 0x2244AA, 0); put(13, 12, 2, 1, 0xFFFFFF, 0); put(13, 12, 1, 1, 0x2244AA, 0);
+            put(11, 14, 2, 1, 0x8B5A3C, 0);
+            put(16, 20, 24, 12, shirt, 10); put(16, 16, 24, 4, shirt, 10);   // body
+            put(40, 16, 16, 16, shirt, 10); put(32, 48, 16, 16, shirt, 10);   // arms
+            put(44, 28, slim ? 3 : 4, 4, skinTone, 4); put(36, 60, slim ? 3 : 4, 4, skinTone, 4);
+            if (slim) for (int y = 16; y < 32; ++y) { skin.pixels[static_cast<std::size_t>(y * 64 + 54)] = 0; skin.pixels[static_cast<std::size_t>(y * 64 + 55)] = 0; }
+            put(0, 16, 16, 16, pants, 6); put(16, 48, 16, 16, pants, 6);    // legs
+            put(0, 28, 16, 4, 0x3D3D3D, 4); put(16, 60, 16, 4, 0x3D3D3D, 4); // shoes
+            return skin;
+        };
+        ready(); page_ = LauncherPage::Skins;
+        currentSkin_ = makeSkin(0, false); currentSkinKnown_ = true; currentSkinSlim_ = false;
+        const wchar_t* names[] = {L"Cavaleiro", L"Exploradora", L"Mineiro", L"Mago", L"Ferreira"};
+        for (int i = 0; i < 5; ++i) skinLibrary_.push_back({names[i], L"C:\\preview\\skins\\x.png", "", makeSkin(i + 1, i % 2 == 1), i % 2 == 1});
+        skinSelected_ = 2; skinSlimChoice_ = true;
+        if (!save(L"skins.png", 1)) return false;
+        skinSelected_ = 0; skinSlimChoice_ = false; previewEternalName_.clear(); skinLibrary_.clear(); currentSkin_.reset(); currentSkinKnown_ = false;
+        if (!save(L"skins-signed-out.png", 1)) return false;
+    }
     // The modpack changed since the last visit.
     ready();
     modpackChanges_ = ModpackChangelog::compare(

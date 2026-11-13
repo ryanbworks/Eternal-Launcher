@@ -60,6 +60,13 @@ namespace Layout
     // Every play-time level, opened from the Tempo jogado stat.
     inline const Rect Levels{124, 88, 744, 316};
     inline const Rect LevelsClose{808, 104, 44, 40};
+    // Conta Eternal sign-in, centered on the landscape.
+    inline const Rect Login{266, 84, 460, 324};
+    inline const Rect LoginClose{670, 100, 40, 40};
+    inline const Rect LoginUserField{294, 216, 404, 38};
+    inline const Rect LoginPasswordField{294, 282, 404, 38};
+    inline const Rect LoginSubmit{294, 352, 196, 42};
+    inline const Rect LoginRegister{502, 352, 196, 42};
     inline Rect levelColumn(int index) { return {152 + static_cast<float>(index) * 140, 184, 128, 200}; }
     // Modpack changelog: takes the landscape's slot until it is acknowledged.
     inline const Rect ModpackChangesMods{636, 96, 112, 38};
@@ -122,6 +129,26 @@ namespace Layout
     inline const Rect ViewerImage{100, 148, 1156, 628};
     inline const Rect ViewerPrevious{120, 434, 52, 52};
     inline const Rect ViewerNext{1184, 434, 52, 52};
+
+    // Skins: the selected skin on a stage at the left, the library at the right.
+    inline const Rect SkinsFolder{940, 84, 160, 44};
+    inline const Rect SkinsAdd{1112, 84, 144, 44};
+    inline const Rect SkinsStage{100, 168, 440, 608};
+    inline constexpr float SkinsPlateHeight = 344;
+    inline const Rect SkinsFront{154, 212, 144, 288};
+    inline const Rect SkinsBack{342, 212, 144, 288};
+    inline const Rect SkinsRemove{476, 192, 40, 40};
+    inline const Rect SkinsClassic{124, 594, 192, 38};
+    inline const Rect SkinsSlim{324, 594, 192, 38};
+    inline const Rect SkinsUse{124, 650, 392, 48};
+    inline const Rect SkinsReset{124, 708, 392, 40};
+    inline const Rect SkinsLibrary{560, 168, 696, 608};
+    inline constexpr int SkinColumns = 4;
+    inline constexpr int SkinRows = 3;
+    inline Rect skinCard(int index)
+    {
+        return {584 + static_cast<float>(index % SkinColumns) * 165, 252 + static_cast<float>(index / SkinColumns) * 172, 153, 160};
+    }
 
     // Help.
     inline Rect helpCard(int index) { return {100 + static_cast<float>(index % 2) * 588, 168 + static_cast<float>(index / 2) * 236, 568, 220}; }
