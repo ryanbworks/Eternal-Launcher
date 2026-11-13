@@ -1,0 +1,21 @@
+[Unit]
+Description=Drasl: contas e skins do Eternal
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=drasl
+Group=drasl
+StateDirectory=drasl
+StateDirectoryMode=0750
+ExecStart=/usr/bin/drasl --config /etc/drasl/config.toml
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

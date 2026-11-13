@@ -59,3 +59,4 @@ jobs:
           python3 -m unittest discover -s server -p test_refresh_manifest.py -v
           python3 -m unittest discover -s server -p test_playtime_api.py -v
           python3 -m unittest discover -s server -p test_gallery_api.py -v
+          python3 -m unittest discover -s server -p test_drasl_migrate.py -v

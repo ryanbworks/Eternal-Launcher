@@ -1,0 +1,61 @@
+# Drasl: contas e skins do Eternal (https://github.com/unmojang/drasl).
+# Instalado em /etc/drasl/config.toml pelo server/drasl/install.sh, que troca
+# @DOMAIN@ e @BASE_URL@. Em TOML, chaves soltas precisam vir antes das [seções].
+
+Domain = "@DOMAIN@"
+BaseURL = "@BASE_URL@"
+ApplicationName = "Eternal"
+InstanceName = "Contas Eternal"
+
+# Only the Cloudflare tunnel (on the Proxmox host) and the LAN reach it.
+ListenAddress = "0.0.0.0:25585"
+StateDirectory = "/var/lib/drasl"
+DataDirectory = "/usr/share/drasl"
+
+# The admin account the migration script uses (registered by drasl_migrate.py).
+DefaultAdmins = ["eternal_admin"]
+
+# Same UUIDs as the offline-mode server, so everyone keeps inventories and bases.
+PlayerUUIDGeneration = "offline"
+# Same rules as Minecraft names.
+ValidPlayerNameRegex = "^[a-zA-Z0-9_]+$"
+MinPlayerNameLength = 3
+MaxPlayerNameLength = 16
+# A name is the key to a player's UUID and data; it never changes after creation.
+AllowChangingPlayerName = false
+
+# Open registration with a password; one player per account.
+AllowPasswordLogin = true
+DefaultMaxPlayerCount = 1
+
+# Skins: classic 64 x 64 textures; capes off for now.
+AllowSkins = true
+AllowCapes = false
+SkinSizeLimit = 64
+AllowTextureFromURL = false
+
+# Signed public keys stay off: chat signing needs Mojang keys and the server runs with
+# enforce-secure-profile=false.
+SignPublicKeys = false
+
+# No Mojang fallback for now. With it, any stranger whose Mojang account is called like
+# one of the group's players could join under that name, and players without a skin
+# would show a stranger's skin. Revisit together with "Conta original" once Microsoft
+# approves the launcher's app (see docs/DRASL_MIGRATION.md).
+
+[CreateNewPlayer]
+  Allow = true
+  AllowChoosingUUID = false
+
+[RegistrationUsernamePassword.CreateNewPlayer]
+  Allow = true
+  RequireInvite = false
+  AllowChoosingUUID = false
+
+[RateLimit]
+  Enable = true
+  RequestsPerSecond = 5
+
+[BodyLimit]
+  Enable = true
+  SizeLimitKiB = 1024
