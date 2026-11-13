@@ -97,12 +97,47 @@ void HomeView::draw(Gdiplus::Graphics& g, const HomeModel& model, const HeroComp
         if (!levels && model.celebration > 0 && model.celebrationReveal > .01F) drawCelebration(g, model, visuals);
         else if (!levels && model.spotlight && model.spotlightReveal > .01F) drawSpotlight(g, model, visuals);
     }
-    if (drawHero && model.levels && model.levelsReveal > .01F) drawLevels(g, model, visuals);
-    if (drawHero && model.login && model.loginReveal > .01F) drawLogin(g, model, visuals);
     drawTiles(g, model);
     drawNews(g, model, hero, visuals);
     drawRanking(g, model);
     drawPlayerCard(g, model.player, visuals);
+    // Screens go over everything; Home waits dimmed underneath.
+    if (drawHero && model.levels && model.levelsReveal > .01F) drawLevels(g, model, visuals);
+    if (drawHero && model.login && model.loginReveal > .01F) drawLogin(g, model, visuals);
+}
+
+void HomeView::drawScreenVeil(Gdiplus::Graphics& g, float reveal)
+{
+    // Larger than the canvas: the paint clip keeps it beside the window chrome.
+    Gdiplus::SolidBrush veil(Gdiplus::Color(static_cast<BYTE>(222 * std::clamp(reveal, 0.0F, 1.0F)), 7, 7, 12));
+    g.FillRectangle(&veil, -2000.0F, -2000.0F, 6000.0F, 6000.0F);
+}
+
+void HomeView::drawScreenCard(Gdiplus::Graphics& g, const Gdiplus::RectF& p, float reveal, const Gdiplus::Color& glow)
+{
+    const auto alpha = [reveal](float value) { return static_cast<BYTE>(std::clamp(value * reveal, 0.0F, 255.0F)); };
+    // A soft shadow lifts the card off the dimmed Home.
+    for (int layer = 4; layer >= 1; --layer) {
+        const float spread = static_cast<float>(layer) * 6;
+        fillRoundedRectangle(g, {p.X - spread, p.Y - spread + 10, p.Width + 2 * spread, p.Height + 2 * spread}, 20 + spread,
+            Gdiplus::Color(alpha(26), 0, 0, 0));
+    }
+    fillRoundedRectangle(g, p, 20, Gdiplus::Color(alpha(252), 18, 17, 30));
+    {
+        const auto inner = g.Save();
+        auto clip = createRoundedPath(p, 20);
+        g.SetClip(clip.get(), Gdiplus::CombineModeIntersect);
+        Gdiplus::GraphicsPath light;
+        light.AddEllipse(p.X - 140, p.Y - 220, p.Width * .7F + 200, 360.0F);
+        Gdiplus::PathGradientBrush brush(&light);
+        brush.SetCenterColor(Gdiplus::Color(alpha(glow.GetA()), glow.GetR(), glow.GetG(), glow.GetB()));
+        Gdiplus::Color edge(0, glow.GetR(), glow.GetG(), glow.GetB());
+        int count = 1;
+        brush.SetSurroundColors(&edge, &count);
+        g.FillPath(&brush, &light);
+        g.Restore(inner);
+    }
+    drawRoundedRectangle(g, {p.X + .5F, p.Y + .5F, p.Width - 1, p.Height - 1}, 20, Theme::AccentOutline);
 }
 
 Gdiplus::Color HomeView::tierLight(int level)
@@ -263,30 +298,10 @@ void HomeView::drawLogin(Gdiplus::Graphics& g, const HomeModel& model, const Con
 {
     using namespace LauncherConstants;
     const float reveal = easeOut(model.loginReveal);
-    const auto saved = g.Save();
-    auto heroClip = createRoundedPath(Layout::Hero, Theme::PanelRadius);
-    g.SetClip(heroClip.get(), Gdiplus::CombineModeIntersect);
-    Gdiplus::SolidBrush veil(Gdiplus::Color(static_cast<BYTE>(190 * reveal), 9, 9, 15));
-    g.FillRectangle(&veil, Layout::Hero);
-    g.Restore(saved);
+    drawScreenVeil(g, reveal);
     // The native fields sit at fixed places, so the card itself does not slide.
     const auto& p = Layout::Login;
-    fillRoundedRectangle(g, p, 20, Gdiplus::Color(static_cast<BYTE>(250 * reveal), 18, 17, 30));
-    {
-        const auto inner = g.Save();
-        auto clip = createRoundedPath(p, 20);
-        g.SetClip(clip.get(), Gdiplus::CombineModeIntersect);
-        Gdiplus::GraphicsPath glow;
-        glow.AddEllipse(p.X - 120, p.Y - 200, 520.0F, 340.0F);
-        Gdiplus::PathGradientBrush light(&glow);
-        light.SetCenterColor(Gdiplus::Color(static_cast<BYTE>(52 * reveal), 165, 130, 255));
-        Gdiplus::Color edge(0, 165, 130, 255);
-        int count = 1;
-        light.SetSurroundColors(&edge, &count);
-        g.FillPath(&light, &glow);
-        g.Restore(inner);
-    }
-    drawRoundedRectangle(g, {p.X + .5F, p.Y + .5F, p.Width - 1, p.Height - 1}, 20, Theme::AccentOutline);
+    drawScreenCard(g, p, reveal, Gdiplus::Color(52, 165, 130, 255));
     if (reveal < .6F) return;
 
     const Gdiplus::RectF emblem{p.X + 28, p.Y + 26, 44, 44};
@@ -355,15 +370,12 @@ void HomeView::drawLevels(Gdiplus::Graphics& g, const HomeModel& model, const Co
     const float time = model.player.time;
     const bool ambient = model.player.ambient;
     const auto tint = [](const Gdiplus::Color& c, BYTE alpha) { return Gdiplus::Color(alpha, c.GetR(), c.GetG(), c.GetB()); };
+    drawScreenVeil(g, reveal);
     const auto saved = g.Save();
-    auto heroClip = createRoundedPath(Layout::Hero, Theme::PanelRadius);
-    g.SetClip(heroClip.get(), Gdiplus::CombineModeIntersect);
-    Gdiplus::SolidBrush veil(Gdiplus::Color(static_cast<BYTE>(185 * reveal), 9, 9, 15));
-    g.FillRectangle(&veil, Layout::Hero);
     g.TranslateTransform(0, std::round(18 * (1 - reveal)));
 
     const auto& p = Layout::Levels;
-    fillRoundedRectangle(g, p, 20, tint(Gdiplus::Color(255, 18, 17, 30), static_cast<BYTE>(246 * reveal)));
+    drawScreenCard(g, p, reveal, Gdiplus::Color(40, 165, 130, 255));
     if (current > 0) {
         // The current level's color washes in from the top.
         const auto inner = g.Save();

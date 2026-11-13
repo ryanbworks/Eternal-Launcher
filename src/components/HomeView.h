@@ -175,6 +175,9 @@ public:
     // A faceted gem in the level's colors, used as the level's emblem.
     // `locked` draws it in grey, for a level not reached yet.
     static void drawTierGem(Gdiplus::Graphics& graphics, const Gdiplus::RectF& bounds, int level, bool locked = false);
+    // Screens over Home (sign-in, installation, levels): the dim layer and the card.
+    static void drawScreenVeil(Gdiplus::Graphics& graphics, float reveal);
+    static void drawScreenCard(Gdiplus::Graphics& graphics, const Gdiplus::RectF& bounds, float reveal, const Gdiplus::Color& glow);
 private:
     static void drawPodiumRow(Gdiplus::Graphics& graphics, const Gdiplus::RectF& line, const RankingRowModel& row,
                               float time, bool ambient);

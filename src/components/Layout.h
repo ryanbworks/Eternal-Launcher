@@ -57,12 +57,16 @@ namespace Layout
     // A play-time level reached: a card centered on the landscape.
     inline const Rect Celebration{266, 88, 460, 316};
     inline const Rect CelebrationButton{416, 344, 160, 42};
+    // Screens over a dimmed Home: sign-in, the installation and every level. Each one is
+    // centered on the content area, and the rest of Home waits underneath.
+    inline constexpr float ScreenCenterX = (ContentLeft + ContentRight) / 2;
+    inline constexpr float ScreenCenterY = (ContentTop + ContentBottom) / 2;
     // Every play-time level, opened from the Tempo jogado stat.
-    inline const Rect Levels{124, 88, 744, 316};
-    inline const Rect LevelsClose{808, 104, 44, 40};
-    // Conta Eternal sign-in, centered on the landscape.
-    inline const Rect Login{266, 84, 460, 324};
-    inline const Rect LoginClose{670, 100, 40, 40};
+    inline const Rect Levels{ScreenCenterX - 372, ScreenCenterY - 158, 744, 316};
+    inline const Rect LevelsClose{Levels.X + 684, Levels.Y + 16, 44, 40};
+    // Conta Eternal sign-in.
+    inline const Rect Login{ScreenCenterX - 230, ScreenCenterY - 162, 460, 324};
+    inline const Rect LoginClose{Login.X + 404, Login.Y + 16, 40, 40};
     // Modes: 0 sign in, 1 first access (choose a password), 2 create an account.
     // Fields: 0 user, 1 password, 2 confirmation. Returns the field's row, or -1 if hidden.
     inline int loginRow(int mode, int field)
@@ -71,10 +75,10 @@ namespace Layout
         static constexpr int Rows[3][3] = {{1, 2, -1}, {-1, 0, 1}, {0, 1, 2}};
         return mode >= 0 && mode < 3 && field >= 0 && field < 3 ? Rows[mode][field] : -1;
     }
-    inline Rect loginField(int row) { return {294, 196 + static_cast<float>(row) * 50, 404, 40}; }
-    inline const Rect LoginSubmit{294, 362, 196, 40};
-    inline const Rect LoginRegister{502, 362, 196, 40};
-    inline Rect levelColumn(int index) { return {152 + static_cast<float>(index) * 140, 184, 128, 200}; }
+    inline Rect loginField(int row) { return {Login.X + 28, Login.Y + 112 + static_cast<float>(row) * 50, 404, 40}; }
+    inline const Rect LoginSubmit{Login.X + 28, Login.Y + 278, 196, 40};
+    inline const Rect LoginRegister{Login.X + 236, Login.Y + 278, 196, 40};
+    inline Rect levelColumn(int index) { return {Levels.X + 28 + static_cast<float>(index) * 140, Levels.Y + 96, 128, 200}; }
     // Modpack changelog: takes the landscape's slot until it is acknowledged.
     inline const Rect ModpackChangesMods{636, 96, 112, 38};
     inline const Rect ModpackChangesOk{756, 96, 112, 38};
@@ -83,13 +87,15 @@ namespace Layout
     // Everything left of the player card: hero, tiles, news and ranking.
     inline const Rect LeftColumn{100, 68, 792, 708};
 
-    // Installation panel. It takes the hero's slot while preparing, so the status
-    // tiles, news and ranking below stay readable and clickable.
-    inline const Rect Installation = Hero;
-    inline const Rect InstallationStepper{130, 188, 732, 58};
-    inline const Rect InstallationDetail{130, 256, 732, 92};
-    inline const Rect InstallationLog{130, 362, 140, 42};
-    inline const Rect InstallationCancel{662, 362, 200, 42};
+    // Installation screen: open while preparing, and with the result (cancelled or failed)
+    // until the player closes it or tries again.
+    inline const Rect Installation{ScreenCenterX - 396, ScreenCenterY - 178, 792, 356};
+    inline const Rect InstallationStepper{Installation.X + 30, Installation.Y + 120, 732, 58};
+    inline const Rect InstallationDetail{Installation.X + 30, Installation.Y + 188, 732, 92};
+    inline const Rect InstallationLog{Installation.X + 30, Installation.Y + 294, 140, 42};
+    inline const Rect InstallationCancel{Installation.X + 562, Installation.Y + 294, 200, 42};
+    inline const Rect InstallationClose = InstallationCancel;
+    inline const Rect InstallationRetry{Installation.X + 354, Installation.Y + 294, 200, 42};
 
     // Shared page header.
     inline const Rect PageTitle{100, 84, 760, 40};

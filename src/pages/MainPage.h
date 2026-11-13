@@ -130,6 +130,8 @@ private:
     void applyLauncherUpdateProgress(const LauncherUpdateProgress& progress);
     void applyFileServerResult(const FileServerManifestResponse& response);
     void cancelInstallation();
+    // Closes the installation screen once it ended, giving Home back.
+    void closeInstallation();
     void consumeInstallationProgress();
     void launchPreparedMinecraft(const InstallationResult& result, bool offline = false);
     void showOfflineState(std::wstring message);

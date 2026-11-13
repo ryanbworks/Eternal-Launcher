@@ -437,8 +437,9 @@ public:
         page.redraw();
         const auto cancel=control(page,CancelInstallationButtonId);
         check(shown(cancel) && shown(control(page,InstallationLogButtonId)),"installation exposes native cancel and log controls");
-        check(shown(control(page,NewsAllButtonId)) && !shown(control(page,SpotlightReadButtonId)) && shown(control(page,PlayButtonId)),
-            "installation replaces the hero only; news and the player card stay");
+        check(!shown(control(page,NewsAllButtonId)) && !shown(control(page,SpotlightReadButtonId)) && !shown(control(page,PlayButtonId)),
+            "installation takes a screen over Home; Home's controls wait underneath");
+        check(!shown(control(page,InstallationCloseButtonId)),"a running installation cannot be closed, only cancelled");
         check(!IsWindowEnabled(control(page,PlayButtonId)) && IsWindowEnabled(cancel),"preparation blocks play and allows cancellation");
         const auto attempt=page.installation_.attempt;
         SendMessageW(page.window_,WM_COMMAND,MAKEWPARAM(PlayButtonId,BN_CLICKED),reinterpret_cast<LPARAM>(control(page,PlayButtonId)));
@@ -448,6 +449,14 @@ public:
         page.installationMailbox_.finish(attempt,{InstallationOutcome::Success});page.consumeInstallationProgress();
         check(fake.launches==0 && page.installation_.result->outcome==InstallationOutcome::Cancelled,"cancel wins queued successful preparation");
         check(page.viewState_.playEnabled && page.viewState_.primaryActionLabel==L"CONTINUAR","cancelled installation can continue");
+        check(page.installation_.visible && shown(control(page,InstallationCloseButtonId)) && shown(control(page,InstallationRetryButtonId)),
+            "the cancelled installation stays on screen with Fechar and Continuar");
+        SendMessageW(control(page,InstallationCloseButtonId),BM_CLICK,0,0);
+        check(!page.installation_.visible && shown(control(page,PlayButtonId)) && shown(control(page,NewsAllButtonId)),
+            "closing the cancelled installation gives Home back");
+        page.showLevels(true);
+        check(shown(control(page,LevelsCloseButtonId)) && !shown(control(page,PlayButtonId)),"the levels open again after a cancelled installation");
+        page.showLevels(false);
         page.installation_.begin();page.installationMailbox_.begin(page.installation_.attempt);
         page.viewState_.playEnabled=false;
         page.installationMailbox_.finish(attempt,{InstallationOutcome::Success});page.consumeInstallationProgress();
@@ -644,11 +653,15 @@ public:
         page.installation_.begin();page.viewState_.playEnabled=false;
         page.installation_.progress.activity=InstallationActivity::Downloading;page.installation_.progress.percent=80;page.redraw();tick(page);
         check(page.installationFill_>0 && page.installationFill_<80,"real transfer fill eases toward the current percentage");
-        check(page.installation_.visible && shown(control(page,CancelInstallationButtonId)) && shown(control(page,NewsAllButtonId)) &&
-            (page.viewState_.news.empty() || shown(control(page,NewsCardFirstId))),
-            "the installation panel only replaces the hero, so news stays usable");
-        check(Layout::InstallationCancel.GetBottom()<=Layout::Hero.GetBottom() && Layout::InstallationLog.GetBottom()<=Layout::Hero.GetBottom(),
-            "installation actions fit inside the hero slot");
+        check(page.installation_.visible && shown(control(page,CancelInstallationButtonId)) && !shown(control(page,NewsAllButtonId)) &&
+            !shown(control(page,NewsCardFirstId)),
+            "the installation screen covers Home, so nothing under it takes clicks");
+        for(const auto& action:{Layout::InstallationCancel,Layout::InstallationLog,Layout::InstallationRetry,Layout::InstallationClose})
+            check(Layout::Installation.Contains(action.X,action.Y) && Layout::Installation.Contains(action.GetRight()-1,action.GetBottom()-1),
+                "installation actions fit inside the installation screen");
+        for(const auto& screen:{Layout::Installation,Layout::Login,Layout::Levels})
+            check(Layout::Content.Contains(screen.X,screen.Y) && Layout::Content.Contains(screen.GetRight()-1,screen.GetBottom()-1),
+                "every screen fits inside the content area");
         ++page.installation_.progress.transferId;page.redraw();
         check(page.installationFill_==0,"new transfer cannot inherit the previous animated fill");
         page.installation_.steps[0]=InstallationStepState::Complete;page.redraw();

@@ -52,6 +52,9 @@ namespace LauncherConstants
     inline constexpr int ModpackChangesModsButtonId = 1138;
     inline constexpr int LevelsButtonId = 1139;       // the Tempo jogado stat
     inline constexpr int LevelsCloseButtonId = 1140;
+    // Installation screen, once it ended without playing.
+    inline constexpr int InstallationCloseButtonId = 1145;
+    inline constexpr int InstallationRetryButtonId = 1146;
     // Conta Eternal sign-in.
     inline constexpr int LoginUserInputId = 1301;
     inline constexpr int LoginPasswordInputId = 1302;

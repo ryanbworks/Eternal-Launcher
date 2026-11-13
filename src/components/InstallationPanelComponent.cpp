@@ -1,5 +1,6 @@
 #include "components/InstallationPanelComponent.h"
 
+#include "components/HomeView.h"
 #include "components/Layout.h"
 #include "constants/LauncherConstants.h"
 #include "styles/Theme.h"
@@ -103,13 +104,13 @@ float InstallationPanelComponent::overallPercent(const InstallationTrackingState
 void InstallationPanelComponent::draw(Gdiplus::Graphics& g, const InstallationTrackingState& state, float phase,
                                       const ControlVisuals& visuals, float fill, std::array<float, 6> completion) const
 {
-    // Compact card in the hero's slot: header, overall bar, a horizontal stepper,
-    // details for the current step and the two actions. The rest of Home stays visible.
+    // A screen over the dimmed Home: header, overall bar, a horizontal stepper, details for
+    // the current step and the actions. Once it ends it stays until closed or retried.
     const auto& panel = Layout::Installation;
-    fillRoundedRectangle(g, panel, Theme::PanelRadius, Theme::Surface);
-    drawRoundedRectangle(g, {panel.X + .5F, panel.Y + .5F, panel.Width - 1, panel.Height - 1}, Theme::PanelRadius, Theme::Divider);
     const auto& progress = state.progress;
     const bool failed = state.result && state.result->outcome == InstallationOutcome::Failed;
+    HomeView::drawScreenVeil(g, 1);
+    HomeView::drawScreenCard(g, panel, 1, failed ? Gdiplus::Color(34, 240, 90, 110) : Gdiplus::Color(40, 165, 130, 255));
     const bool cancelled = state.result && state.result->outcome == InstallationOutcome::Cancelled;
     const bool moving = state.running && !state.cancelling;
     const float left = panel.X + 30, width = panel.Width - 60;
@@ -214,7 +215,13 @@ void InstallationPanelComponent::draw(Gdiplus::Graphics& g, const InstallationTr
 
     Buttons::draw(g, Layout::InstallationLog, L"Abrir log", visuals(LauncherConstants::InstallationLogButtonId),
         Buttons::Style::Ghost, Icons::Icon::File);
-    if (state.running)
+    if (state.running) {
         Buttons::draw(g, Layout::InstallationCancel, state.cancelling ? L"Cancelando..." : L"Cancelar instalação",
             visuals(LauncherConstants::CancelInstallationButtonId), Buttons::Style::Danger);
+    } else {
+        Buttons::draw(g, Layout::InstallationRetry, cancelled ? L"Continuar" : L"Tentar de novo",
+            visuals(LauncherConstants::InstallationRetryButtonId), Buttons::Style::Primary, Icons::Icon::Refresh);
+        Buttons::draw(g, Layout::InstallationClose, L"Fechar", visuals(LauncherConstants::InstallationCloseButtonId), Buttons::Style::Secondary,
+            Icons::Icon::Close);
+    }
 }

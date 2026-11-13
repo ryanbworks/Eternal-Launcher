@@ -87,6 +87,8 @@ namespace
         {NewsAllButtonId, false, true, L"Ver todas as notícias"},
         {InstallationLogButtonId, false, true, L"Abrir log"},
         {CancelInstallationButtonId, false, true, L"Cancelar instalação"},
+        {InstallationRetryButtonId, false, true, L"Tentar de novo"},
+        {InstallationCloseButtonId, false, true, L"Fechar"},
         {NewsLinkFirstId, false, true, L"Abrir notícia 1"},
         {NewsLinkFirstId + 1, false, true, L"Abrir notícia 2"},
         {NewsLinkFirstId + 2, false, true, L"Abrir notícia 3"},
@@ -436,7 +438,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
     {
         const auto point = toContent(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
         bool changed = false;
-        const bool hovered = page_ == LauncherPage::Home && !installation_.visible &&
+        const bool hovered = page_ == LauncherPage::Home && !installation_.visible && !loginOpen_ && !levelsOpen_ &&
             Layout::Hero.Contains(point.X, point.Y);
         if (hovered != portalHovered_) { portalHovered_ = hovered; changed = true; }
         if (page_ == LauncherPage::Mods) {
@@ -1221,8 +1223,9 @@ HomeModel MainPage::homeModel(bool preview) const
     }
     model.reveal = preview ? 1 : portalEntrance_;
     model.energy = preview || !motionEnabled_ ? 0 : std::max({portalEnergy_, portalBurst_, .28F});
-    model.phase = animationPhase_;
-    model.drift = preview ? 0 : particlePhase_;
+    // Under the installation screen the landscape holds still: only the screen is repainted.
+    model.phase = installation_.visible && !preview ? .45F : animationPhase_;
+    model.drift = preview || installation_.visible ? 0 : particlePhase_;
     model.modpackChanges = modpackChangesVisible_ ? &modpackChanges_ : nullptr;
     model.levels = levelsOpen_;
     model.levelsReveal = preview ? (levelsOpen_ ? 1.0F : 0.0F) : levelsReveal_;
@@ -1315,7 +1318,7 @@ void MainPage::render(Gdiplus::Graphics& g, float width, float height, bool prev
     g.ScaleTransform(s, s);
     switch (page_) {
     case LauncherPage::Home:
-        home_.draw(g, homeModel(preview), hero_, visuals, !installation_.visible);
+        home_.draw(g, homeModel(preview), hero_, visuals, true);
         if (installation_.visible)
             installationPanel_.draw(g, installation_, animationPhase_, visuals, preview ? -1 : installationFill_,
                 preview ? std::array<float, 6>{} : completionPulse_);
@@ -1504,6 +1507,7 @@ void MainPage::animate()
     previousFrame_ = now;
     // Remember what is on screen so only what actually moves gets repainted.
     const float fadeBefore = pageFade_, navBefore = navIndicator_, spotlightBefore = spotlightReveal_, selectionBefore = identitySelection_;
+    const float screensBefore[] = {levelsReveal_, loginReveal_, celebrationReveal_};
     const float playBefore[] = {playSweep_, playPulse_, playPress_, playLight_, playProgressShown_, displayedProgress_};
     const float fillBefore = installationFill_, entranceBefore = portalEntrance_;
     const auto pulsesBefore = completionPulse_;
@@ -1568,7 +1572,8 @@ void MainPage::animate()
     }
 
     // Mark the regions this frame changed.
-    if (pageFade_ != fadeBefore) frameDirty_ = invalidateAll_ = true;
+    // Pages fade in whole, and a screen's dim layer covers all of Home while it opens or closes.
+    if (pageFade_ != fadeBefore || levelsReveal_ != screensBefore[0] || loginReveal_ != screensBefore[1]) frameDirty_ = invalidateAll_ = true;
     if (navIndicator_ != navBefore) markChrome({0, TitleBarHeight, SidebarWidth, chromeHeight() - TitleBarHeight});
     for (std::size_t i = 0; i < controls_.size() && i < hoverBefore.size(); ++i)
         if (controls_[i].hover != hoverBefore[i]) markControl(controls_[i].id);
@@ -1582,7 +1587,7 @@ void MainPage::animate()
             markContent(Layout::Hero, 2);  // particles drift every frame
             if (portalEntrance_ != entranceBefore) markContent(Layout::LeftColumn, 24);  // tiles and cards rise
         }
-        if (spotlightReveal_ != spotlightBefore) markContent(Layout::Hero, 2);
+        if (spotlightReveal_ != spotlightBefore || celebrationReveal_ != screensBefore[2]) markContent(Layout::Hero, 2);
         // The badge rings and the podium shimmers while the window is in front.
         if (ambientNow || working || playing) {
             if (unreadNewsCount() > 0) {
@@ -1829,6 +1834,8 @@ Gdiplus::RectF MainPage::controlBounds(int id) const
     case NewsAllButtonId: return {Layout::NewsAll.X + 20, Layout::NewsAll.Y, Layout::NewsAll.Width - 20, Layout::NewsAll.Height};
     case InstallationLogButtonId: return Layout::InstallationLog;
     case CancelInstallationButtonId: return Layout::InstallationCancel;
+    case InstallationCloseButtonId: return Layout::InstallationClose;
+    case InstallationRetryButtonId: return Layout::InstallationRetry;
     case ModsRefreshButtonId: return Layout::ModsRefresh;
     case ModsFolderButtonId: return Layout::ModsFolder;
     case ModsAddButtonId: return Layout::ModsAdd;
@@ -1853,7 +1860,16 @@ bool MainPage::controlVisible(int id) const
 {
     if (chromeControl(id)) return true;
     const bool home = page_ == LauncherPage::Home;
-    // The installation panel only covers the hero, so the news below stays usable.
+    // A screen over Home (installation, then sign-in, then levels) leaves only its own controls.
+    if (home && (installation_.visible || loginOpen_ || levelsOpen_)) {
+        static constexpr int InstallationScreen[] = {InstallationLogButtonId, CancelInstallationButtonId, InstallationCloseButtonId,
+                                                     InstallationRetryButtonId};
+        static constexpr int LoginScreen[] = {LoginUserInputId, LoginPasswordInputId, LoginConfirmInputId, LoginSubmitButtonId,
+                                              LoginRegisterButtonId, LoginCloseButtonId};
+        const auto member = [id](const auto& ids) { return std::find(std::begin(ids), std::end(ids), id) != std::end(ids); };
+        if (installation_.visible ? !member(InstallationScreen) : loginOpen_ ? !member(LoginScreen) : id != LevelsCloseButtonId)
+            return false;
+    }
     const bool leftColumn = home;
     // The modpack changelog takes the landscape's slot, with its own buttons.
     // The levels panel covers both while it is open.
@@ -1965,6 +1981,9 @@ bool MainPage::controlVisible(int id) const
         return home && installation_.visible;
     case CancelInstallationButtonId:
         return home && installation_.visible && installation_.running;
+    case InstallationCloseButtonId:
+    case InstallationRetryButtonId:
+        return home && installation_.visible && !installation_.running;
     case ModsRefreshButtonId:
     case ModsFolderButtonId:
     case ModsAddButtonId:
@@ -2063,6 +2082,9 @@ std::wstring MainPage::controlLabel(int id) const
     case OriginalButtonId: return originalMode_ ? L"Conta original (selecionado)" : L"Conta original";
     case MaximizeButtonId: return window_ && IsZoomed(window_) ? L"Restaurar" : L"Maximizar";
     case CancelInstallationButtonId: return installation_.cancelling ? L"Cancelando instalação" : L"Cancelar instalação";
+    case InstallationRetryButtonId:
+        return installation_.result && installation_.result->outcome == InstallationOutcome::Cancelled ? L"Continuar a instalação" : L"Tentar de novo";
+    case InstallationCloseButtonId: return L"Fechar e voltar ao início";
     default: break;
     }
     if (inRange(id, NavHomeId, NavigationCount)) {
@@ -2287,6 +2309,10 @@ bool MainPage::handleKeyboard(MSG& message)
         }
         if (message.wParam == VK_RETURN && skinSearch_ && GetFocus() == skinSearch_) { searchSkin(); return true; }
         if (message.wParam == VK_ESCAPE && page_ == LauncherPage::Home && levelsOpen_) { showLevels(false); return true; }
+        if (message.wParam == VK_ESCAPE && page_ == LauncherPage::Home && installation_.visible) {
+            if (!installation_.running) closeInstallation();
+            return true;
+        }
         if (message.wParam == VK_ESCAPE && page_ != LauncherPage::Home) { showPage(LauncherPage::Home); return true; }
         if (message.wParam == VK_RETURN) {
             const HWND focus = GetFocus();
@@ -2540,6 +2566,10 @@ void MainPage::handleCommand(int id, int)
         else deleteScreenshot();
         break;
     case CancelInstallationButtonId: cancelInstallation(); break;
+    case InstallationCloseButtonId: closeInstallation(); break;
+    case InstallationRetryButtonId:
+        if (!installation_.running) handlePrimaryAction();
+        break;
     case RetryServerButtonId: retryServer(); break;
     case InstallationLogButtonId:
     case HelpInstallLogButtonId:
@@ -4505,6 +4535,14 @@ void MainPage::applyFileServerResult(const FileServerManifestResponse& response)
     redraw();
 }
 
+void MainPage::closeInstallation()
+{
+    if (!installation_.visible || installation_.running) return;
+    installation_.visible = false;
+    redraw();
+    if (const auto* play = findControl(PlayButtonId); play && play->window && page_ == LauncherPage::Home) SetFocus(play->window);
+}
+
 void MainPage::cancelInstallation()
 {
     if (!installation_.running || installation_.cancelling) return;
@@ -4569,7 +4607,10 @@ void MainPage::consumeInstallationProgress()
             viewState_.primaryActionLabel = cancelled ? L"CONTINUAR" : L"TENTAR NOVAMENTE";
             viewState_.playEnabled = true;
             updateInstallationState(minecraftLauncherService_->validateInstallation());
-            if (const auto* play = findControl(PlayButtonId); play && play->window && page_ == LauncherPage::Home) SetFocus(play->window);
+            // The screen stays with the result; its main action takes the focus.
+            redraw();
+            if (const auto* retry = findControl(InstallationRetryButtonId); retry && retry->window && page_ == LauncherPage::Home)
+                SetFocus(retry->window);
         }
     }
     redraw();
