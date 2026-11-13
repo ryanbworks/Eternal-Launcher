@@ -4,6 +4,26 @@ All notable changes to Eternal Launcher are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 and versions use [SemVer](https://semver.org/) plus a codename.
 
+## [Unreleased]
+
+### Added
+- **Capturas.** A new page with every screenshot taken with F2 (modpack and 1.8.9),
+  a full-size viewer, copy to the clipboard, show in folder and move to the Recycle Bin.
+- **Group gallery.** Share a screenshot from the viewer and the whole group sees it in
+  the Galeria do grupo tab. Uploaders can remove their pictures; anyone can report one,
+  and three reports hide it until an admin decides. Requires the new `eternal-gallery`
+  service on the server (`server/install.sh`).
+- **Play-time levels.** Pedra, Ferro, Ouro, Diamante and Netherite at 25, 75, 150 and
+  300 hours, celebrated on Home when reached and shown on the player card.
+- **Modpack changelog.** Before playing, Home lists the mods the server added, removed
+  or updated since your last visit.
+
+### Changed
+- **News you actually see.** New posts stay in a spotlight on Home until read or set
+  aside, with a counter on the News icon and NOVO tags.
+- **Top players.** The podium wears gold, silver and bronze and gets more ornate with
+  hours; the card now scrolls through every player (the server lists up to 200).
+
 ## [2.2.0] — Horizon · 2026-11-11
 
 ### Added

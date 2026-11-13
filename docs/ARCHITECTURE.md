@@ -54,6 +54,11 @@ Components only draw the data they receive. They never touch the network or disk
 - `ScreenshotLibrary`: lists the `screenshots` folders of the modpack and of the 1.8.9,
   decodes thumbnails and viewer images on a worker, copies to the clipboard and
   recycles files.
+- `GalleryApi` / `GallerySharedStore`: client of the group gallery (`server/gallery_api.py`)
+  and the remove tokens of the pictures this installation shared (`gallery-shared.txt`).
+- `ModpackChangelog`: compares the server's mod list with the one the player last
+  acknowledged (`modpack-snapshot.txt`) and names what came in, left or was updated.
+- `MilestoneStore`: the highest play-time level celebrated per nickname (`milestones.txt`).
 - `ModInventory`: separates server mods from the player's own and enables, disables or
   recycles player mods.
 - `PlaytimeStore` / `PlaySession`: total and last play time in `playtime.json`.
@@ -118,6 +123,28 @@ the last 21 days (undated items and the launcher's own release notes count too).
 newest one is shown in a spotlight over the Home landscape until it is read or set aside
 with "Depois"; setting it aside keeps the counter on the News icon and the NOVO tags.
 Read and set-aside items are kept in `news-state.txt` in the data folder.
+
+### Group gallery
+
+From the screenshot viewer, Compartilhar scales the picture to 1920 × 1080 at most,
+encodes it and a 416 × 234 thumbnail as JPEG and posts both to `/api/gallery/photos`
+under the player's nickname. The Galeria do grupo tab lists the newest 120 pictures and
+downloads thumbnails as they scroll into view. The server returns a token with each
+upload; only the installation holding it can remove that picture, and everyone else
+can report it. Set `ETERNAL_GALLERY_URL` to point the launcher at a local server
+(`python3 server/gallery_api.py serve`) while developing.
+
+### Modpack changelog
+
+When the manifest's `mods/` list differs from the one the player last acknowledged,
+Home shows the mods that came in, left or were updated in place of the landscape.
+Updates are recognized by the file name without its version, and versions are shown
+without the Minecraft version or loader. Entendi, Ver mods or Jogar acknowledge it.
+
+### Play-time levels
+
+Every player climbs Pedra, Ferro, Ouro, Diamante and Netherite with the server's play
+time (the same number as the ranking). Reaching a level is celebrated once on Home.
 
 ### Leaderboard podium
 
