@@ -4,9 +4,10 @@
 Players share screenshots from the launcher; everybody sees them in the Capturas
 page. The launcher scales and encodes each picture before sending it, so this
 service only checks that it received two reasonable JPEG files (a thumbnail and
-the picture) and stores them. Nickname mode has no login: uploads are limited per
-player and per address, the uploader gets a token to remove their own picture,
-and reports from three different addresses hide a picture until an admin looks.
+the picture) and stores them. Skins shared from the Skins page (Explorar) follow
+the same rules with small PNG textures. Uploads carry no login: they are limited
+per player and per address, the uploader gets a token to remove their own upload,
+and reports from three different addresses hide it until an admin looks.
 
 Listens on localhost only; NGINX publishes it under /api/gallery/.
 """
@@ -62,7 +63,39 @@ CREATE TABLE IF NOT EXISTS reports (
     client_ip TEXT NOT NULL,
     PRIMARY KEY (photo_id, client_ip)
 );
+CREATE TABLE IF NOT EXISTS skins (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    player_key TEXT NOT NULL,
+    client_ip TEXT NOT NULL,
+    created INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    slim INTEGER NOT NULL,
+    token_hash TEXT NOT NULL,
+    hidden INTEGER NOT NULL DEFAULT 0,
+    reports INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS skins_by_created ON skins(created);
+CREATE TABLE IF NOT EXISTS skin_reports (
+    skin_id TEXT NOT NULL,
+    client_ip TEXT NOT NULL,
+    PRIMARY KEY (skin_id, client_ip)
+);
 """
+
+# Community skins: small PNG textures players share from their library.
+MAX_SKIN_BYTES = 64 * 1024
+SKINS_PER_PLAYER_PER_DAY = 10
+SKINS_PER_IP_PER_DAY = 30
+MAX_SKINS = 2000
+SKIN_TITLE = re.compile(r"[\w ()'\-.,!]{1,32}")
+
+
+def skin_size(data):
+    """(width, height) of a PNG skin texture, or None."""
+    if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":
+        return None
+    return struct.unpack(">II", data[16:24])
 
 
 class ApiError(Exception):
@@ -280,6 +313,127 @@ class GalleryStore:
             hidden = db.execute("SELECT hidden FROM photos WHERE id = ?", (photo_id,)).fetchone()["hidden"]
         return {"reported": True, "hidden": bool(hidden)}
 
+    # Community skins.
+    def _skin_file(self, skin_id):
+        return self.photos / "skins" / f"{skin_id}.png"
+
+    def upload_skin(self, nickname, client_ip, title, model, png):
+        key = _player_key(nickname)
+        if not isinstance(title, str) or not SKIN_TITLE.fullmatch(title.strip()):
+            raise ApiError(400, "invalid title")
+        if model not in ("classic", "slim"):
+            raise ApiError(400, "invalid model")
+        if len(png) > MAX_SKIN_BYTES:
+            raise ApiError(413, "skin too large")
+        if skin_size(png) not in ((64, 64), (64, 32)):
+            raise ApiError(415, "skins must be 64x64 PNG")
+        now = self._now()
+        skin_id = secrets.token_hex(8)
+        token = secrets.token_urlsafe(24)
+        path = self._skin_file(skin_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        removed = []
+        try:
+            with self._transaction() as db:
+                day_ago = now - 86400
+                mine = db.execute("SELECT COUNT(*) AS n FROM skins WHERE player_key = ? AND created > ?", (key, day_ago)).fetchone()["n"]
+                from_ip = db.execute("SELECT COUNT(*) AS n FROM skins WHERE client_ip = ? AND created > ?", (client_ip, day_ago)).fetchone()["n"]
+                if mine >= SKINS_PER_PLAYER_PER_DAY or from_ip >= SKINS_PER_IP_PER_DAY:
+                    raise ApiError(429, "daily limit reached")
+                partial = path.with_name(path.name + ".part")
+                partial.write_bytes(png)
+                os.replace(partial, path)
+                db.execute(
+                    "INSERT INTO skins(id, name, player_key, client_ip, created, title, slim, token_hash, hidden) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (skin_id, nickname, key, client_ip, now, title.strip(), int(model == "slim"), _token_hash(token), int(self.review)),
+                )
+                overflow = db.execute("SELECT COUNT(*) AS n FROM skins").fetchone()["n"] - MAX_SKINS
+                if overflow > 0:
+                    removed = [row["id"] for row in db.execute("SELECT id FROM skins ORDER BY created ASC, id ASC LIMIT ?", (overflow,))]
+                    db.executemany("DELETE FROM skins WHERE id = ?", [(old,) for old in removed])
+                    db.executemany("DELETE FROM skin_reports WHERE skin_id = ?", [(old,) for old in removed])
+        except BaseException:
+            path.unlink(missing_ok=True)
+            raise
+        for old in removed:
+            self._skin_file(old).unlink(missing_ok=True)
+        return {"id": skin_id, "deleteToken": token, "pending": self.review}
+
+    def list_skins(self, limit=120):
+        limit = max(1, min(limit, MAX_LIST))
+        db = self._connect()
+        try:
+            rows = db.execute(
+                "SELECT id, name, title, slim, created FROM skins WHERE hidden = 0 ORDER BY created DESC, id DESC LIMIT ?", (limit,)
+            ).fetchall()
+            return {"skins": [{**dict(row), "slim": bool(row["slim"])} for row in rows]}
+        finally:
+            db.close()
+
+    def skin_png(self, skin_id):
+        skin_id = _photo_id(skin_id)
+        db = self._connect()
+        try:
+            row = db.execute("SELECT hidden FROM skins WHERE id = ?", (skin_id,)).fetchone()
+        finally:
+            db.close()
+        if row is None or row["hidden"]:
+            raise ApiError(404, "unknown skin")
+        try:
+            return self._skin_file(skin_id).read_bytes()
+        except FileNotFoundError:
+            raise ApiError(404, "unknown skin") from None
+
+    def delete_skin(self, skin_id, token):
+        skin_id = _photo_id(skin_id)
+        if not isinstance(token, str) or not token:
+            raise ApiError(403, "not your skin")
+        with self._transaction() as db:
+            row = db.execute("SELECT token_hash FROM skins WHERE id = ?", (skin_id,)).fetchone()
+            if row is None:
+                raise ApiError(404, "unknown skin")
+            if not secrets.compare_digest(row["token_hash"], _token_hash(token)):
+                raise ApiError(403, "not your skin")
+            db.execute("DELETE FROM skins WHERE id = ?", (skin_id,))
+            db.execute("DELETE FROM skin_reports WHERE skin_id = ?", (skin_id,))
+        self._skin_file(skin_id).unlink(missing_ok=True)
+        return {"deleted": True}
+
+    def report_skin(self, skin_id, client_ip):
+        skin_id = _photo_id(skin_id)
+        with self._transaction() as db:
+            if db.execute("SELECT 1 FROM skins WHERE id = ?", (skin_id,)).fetchone() is None:
+                raise ApiError(404, "unknown skin")
+            if db.execute("INSERT OR IGNORE INTO skin_reports(skin_id, client_ip) VALUES(?, ?)", (skin_id, client_ip)).rowcount:
+                db.execute("UPDATE skins SET reports = reports + 1 WHERE id = ?", (skin_id,))
+                db.execute("UPDATE skins SET hidden = 1 WHERE id = ? AND reports >= ?", (skin_id, REPORTS_TO_HIDE))
+            hidden = db.execute("SELECT hidden FROM skins WHERE id = ?", (skin_id,)).fetchone()["hidden"]
+        return {"reported": True, "hidden": bool(hidden)}
+
+    def set_skin_hidden(self, skin_id, hidden):
+        skin_id = _photo_id(skin_id)
+        with self._transaction() as db:
+            changed = db.execute("UPDATE skins SET hidden = ? WHERE id = ?", (int(hidden), skin_id)).rowcount
+            if not hidden:
+                db.execute("UPDATE skins SET reports = 0 WHERE id = ?", (skin_id,))
+                db.execute("DELETE FROM skin_reports WHERE skin_id = ?", (skin_id,))
+        return bool(changed)
+
+    def remove_skin(self, skin_id):
+        skin_id = _photo_id(skin_id)
+        with self._transaction() as db:
+            changed = db.execute("DELETE FROM skins WHERE id = ?", (skin_id,)).rowcount
+            db.execute("DELETE FROM skin_reports WHERE skin_id = ?", (skin_id,))
+        self._skin_file(skin_id).unlink(missing_ok=True)
+        return bool(changed)
+
+    def all_skins(self):
+        db = self._connect()
+        try:
+            return [dict(row) for row in db.execute("SELECT id, name, title, slim, created, hidden, reports FROM skins ORDER BY created DESC")]
+        finally:
+            db.close()
+
     # Administration.
     def all(self):
         db = self._connect()
@@ -297,16 +451,17 @@ class GalleryStore:
             if not hidden:
                 db.execute("UPDATE photos SET reports = 0 WHERE id = ?", (photo_id,))
                 db.execute("DELETE FROM reports WHERE photo_id = ?", (photo_id,))
-        if not changed:
-            raise ApiError(404, "unknown photo")
+        if not changed and not self.set_skin_hidden(photo_id, hidden):
+            raise ApiError(404, "unknown photo or skin")
 
     def remove(self, photo_id):
         photo_id = _photo_id(photo_id)
         with self._transaction() as db:
-            if not db.execute("DELETE FROM photos WHERE id = ?", (photo_id,)).rowcount:
-                raise ApiError(404, "unknown photo")
+            changed = db.execute("DELETE FROM photos WHERE id = ?", (photo_id,)).rowcount
             db.execute("DELETE FROM reports WHERE photo_id = ?", (photo_id,))
         self._remove_files(photo_id)
+        if not changed and not self.remove_skin(photo_id):
+            raise ApiError(404, "unknown photo or skin")
 
     def purge_player(self, nickname):
         key = _player_key(nickname)
@@ -314,12 +469,19 @@ class GalleryStore:
             ids = [row["id"] for row in db.execute("SELECT id FROM photos WHERE player_key = ?", (key,))]
             db.execute("DELETE FROM photos WHERE player_key = ?", (key,))
             db.executemany("DELETE FROM reports WHERE photo_id = ?", [(photo,) for photo in ids])
+            skins = [row["id"] for row in db.execute("SELECT id FROM skins WHERE player_key = ?", (key,))]
+            db.execute("DELETE FROM skins WHERE player_key = ?", (key,))
+            db.executemany("DELETE FROM skin_reports WHERE skin_id = ?", [(skin,) for skin in skins])
         for photo in ids:
             self._remove_files(photo)
-        return len(ids)
+        for skin in skins:
+            self._skin_file(skin).unlink(missing_ok=True)
+        return len(ids) + len(skins)
 
 
 IMAGE_PATH = re.compile(r"/api/gallery/photos/([a-f0-9]{16})/(thumb|full)")
+SKIN_PATH = re.compile(r"/api/gallery/skins/([a-f0-9]{16})\.png")
+SKIN_ACTION_PATH = re.compile(r"/api/gallery/skins/([a-f0-9]{16})/(delete|report)")
 ACTION_PATH = re.compile(r"/api/gallery/photos/([a-f0-9]{16})/(delete|report)")
 
 
@@ -371,25 +533,28 @@ def make_handler(store):
                 print(f"storage error: {error}", file=sys.stderr)
                 self._reply(503, {"error": "storage unavailable"})
 
+        def _binary(self, data, content_type):
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(data)))
+            # A picture never changes under its id.
+            self.send_header("Cache-Control", "public, max-age=604800, immutable")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(data)
+
         def do_GET(self):
             url = urlsplit(self.path)
-            image = IMAGE_PATH.fullmatch(url.path)
-            if image:
+            image, skin = IMAGE_PATH.fullmatch(url.path), SKIN_PATH.fullmatch(url.path)
+            if image or skin:
                 try:
-                    data = store.image(image.group(1), image.group(2) == "thumb")
+                    data = store.image(image.group(1), image.group(2) == "thumb") if image else store.skin_png(skin.group(1))
                 except ApiError as error:
                     self._reply(error.status, {"error": error.message})
                     return
-                self.send_response(200)
-                self.send_header("Content-Type", "image/jpeg")
-                self.send_header("Content-Length", str(len(data)))
-                # A picture never changes under its id.
-                self.send_header("Cache-Control", "public, max-age=604800, immutable")
-                self.send_header("X-Content-Type-Options", "nosniff")
-                self.end_headers()
-                self.wfile.write(data)
+                self._binary(data, "image/jpeg" if image else "image/png")
                 return
-            if url.path != "/api/gallery/photos":
+            if url.path not in ("/api/gallery/photos", "/api/gallery/skins"):
                 self._reply(404, {"error": "not found"})
                 return
             query = parse_qs(url.query)
@@ -399,7 +564,7 @@ def make_handler(store):
                     limit = int(query.get("limit", ["60"])[0])
                 except ValueError:
                     raise ApiError(400, "invalid limit") from None
-                return store.list(limit)
+                return store.list(limit) if url.path.endswith("photos") else store.list_skins(limit)
 
             self._guarded(action)
 
@@ -408,6 +573,19 @@ def make_handler(store):
             if url.path == "/api/gallery/photos":
                 name = parse_qs(url.query).get("name", [None])[0]
                 self._guarded(lambda: store.upload(name, self._client_ip(), self._read(4 + MAX_THUMB_BYTES + MAX_PHOTO_BYTES)))
+                return
+            if url.path == "/api/gallery/skins":
+                query = parse_qs(url.query)
+                self._guarded(lambda: store.upload_skin(query.get("name", [None])[0], self._client_ip(), query.get("title", [None])[0],
+                                                        query.get("model", ["classic"])[0], self._read(MAX_SKIN_BYTES)))
+                return
+            skin_action = SKIN_ACTION_PATH.fullmatch(url.path)
+            if skin_action:
+                skin_id, verb = skin_action.groups()
+                if verb == "delete":
+                    self._guarded(lambda: store.delete_skin(skin_id, self._json().get("token")))
+                else:
+                    self._guarded(lambda: store.report_skin(skin_id, self._client_ip()))
                 return
             action = ACTION_PATH.fullmatch(url.path)
             if action is None:
@@ -456,6 +634,15 @@ def main():
                 created = time.strftime("%Y-%m-%d %H:%M", time.localtime(photo["created"]))
                 print(f"{photo['id']}  {photo['name']:<16}  {created}  {photo['width']}x{photo['height']}  "
                       f"{state:<8} denúncias: {photo['reports']}")
+            skins = store.all_skins()
+            if skins:
+                print("\nSkins:")
+            for skin in skins:
+                state = "oculta" if skin["hidden"] else "visível"
+                created = time.strftime("%Y-%m-%d %H:%M", time.localtime(skin["created"]))
+                model = "fino" if skin["slim"] else "clássico"
+                print(f"{skin['id']}  {skin['name']:<16}  {created}  {skin['title']:<24}  {model:<8}  "
+                      f"{state:<8} denúncias: {skin['reports']}")
         elif arguments.command == "hide":
             store.set_hidden(arguments.id, True)
         elif arguments.command == "show":

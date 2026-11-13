@@ -101,6 +101,10 @@ Cloudflare WAF like `/api/playtime/*`. The rules that keep it small and civil:
 - The uploader's launcher keeps a token that removes their own picture.
 - Reports from 3 different addresses hide a picture until an admin decides.
 - `ETERNAL_GALLERY_REVIEW=1` in the unit keeps every new picture hidden until approved.
+- The same service keeps the skins players share in Explorar (Skins page): PNG
+  textures of 64 × 64 or 64 × 32 up to 64 KB, 10 per player and 30 per address a day,
+  the newest 2000 kept. The commands below work with skin ids too; `list` shows the
+  skins after the pictures and `purge` removes both.
 
 Moderation:
 

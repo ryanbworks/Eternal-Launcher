@@ -140,5 +140,110 @@ class GalleryStoreTests(unittest.TestCase):
         self.assertEqual(["Aurora_"], [photo["name"] for photo in self.store.list()["photos"]])
 
 
+def png(width=64, height=64, padding=0):
+    """A PNG signature and IHDR header, enough for the size check."""
+    return b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", width, height) + b"\x08\x06\x00\x00\x00" + b"x" * padding
+
+
+class SkinStoreTests(unittest.TestCase):
+    # Same temporary store and helpers, without rerunning the picture tests.
+    setUp = GalleryStoreTests.setUp
+    make = GalleryStoreTests.make
+    assert_status = GalleryStoreTests.assert_status
+
+    def share(self, nickname="Steve", ip="1.1.1.1", title="Cavaleiro", model="classic", data=None):
+        self.now += 1
+        return self.store.upload_skin(nickname, ip, title, model, png() if data is None else data)
+
+    def test_shared_skins_list_newest_first_with_their_texture(self):
+        first = self.share("Steve", title="Cavaleiro")
+        second = self.share("Aurora_", title="Raposa (fina)", model="slim", data=png(64, 32))
+        skins = self.store.list_skins()["skins"]
+        self.assertEqual([second["id"], first["id"]], [skin["id"] for skin in skins])
+        self.assertEqual(("Aurora_", "Raposa (fina)", True), (skins[0]["name"], skins[0]["title"], skins[0]["slim"]))
+        self.assertEqual(png(), self.store.skin_png(first["id"]))
+        self.assertEqual([], self.store.list()["photos"])
+
+    def test_bad_skins_are_refused(self):
+        self.assert_status(400, self.share, "x")
+        self.assert_status(400, self.share, "Steve", "1.1.1.1", "")
+        self.assert_status(400, self.share, "Steve", "1.1.1.1", "<script>")
+        self.assert_status(400, self.share, "Steve", "1.1.1.1", "ok", "wide")
+        self.assert_status(415, self.share, "Steve", "1.1.1.1", "ok", "classic", png(128, 128))
+        self.assert_status(415, self.share, "Steve", "1.1.1.1", "ok", "classic", b"GIF89a")
+        self.assert_status(413, self.share, "Steve", "1.1.1.1", "ok", "classic", png(padding=gallery_api.MAX_SKIN_BYTES))
+        self.assert_status(404, self.store.skin_png, "../../etc/passwd")
+        self.assertEqual([], list((self.root / "photos" / "skins").glob("*")) if (self.root / "photos" / "skins").exists() else [])
+
+    def test_daily_limit_per_player(self):
+        for index in range(gallery_api.SKINS_PER_PLAYER_PER_DAY):
+            self.share("Steve", f"10.0.0.{index}")
+        self.assert_status(429, self.share, "steve", "9.9.9.9")
+        self.now += 86400
+        self.share("Steve")
+
+    def test_only_the_owner_removes_a_skin_and_reports_hide_it(self):
+        mine = self.share()
+        self.assert_status(403, self.store.delete_skin, mine["id"], "wrong")
+        other = self.share("Aurora_")
+        for ip in ("1.1.1.1", "1.1.1.1", "2.2.2.2", "3.3.3.3"):
+            self.store.report_skin(other["id"], ip)
+        self.assertEqual([mine["id"]], [skin["id"] for skin in self.store.list_skins()["skins"]])
+        self.assert_status(404, self.store.skin_png, other["id"])
+        self.store.set_hidden(other["id"], False)
+        self.assertEqual(2, len(self.store.list_skins()["skins"]))
+        self.assertEqual({"deleted": True}, self.store.delete_skin(mine["id"], mine["deleteToken"]))
+        self.assert_status(404, self.store.skin_png, mine["id"])
+        self.store.remove(other["id"])
+        self.assertEqual([], self.store.all_skins())
+
+    def test_purge_also_removes_skins(self):
+        self.share("Steve")
+        self.share("Aurora_")
+        self.assertEqual(1, self.store.purge_player("steve"))
+        self.assertEqual(["Aurora_"], [skin["name"] for skin in self.store.list_skins()["skins"]])
+
+
+class HttpTests(unittest.TestCase):
+    def setUp(self):
+        import threading
+        from http.server import ThreadingHTTPServer
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        store = GalleryStore(str(Path(directory.name) / "gallery.db"), Path(directory.name) / "photos")
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), gallery_api.make_handler(store))
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+        self.base = f"http://127.0.0.1:{self.server.server_address[1]}"
+
+    def call(self, method, path, body=None):
+        import json
+        import urllib.error
+        import urllib.request
+        request = urllib.request.Request(self.base + path, data=body, method=method)
+        try:
+            with urllib.request.urlopen(request) as response:
+                data = response.read()
+                return response.status, response.headers.get("Content-Type"), data
+        except urllib.error.HTTPError as error:
+            return error.code, error.headers.get("Content-Type"), json.loads(error.read())
+
+    def test_skin_routes(self):
+        import json
+        status, _, body = self.call("POST", "/api/gallery/skins?name=Steve&title=Minha%20skin&model=slim", png())
+        self.assertEqual(200, status)
+        shared = json.loads(body)
+        status, _, body = self.call("GET", "/api/gallery/skins")
+        self.assertEqual([("Steve", "Minha skin", True)], [(s["name"], s["title"], s["slim"]) for s in json.loads(body)["skins"]])
+        status, kind, body = self.call("GET", f"/api/gallery/skins/{shared['id']}.png")
+        self.assertEqual((200, "image/png", png()), (status, kind, body))
+        self.assertEqual(200, self.call("POST", f"/api/gallery/skins/{shared['id']}/report", b"")[0])
+        token = json.dumps({"token": shared["deleteToken"]}).encode()
+        self.assertEqual(200, self.call("POST", f"/api/gallery/skins/{shared['id']}/delete", token)[0])
+        self.assertEqual(404, self.call("GET", f"/api/gallery/skins/{shared['id']}.png")[0])
+        self.assertEqual(415, self.call("POST", "/api/gallery/skins?name=Steve&title=x", b"nope")[0])
+
+
 if __name__ == "__main__":
     unittest.main()
