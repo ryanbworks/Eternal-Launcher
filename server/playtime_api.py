@@ -30,7 +30,8 @@ SESSION_TTL = 900
 # Generous on purpose: friends at one house or behind carrier NAT share an address.
 MAX_SESSIONS_PER_IP = 20
 MAX_BODY_BYTES = 4096
-MAX_LEADERBOARD = 20
+# The launcher lists every player in a scrolling card.
+MAX_LEADERBOARD = 200
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS players (
