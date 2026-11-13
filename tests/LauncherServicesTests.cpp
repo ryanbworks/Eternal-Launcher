@@ -159,6 +159,17 @@ namespace {
         check(list.success && list.photos.size()==1,"only well-formed ids and nicknames are kept");
         if(!list.photos.empty()) check(list.photos[0].name==L"Steve" && list.photos[0].width==1920 && list.photos[0].created==1800000000,"photo fields are read");
         check(!GalleryApi::parseList("{oops").success && !GalleryApi::parseList(R"({"photos":3})").success,"malformed lists are rejected");
+        const auto skins=GalleryApi::parseSkins(R"json({"skins":[
+            {"id":"0123456789abcdef","name":"Steve","title":"Cavaleiro (fino)","slim":true,"created":5},
+            {"id":"0123456789abcdee","name":"Steve","title":""},
+            {"id":"nope","name":"Steve","title":"x"},
+            {"id":"0123456789abcded","name":"a b","title":"x"}]})json");
+        check(skins.success && skins.skins.size()==1 && skins.skins[0].title==L"Cavaleiro (fino)" && skins.skins[0].slim,
+              "community skins keep only well-formed entries");
+        check(!GalleryApi::parseSkins(R"({"skins":"x"})").success,"a malformed skin list is rejected");
+        check(GalleryApi::skinTitle(L"  Mago<>do  Fogo?! ")==L"Mago do Fogo !" && GalleryApi::skinTitle(L"%%%")==L"Skin" &&
+              GalleryApi::skinTitle(L"Ação") == L"Ação" && GalleryApi::skinTitle(std::wstring(40,L'a')).size()==32,
+              "library names become titles the server accepts");
         const auto body=GalleryApi::uploadBody("abc","defgh");
         check(body.size()==12 && body[0]==0 && body[3]==3 && body.substr(4,3)=="abc" && body.substr(7)=="defgh","upload body framing");
 
@@ -210,6 +221,26 @@ namespace {
                 check(!GalleryApi::remove(url.data(),uploaded.id,"wrong-token",error),"a wrong token cannot remove");
                 check(GalleryApi::remove(url.data(),uploaded.id,uploaded.deleteToken,error),"the uploader removes the picture");
                 check(!GalleryApi::fetchImage(url.data(),uploaded.id,false),"a removed picture is gone");
+
+                // Community skins: share, list with textures, report, remove.
+                Gdiplus::Bitmap texture(64,64,PixelFormat32bppARGB);
+                {Gdiplus::Graphics g(&texture);Gdiplus::SolidBrush green(Gdiplus::Color(255,40,180,90));g.FillRectangle(&green,0,0,64,64);}
+                const auto skinFile=root/L"gallery"/L"skin.png";
+                check(texture.Save(skinFile.c_str(),&pngEncoder)==Gdiplus::Ok,"integration skin saves");
+                std::ifstream skinInput(skinFile,std::ios::binary);
+                const std::string png((std::istreambuf_iterator<char>(skinInput)),std::istreambuf_iterator<char>());
+                const auto shared=GalleryApi::shareSkin(url.data(),png,L"Steve",L"Mago do Fogo (ação)",true);
+                check(shared.success && shared.id.size()==16 && !shared.deleteToken.empty(),"a skin is shared");
+                const auto community=GalleryApi::fetchSkins(url.data());
+                const bool listedSkin=std::any_of(community.skins.begin(),community.skins.end(),[&](const CommunitySkin& s) {
+                    return s.id==shared.id && s.title==L"Mago do Fogo (ação)" && s.slim && s.png==png;});
+                check(community.success && listedSkin,"the shared skin is listed with its title, model and texture");
+                check(!GalleryApi::shareSkin(url.data(),"not a png",L"Steve",L"x",false).success,"only PNG skins are shared");
+                check(GalleryApi::reportSkin(url.data(),shared.id,error),"a skin can be reported");
+                check(!GalleryApi::removeSkin(url.data(),shared.id,"wrong-token",error),"a wrong token cannot remove a skin");
+                check(GalleryApi::removeSkin(url.data(),shared.id,shared.deleteToken,error),"the owner removes the skin");
+                const auto after=GalleryApi::fetchSkins(url.data());
+                check(std::none_of(after.skins.begin(),after.skins.end(),[&](const CommunitySkin& s) {return s.id==shared.id;}),"a removed skin is gone");
                 std::cout << "gallery integration: ran against ETERNAL_GALLERY_TEST_URL\n";
             }
         }
@@ -238,6 +269,11 @@ namespace {
         check(skin && skin->custom && skin->slim && url==L"https://accounts.test/drasl/texture/skin/a.png","profile textures give the skin URL and model");
         const auto plain=EternalAccount::parseProfileTextures(R"({"id":"x","name":"Steve","properties":[]})",url);
         check(plain && !plain->custom && url.empty(),"no textures means the default skin");
+
+        const auto profiles=EternalAccount::parseProfiles(R"([{"name":"zNippw","id":"5E24CF74F47C3875855A33090E036445"},{"name":"x","id":"bad"},{"id":"5e24cf74f47c3875855a33090e036445"}])");
+        check(profiles.size()==1 && profiles[0].name==L"zNippw" && profiles[0].uuid==L"5e24cf74f47c3875855a33090e036445",
+              "profile lookups keep valid names and lowercase UUIDs");
+        check(EternalAccount::parseProfiles("{}").empty(),"a lookup that is not a list gives nothing");
 
         const auto body=EternalAccount::multipartSkin("B","PNGDATA",true);
         check(body.find("name=\"variant\"\r\n\r\nslim\r\n")!=std::string::npos && body.find("filename=\"skin.png\"")!=std::string::npos &&

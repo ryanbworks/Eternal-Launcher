@@ -51,6 +51,10 @@ namespace EternalAccount
     void signOut(std::wstring_view baseUrl, const EternalSession& session);
 
     std::optional<EternalSkin> fetchSkin(std::wstring_view baseUrl, const std::wstring& uuid, std::stop_token stop = {});
+    // Player names to account UUIDs; names without an account are left out.
+    struct Profile { std::wstring name; std::wstring uuid; };
+    std::vector<Profile> lookupProfiles(std::wstring_view baseUrl, const std::vector<std::wstring>& names, std::stop_token stop = {});
+    std::vector<Profile> parseProfiles(std::string_view json);
     bool uploadSkin(std::wstring_view baseUrl, const EternalSession& session, const std::string& png, bool slim, std::wstring& error);
     bool resetSkin(std::wstring_view baseUrl, const EternalSession& session, std::wstring& error);
 

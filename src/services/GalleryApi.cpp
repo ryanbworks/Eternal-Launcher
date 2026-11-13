@@ -236,10 +236,147 @@ bool GalleryApi::report(std::wstring_view baseUrl, const std::wstring& id, std::
 }
 
 // ---------------------------------------------------------------------------------------------
+// Community skins
 
-void GallerySharedStore::load(const std::filesystem::path& directory)
+namespace
 {
-    file_ = directory / L"gallery-shared.txt";
+    std::wstring percentEncoded(const std::wstring& value)
+    {
+        static constexpr char Hex[] = "0123456789ABCDEF";
+        std::wstring out;
+        for (const unsigned char c : utf8(value)) {
+            if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-' || c == '_' || c == '.') {
+                out.push_back(static_cast<wchar_t>(c));
+            } else {
+                out.push_back(L'%');
+                out.push_back(static_cast<wchar_t>(Hex[c >> 4]));
+                out.push_back(static_cast<wchar_t>(Hex[c & 15]));
+            }
+        }
+        return out;
+    }
+
+    bool titleCharacter(wchar_t c)
+    {
+        // Python's \w for Latin letters, plus the punctuation the server allows.
+        if ((c >= L'0' && c <= L'9') || (c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z')) return true;
+        if (c >= 0xC0 && c <= 0x24F && c != 0xD7 && c != 0xF7) return true;
+        return std::wstring_view(L" ()'-.,!_").find(c) != std::wstring_view::npos;
+    }
+}
+
+std::wstring GalleryApi::skinTitle(std::wstring_view name)
+{
+    std::wstring title;
+    for (const wchar_t c : name) {
+        const wchar_t kept = titleCharacter(c) ? c : L' ';
+        if (kept == L' ' && (title.empty() || title.back() == L' ')) continue;
+        title.push_back(kept);
+    }
+    if (title.size() > 32) title.resize(32);
+    while (!title.empty() && title.back() == L' ') title.pop_back();
+    return title.empty() ? L"Skin" : title;
+}
+
+CommunitySkinList GalleryApi::parseSkins(std::string_view json)
+{
+    CommunitySkinList result;
+    const auto document = JsonValue::parse(json);
+    const auto* skins = document && document->objectValue() ? document->find("skins") : nullptr;
+    const auto* list = skins ? skins->arrayValue() : nullptr;
+    if (!list) return result;
+    for (const auto& entry : *list) {
+        const auto* id = entry.find("id");
+        const auto* name = entry.find("name");
+        const auto* title = entry.find("title");
+        if (!id || !id->stringValue() || !name || !name->stringValue() || !title || !title->stringValue()) continue;
+        CommunitySkin skin;
+        skin.id = wide(*id->stringValue());
+        skin.name = wide(*name->stringValue());
+        skin.title = wide(*title->stringValue());
+        if (!validId(skin.id) || !validNickname(skin.name) || skin.title.empty() || skin.title.size() > 32) continue;
+        if (const auto* slim = entry.find("slim")) skin.slim = slim->boolValue(false);
+        if (const auto* created = entry.find("created")) skin.created = static_cast<std::int64_t>(created->numberValue(0));
+        result.skins.push_back(std::move(skin));
+        if (result.skins.size() == 200) break;
+    }
+    result.success = true;
+    return result;
+}
+
+CommunitySkinList GalleryApi::fetchSkins(std::wstring_view baseUrl, std::stop_token stop)
+{
+    const auto response = HttpDownloadClient{}.getText(endpoint(baseUrl, L"skins?limit=120"), stop);
+    if (!response.success) return {};
+    auto result = parseSkins(response.content);
+    for (auto& skin : result.skins) {
+        if (stop.stop_requested()) return {};
+        const auto texture = HttpDownloadClient{}.getText(endpoint(baseUrl, L"skins/" + skin.id + L".png"), stop);
+        if (texture.success && texture.content.size() <= 64 * 1024) skin.png = texture.content;
+    }
+    // A skin whose texture did not come is left out.
+    result.skins.erase(std::remove_if(result.skins.begin(), result.skins.end(), [](const CommunitySkin& skin) { return skin.png.empty(); }),
+        result.skins.end());
+    return result;
+}
+
+GalleryUploadResult GalleryApi::shareSkin(std::wstring_view baseUrl, const std::string& png, const std::wstring& nickname, const std::wstring& title,
+                                          bool slim, std::stop_token stop)
+{
+    GalleryUploadResult result;
+    if (!validNickname(nickname)) { result.errorMessage = L"Entre na sua Conta Eternal para compartilhar."; return result; }
+    const auto url = endpoint(baseUrl, L"skins?name=" + nickname + L"&title=" + percentEncoded(skinTitle(title)) +
+        (slim ? L"&model=slim" : L"&model=classic"));
+    const auto response = HttpDownloadClient{}.postBinary(url, png, stop);
+    if (!response.success) {
+        switch (response.statusCode) {
+        case 429: result.errorMessage = L"Você já compartilhou bastante hoje. Tente de novo amanhã."; break;
+        case 413: case 415: result.errorMessage = L"O servidor só aceita skins PNG de 64 × 64."; break;
+        case 400: result.errorMessage = L"O servidor não aceitou esta skin."; break;
+        case 0: result.errorMessage = L"Sem conexão com o servidor agora. Tente de novo em instantes."; break;
+        default: result.errorMessage = L"O servidor não respondeu (HTTP " + std::to_wstring(response.statusCode) + L"). Tente mais tarde.";
+        }
+        return result;
+    }
+    const auto document = JsonValue::parse(response.content);
+    const auto* id = document ? document->find("id") : nullptr;
+    const auto* token = document ? document->find("deleteToken") : nullptr;
+    if (!id || !id->stringValue() || !token || !token->stringValue() || !validId(wide(*id->stringValue()))) {
+        result.errorMessage = L"O servidor respondeu de um jeito inesperado.";
+        return result;
+    }
+    result.id = wide(*id->stringValue());
+    result.deleteToken = *token->stringValue();
+    if (const auto* pending = document->find("pending")) result.pending = pending->boolValue(false);
+    result.success = true;
+    return result;
+}
+
+bool GalleryApi::removeSkin(std::wstring_view baseUrl, const std::wstring& id, const std::string& token, std::wstring& error)
+{
+    if (!validId(id)) return true;
+    std::string escaped;
+    for (const char c : token) if (c != '"' && c != '\\' && static_cast<unsigned char>(c) >= 32) escaped.push_back(c);
+    const auto response = HttpDownloadClient{}.postJson(endpoint(baseUrl, L"skins/" + id + L"/delete"), "{\"token\":\"" + escaped + "\"}");
+    if (response.success || response.statusCode == 404) return true;
+    error = response.statusCode == 403 ? L"Esta skin não foi compartilhada por este computador." : L"Não foi possível remover agora. Tente de novo.";
+    return false;
+}
+
+bool GalleryApi::reportSkin(std::wstring_view baseUrl, const std::wstring& id, std::wstring& error)
+{
+    if (!validId(id)) return false;
+    const auto response = HttpDownloadClient{}.postJson(endpoint(baseUrl, L"skins/" + id + L"/report"), "{}");
+    if (response.success) return true;
+    error = L"Não foi possível enviar a denúncia agora. Tente de novo.";
+    return false;
+}
+
+// ---------------------------------------------------------------------------------------------
+
+void GallerySharedStore::load(const std::filesystem::path& directory, const wchar_t* fileName)
+{
+    file_ = directory / fileName;
     entries_.clear();
     std::ifstream input(file_, std::ios::binary);
     for (std::string line; std::getline(input, line);) {

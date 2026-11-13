@@ -38,9 +38,37 @@ struct GalleryUploadResult
     std::wstring errorMessage;
 };
 
+// A skin the community shared from a library (the Explorar tab of the Skins page).
+struct CommunitySkin
+{
+    std::wstring id;     // 16 hex characters
+    std::wstring name;   // who shared it
+    std::wstring title;
+    bool slim = false;
+    std::int64_t created = 0;
+    std::string png;     // filled by fetchSkins
+};
+
+struct CommunitySkinList
+{
+    bool success = false;
+    std::vector<CommunitySkin> skins;
+};
+
 // Client of server/gallery_api.py, published under /api/gallery/.
 namespace GalleryApi
 {
+    // Community skins: the list and every texture (a few KB each).
+    CommunitySkinList parseSkins(std::string_view json);
+    CommunitySkinList fetchSkins(std::wstring_view baseUrl, std::stop_token stop = {});
+    GalleryUploadResult shareSkin(std::wstring_view baseUrl, const std::string& png, const std::wstring& nickname, const std::wstring& title,
+                                  bool slim, std::stop_token stop = {});
+    bool removeSkin(std::wstring_view baseUrl, const std::wstring& id, const std::string& token, std::wstring& error);
+    bool reportSkin(std::wstring_view baseUrl, const std::wstring& id, std::wstring& error);
+    // A library file name as a title the server accepts: letters, digits, spaces and
+    // ()'-.,!_ only, at most 32 characters. "Skin" when nothing is left.
+    std::wstring skinTitle(std::wstring_view name);
+
     // The file server, or ETERNAL_GALLERY_URL when set (to try a local server).
     std::wstring baseUrl();
     GalleryListResult parseList(std::string_view json);
@@ -67,7 +95,7 @@ class GallerySharedStore
 {
 public:
     struct Entry { std::wstring id; std::string token; std::wstring source; };
-    void load(const std::filesystem::path& directory);
+    void load(const std::filesystem::path& directory, const wchar_t* fileName = L"gallery-shared.txt");
     bool save() const;
     void add(Entry entry);
     void erase(const std::wstring& id);

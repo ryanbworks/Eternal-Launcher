@@ -17,6 +17,12 @@ and versions use [SemVer](https://semver.org/) plus a codename.
   300 hours, celebrated on Home when reached and shown on the player card.
 - **Modpack changelog.** Before playing, Home lists the mods the server added, removed
   or updated since your last visit.
+- **Explorar skins.** A second tab on the Skins page shows the skins players use on the
+  server and the ones the group shared. Preview any of them front and back, use it on
+  your account or save it to your library. Share a library skin with one click; you can
+  take it back later, and anyone can report one. Served by the `eternal-gallery` service.
+- **First access hint.** The sign-in panel and the player card explain that a reserved
+  Conta Eternal signs in the first time with the nickname alone, then gets a password.
 
 ### Changed
 - **News you actually see.** New posts stay in a spotlight on Home until read or set

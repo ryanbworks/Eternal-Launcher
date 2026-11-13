@@ -189,13 +189,41 @@ private:
     void startEternalSkinLookup();
 
     // Skins page.
+    struct ExploreSkin
+    {
+        std::wstring id;      // community skins: the gallery id
+        std::wstring title;   // the player (group) or the title it was shared with
+        std::wstring author;  // who shared it (community)
+        bool group = false;
+        bool slim = false;
+        std::string png;
+        SkinTexture texture;
+    };
     struct SkinEvent
     {
-        enum class Kind { Current, Upload, Reset } kind = Kind::Current;
+        enum class Kind { Current, Upload, Reset, ExploreGroup, ExploreCommunity, Share, CommunityRemove, CommunityReport } kind = Kind::Current;
         std::optional<EternalSkin> skin;
         bool success = false;
         std::wstring error;
+        // Explorar results.
+        std::vector<ExploreSkin> explore;
+        bool last = false;                // the loader finished
+        std::wstring id;                  // the shared skin acted on
+        GalleryUploadResult shared;
+        std::wstring source;              // library key of a shared skin
+        std::size_t generation = 0;
     };
+    void showSkinsTab(bool explore);
+    void loadExplore();
+    std::size_t exploreCount() const { return exploreGroup_.size() + exploreCommunity_.size(); }
+    const ExploreSkin* exploreSkin(int index) const;
+    void selectExplore(int index);
+    void saveExploreSkin();
+    void shareLibrarySkin();
+    void removeCommunitySkin();
+    void reportCommunitySkin();
+    void handleExploreEvent(SkinEvent& event);
+    std::wstring librarySourceKey(std::size_t libraryIndex) const;
     SkinsModel skinsModel(bool preview) const;
     void refreshSkinLibrary();
     void fetchCurrentSkin();
@@ -373,6 +401,18 @@ private:
     bool skinBusy_ = false;
     std::wstring skinsMessage_;
     bool skinsMessageError_ = false;
+    // Explorar: the skins players use on the server, then the ones the community shared.
+    bool skinExplore_ = false;
+    std::vector<ExploreSkin> exploreGroup_;
+    std::vector<ExploreSkin> exploreCommunity_;
+    bool exploreLoaded_ = false;
+    bool exploreLoading_ = false;
+    bool exploreUnavailable_ = false;
+    std::size_t exploreGeneration_ = 0;
+    int exploreSelected_ = 0;
+    std::size_t exploreRow_ = 0;
+    bool skinSharing_ = false;
+    GallerySharedStore skinsShared_;
 
     // Modpack changelog since the list the player last acknowledged.
     ModpackChanges modpackChanges_;
@@ -490,6 +530,8 @@ private:
     std::jthread skinFetchThread_;
     std::jthread galleryThread_;
     std::jthread galleryActionThread_;
+    std::jthread exploreThread_;
+    std::jthread exploreActionThread_;
     // Last member: destruction joins before any state captured by the worker is destroyed.
     std::jthread launcherUpdateThread_;
     // Last: all captured services, tracking state and HWND outlive this worker.

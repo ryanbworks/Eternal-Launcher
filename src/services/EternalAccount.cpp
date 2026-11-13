@@ -251,6 +251,41 @@ std::optional<EternalSkin> EternalAccount::fetchSkin(std::wstring_view baseUrl, 
     return skin;
 }
 
+std::vector<EternalAccount::Profile> EternalAccount::parseProfiles(std::string_view text)
+{
+    std::vector<Profile> result;
+    const auto document = JsonValue::parse(text);
+    const auto* list = document ? document->arrayValue() : nullptr;
+    if (!list) return result;
+    for (const auto& entry : *list) {
+        const auto* id = entry.find("id");
+        const auto* name = entry.find("name");
+        if (!id || !id->stringValue() || !name || !name->stringValue()) continue;
+        Profile profile{wide(*name->stringValue()), wide(*id->stringValue())};
+        if (!hex32(profile.uuid) || profile.name.empty() || profile.name.size() > 16) continue;
+        std::transform(profile.uuid.begin(), profile.uuid.end(), profile.uuid.begin(), [](wchar_t c) { return static_cast<wchar_t>(towlower(c)); });
+        result.push_back(std::move(profile));
+    }
+    return result;
+}
+
+std::vector<EternalAccount::Profile> EternalAccount::lookupProfiles(std::wstring_view baseUrl, const std::vector<std::wstring>& names,
+                                                                    std::stop_token stop)
+{
+    std::vector<Profile> result;
+    // The batch lookup takes a handful of names per request, like Mojang's.
+    for (std::size_t start = 0; start < names.size() && !stop.stop_requested(); start += 10) {
+        std::string body = "[";
+        for (std::size_t i = start; i < std::min(names.size(), start + 10); ++i) body += (i > start ? "," : "") + json(utf8(names[i]));
+        body += "]";
+        const auto response = HttpDownloadClient{}.send(L"POST", trimmed(std::wstring(baseUrl)) + L"/authlib-injector/api/profiles/minecraft", {},
+            &body, L"application/json", stop);
+        if (!response.success) continue;
+        for (auto& profile : parseProfiles(response.content)) result.push_back(std::move(profile));
+    }
+    return result;
+}
+
 std::string EternalAccount::multipartSkin(const std::string& boundary, const std::string& png, bool slim)
 {
     std::string body;

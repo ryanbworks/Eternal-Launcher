@@ -140,6 +140,22 @@ upload; only the installation holding it can remove that picture, and everyone e
 can report it. Set `ETERNAL_GALLERY_URL` to point the launcher at a local server
 (`python3 server/gallery_api.py serve`) while developing.
 
+### Explorar skins
+
+The Skins page has two tabs. Minhas skins is the account's current skin and the local
+library (`skins/` in the data folder). Explorar loads two sources on a worker:
+
+- Community skins from the gallery service: `GET /api/gallery/skins` and each
+  `/api/gallery/skins/<id>.png` (64 × 64 or 64 × 32, 64 KB at most). Sharing a library
+  skin posts the PNG to `/api/gallery/skins?name=&title=&model=`; the remove token is
+  kept in `skins-shared.txt`, like the pictures' tokens.
+- The group's skins: the leaderboard's names go through the Drasl batch lookup
+  (`/authlib-injector/api/profiles/minecraft`), then each player's session profile and
+  texture. Players on the default skin are left out.
+
+A skin from Explorar can be used on the account (the same upload as a library skin) or
+saved to the library.
+
 ### Modpack changelog
 
 When the manifest's `mods/` list differs from the one the player last acknowledged,

@@ -145,6 +145,12 @@ namespace Layout
     inline const Rect SkinsFront{154, 212, 144, 288};
     inline const Rect SkinsBack{342, 212, 144, 288};
     inline const Rect SkinsRemove{476, 192, 40, 40};
+    // Share (Minhas) in the opposite corner; report or remove (Explorar) in the remove button's place.
+    inline const Rect SkinsShare{124, 192, 40, 40};
+    // "Minhas skins" / "Explorar" segmented control, and the Explorar refresh button.
+    inline const Rect SkinsTabs{548, 86, 380, 40};
+    inline Rect skinsTab(int index) { return {552 + static_cast<float>(index) * 186, 90, 186, 32}; }
+    inline const Rect SkinsRefresh{1208, 84, 48, 44};
     inline const Rect SkinsClassic{124, 594, 192, 38};
     inline const Rect SkinsSlim{324, 594, 192, 38};
     inline const Rect SkinsUse{124, 650, 392, 48};

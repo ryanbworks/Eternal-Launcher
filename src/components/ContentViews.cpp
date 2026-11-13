@@ -362,18 +362,16 @@ void ScreenshotsView::draw(Gdiplus::Graphics& g, const ScreenshotsModel& m, cons
 
 namespace
 {
-    // "Minhas" / "Do grupo": one pill slides under the selected half.
-    void screenshotTabs(Gdiplus::Graphics& g, bool group, const ControlVisuals& visuals)
+    struct SegmentTab { int id; const wchar_t* label; Icons::Icon icon; bool selected; };
+
+    // Two tabs in a sunken box: one pill sits under the selected half.
+    void segmentedTabs(Gdiplus::Graphics& g, const Gdiplus::RectF& box, Gdiplus::RectF (*place)(int), const SegmentTab (&tabs)[2],
+                       const ControlVisuals& visuals)
     {
-        using namespace LauncherConstants;
-        const auto& box = Layout::ScreenshotsTabs;
         fillRoundedRectangle(g, box, 14, Theme::SurfaceSunken);
         drawRoundedRectangle(g, {box.X + .5F, box.Y + .5F, box.Width - 1, box.Height - 1}, 14, Theme::OutlineSubtle);
-        const struct { int id; const wchar_t* label; Icons::Icon icon; bool selected; } tabs[] = {
-            {ScreenshotsMineTabId, L"Minhas capturas", Icons::Icon::Image, !group},
-            {ScreenshotsGroupTabId, L"Galeria do grupo", Icons::Icon::Users, group}};
         for (int i = 0; i < 2; ++i) {
-            const auto b = Layout::screenshotsTab(i);
+            const auto b = place(i);
             const auto v = visuals(tabs[i].id);
             if (tabs[i].selected) {
                 fillRoundedRectangle(g, b, 11, Theme::AccentTint);
@@ -389,6 +387,15 @@ namespace
                 tabs[i].selected ? Theme::TextPrimary : ink);
             if (v.focused) drawFocusRing(g, b, 11, Theme::AccentLight);
         }
+    }
+
+    // "Minhas" / "Do grupo".
+    void screenshotTabs(Gdiplus::Graphics& g, bool group, const ControlVisuals& visuals)
+    {
+        using namespace LauncherConstants;
+        const SegmentTab tabs[2] = {{ScreenshotsMineTabId, L"Minhas capturas", Icons::Icon::Image, !group},
+                                    {ScreenshotsGroupTabId, L"Galeria do grupo", Icons::Icon::Users, group}};
+        segmentedTabs(g, Layout::ScreenshotsTabs, &Layout::screenshotsTab, tabs, visuals);
     }
 
     void placeholderShimmer(Gdiplus::Graphics& g, const Gdiplus::RectF& image, float time, std::size_t slot)
@@ -665,11 +672,23 @@ void SkinsView::draw(Gdiplus::Graphics& g, const SkinsModel& m, const ControlVis
 {
     using namespace LauncherConstants;
     std::wstring subtitle = !m.message.empty() ? m.message :
+        m.explore ? (m.exploreLoading && m.cards.empty() ? L"Buscando as skins do grupo..." :
+                     m.exploreUnavailable && m.cards.empty() ? L"O servidor não respondeu agora. Tente atualizar daqui a pouco." :
+                     L"Skins de quem joga no servidor e as que o grupo compartilhou.") :
         m.signedIn ? L"A skin de " + m.account + L" aparece para todo mundo no servidor." :
         L"Entre na sua Conta Eternal para trocar de skin.";
-    header(g, L"Skins", subtitle, m.messageError);
-    Buttons::draw(g, Layout::SkinsFolder, L"Abrir pasta", visuals(SkinFolderButtonId), Buttons::Style::Ghost, Icons::Icon::Folder);
-    Buttons::draw(g, Layout::SkinsAdd, L"Adicionar skin", visuals(SkinAddButtonId), Buttons::Style::Primary, Icons::Icon::Plus);
+    header(g, L"Skins", subtitle, m.messageError || (m.explore && m.exploreUnavailable && m.cards.empty() && m.message.empty()));
+    const SegmentTab tabs[2] = {{SkinMineTabId, L"Minhas skins", Icons::Icon::Shirt, !m.explore},
+                                {SkinExploreTabId, L"Explorar", Icons::Icon::Sparkle, m.explore}};
+    segmentedTabs(g, Layout::SkinsTabs, &Layout::skinsTab, tabs, visuals);
+    if (m.explore) {
+        auto refresh = visuals(SkinRefreshButtonId);
+        if (m.exploreLoading) refresh.enabled = false;
+        Buttons::drawIcon(g, Layout::SkinsRefresh, Icons::Icon::Refresh, refresh, false, 18);
+    } else {
+        Buttons::draw(g, Layout::SkinsFolder, L"Abrir pasta", visuals(SkinFolderButtonId), Buttons::Style::Ghost, Icons::Icon::Folder);
+        Buttons::draw(g, Layout::SkinsAdd, L"Adicionar skin", visuals(SkinAddButtonId), Buttons::Style::Primary, Icons::Icon::Plus);
+    }
 
     // Stage: the selected skin, front and back, on a lit plate.
     auto stage = Layout::SkinsStage;
@@ -714,14 +733,40 @@ void SkinsView::draw(Gdiplus::Graphics& g, const SkinsModel& m, const ControlVis
     }
     drawText(g, L"FRENTE", {front.X, plate.Y + 12, front.Width, 16}, 10.5F, Gdiplus::FontStyleBold, Theme::TextMuted, Gdiplus::StringAlignmentCenter);
     drawText(g, L"COSTAS", {backView.X, plate.Y + 12, backView.Width, 16}, 10.5F, Gdiplus::FontStyleBold, Theme::TextMuted, Gdiplus::StringAlignmentCenter);
-    if (m.selectedRemovable) {
-        const Gdiplus::Color removeHover(255, 52, 30, 40);
-        Buttons::drawIcon(g, {Layout::SkinsRemove.X, Layout::SkinsRemove.Y + dy, Layout::SkinsRemove.Width, Layout::SkinsRemove.Height},
-            Icons::Icon::Trash, visuals(SkinRemoveButtonId), false, 17, &removeHover);
+    const Gdiplus::RectF corner{Layout::SkinsRemove.X, Layout::SkinsRemove.Y + dy, Layout::SkinsRemove.Width, Layout::SkinsRemove.Height};
+    const Gdiplus::RectF beside{Layout::SkinsShare.X, Layout::SkinsShare.Y + dy, Layout::SkinsShare.Width, Layout::SkinsShare.Height};
+    const Gdiplus::Color removeHover(255, 52, 30, 40);
+    if (m.selectedRemovable || (m.explore && m.selectedMine)) {
+        auto remove = visuals(SkinRemoveButtonId);
+        if (m.explore && m.sharing) remove.enabled = false;
+        Buttons::drawIcon(g, corner, Icons::Icon::Trash, remove, false, 17, &removeHover);
+    } else if (m.explore && m.selectedCommunity) {
+        auto report = visuals(SkinReportButtonId);
+        if (m.sharing) report.enabled = false;
+        Buttons::drawIcon(g, corner, Icons::Icon::Flag, report, false, 17, &removeHover);
+    }
+    if (!m.explore && m.selectedShared) {
+        // Already in Explorar: a quiet badge instead of the share button.
+        fillRoundedRectangle(g, beside, 12, Theme::AccentTint);
+        drawRoundedRectangle(g, {beside.X + .5F, beside.Y + .5F, beside.Width - 1, beside.Height - 1}, 12, Theme::AccentOutline);
+        Icons::draw(g, Icons::Icon::Users, {beside.X + 11, beside.Y + 11, 18, 18}, Theme::AccentLight, 1.8F);
+    } else if (!m.explore && m.selectedShareable) {
+        auto share = visuals(SkinShareButtonId);
+        if (m.sharing) share.enabled = false;
+        Buttons::drawIcon(g, beside, Icons::Icon::Share, share, false, 17);
     }
 
     // Name and model of the selected skin.
     const float infoY = plate.GetBottom() + 12;
+    if (!m.selectedDetail.empty() && selected) {
+        // Who uses or shared it, at the right of the "Braços" label.
+        const float room = stage.Width - 48 - 80;
+        const float width = std::min(room, measureText(g, m.selectedDetail, 12, Gdiplus::FontStyleRegular) * 1.1F + 12);
+        const float x = stage.GetRight() - 24 - width;
+        Icons::draw(g, selected->group ? Icons::Icon::Users : Icons::Icon::Share, {x - 19, infoY + 32, 13, 13}, Theme::AccentLight, 1.8F);
+        drawTextLine(g, m.selectedDetail, {x, infoY + 30, width, 18}, 12, Gdiplus::FontStyleRegular, Theme::TextSecondary,
+            Gdiplus::StringAlignmentFar);
+    }
     drawDisplayText(g, selected ? selected->name : std::wstring(L"Nenhuma skin"), {stage.X + 24, infoY, stage.Width - 48, 28}, 18, Theme::TextPrimary,
         Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
     drawText(g, L"Braços", {stage.X + 24, infoY + 30, 200, 18}, 12, Gdiplus::FontStyleBold, Theme::TextSecondary);
@@ -739,18 +784,48 @@ void SkinsView::draw(Gdiplus::Graphics& g, const SkinsModel& m, const ControlVis
         if (m.busy || !selected || !selected->texture) useVisual.enabled = false;
         Buttons::draw(g, use, m.busy ? L"Enviando..." : inUse ? L"Atualizar modelo dos braços" : L"Usar esta skin", useVisual,
             Buttons::Style::Primary, m.busy ? std::nullopt : std::optional<Icons::Icon>(Icons::Icon::Check), false, 14);
-        auto resetVisual = visuals(SkinResetButtonId);
-        if (m.busy) resetVisual.enabled = false;
-        Buttons::draw(g, reset, L"Voltar para a skin padrão", resetVisual, Buttons::Style::Ghost, Icons::Icon::Refresh, false, 13);
+        if (!m.explore) {
+            auto resetVisual = visuals(SkinResetButtonId);
+            if (m.busy) resetVisual.enabled = false;
+            Buttons::draw(g, reset, L"Voltar para a skin padrão", resetVisual, Buttons::Style::Ghost, Icons::Icon::Refresh, false, 13);
+        }
+    }
+    if (m.explore) {
+        auto save = visuals(SkinSaveButtonId);
+        if (!selected || !selected->texture) save.enabled = false;
+        Buttons::draw(g, reset, L"Salvar na biblioteca", save, Buttons::Style::Ghost, Icons::Icon::Download, false, 13);
     }
 
-    // Library.
+    // Library, or the skins to explore.
     auto library = Layout::SkinsLibrary;
     library.Y += rise(m.entrance, 1);
     card(g, library);
-    drawText(g, L"Sua biblioteca", {library.X + 24, library.Y + 22, 300, 24}, 16, Gdiplus::FontStyleBold, Theme::TextPrimary);
-    drawText(g, L"Skins que você adicionou. Escolha uma e use no servidor.", {library.X + 24, library.Y + 48, 560, 20}, 12.5F,
-        Gdiplus::FontStyleRegular, Theme::TextMuted);
+    drawText(g, m.explore ? L"Explorar skins" : L"Sua biblioteca", {library.X + 24, library.Y + 22, 300, 24}, 16, Gdiplus::FontStyleBold,
+        Theme::TextPrimary);
+    drawText(g, m.explore ? L"Escolha uma para ver de perto, usar no servidor ou guardar na sua biblioteca."
+                          : L"Skins que você adicionou. Escolha uma e use no servidor.",
+        {library.X + 24, library.Y + 48, 620, 20}, 12.5F, Gdiplus::FontStyleRegular, Theme::TextMuted);
+    if (m.explore && m.cards.empty()) {
+        const float cx = library.X + library.Width / 2, top = library.Y + 190;
+        fillRoundedRectangle(g, {cx - 36, top, 72, 72}, 20, Theme::AccentTint);
+        if (m.exploreLoading) {
+            Gdiplus::Pen arc(Theme::AccentLight, 2.4F);
+            arc.SetStartCap(Gdiplus::LineCapRound);
+            arc.SetEndCap(Gdiplus::LineCapRound);
+            g.DrawArc(&arc, cx - 18, top + 18, 36.0F, 36.0F, std::fmod(m.time * 360, 360.0F), 250);
+        } else {
+            Icons::draw(g, m.exploreUnavailable ? Icons::Icon::Server : Icons::Icon::Sparkle, {cx - 18, top + 18, 36, 36}, Theme::AccentLight, 1.8F);
+        }
+        const wchar_t* title = m.exploreLoading ? L"Buscando skins" : m.exploreUnavailable ? L"Servidor indisponível" : L"Nada por aqui ainda";
+        const wchar_t* text = m.exploreLoading ? L"Só um instante." :
+            m.exploreUnavailable ? L"Não foi possível buscar as skins agora. Tente atualizar daqui a pouco." :
+            L"Em Minhas skins, escolha uma da sua biblioteca e use Compartilhar.\nEla aparece aqui para todo mundo do grupo.";
+        drawDisplayText(g, title, {library.X, top + 94, library.Width, 32}, 20, Theme::TextPrimary, Gdiplus::StringAlignmentCenter,
+            Gdiplus::StringAlignmentCenter);
+        drawText(g, text, {library.X + 60, top + 134, library.Width - 120, 48}, 13.5F, Gdiplus::FontStyleRegular, Theme::TextSecondary,
+            Gdiplus::StringAlignmentCenter);
+        return;
+    }
     const std::size_t first = m.firstRow * Layout::SkinColumns;
     for (std::size_t slot = 0; slot < Visible && first + slot < m.cards.size(); ++slot) {
         const auto index = first + slot;
@@ -764,6 +839,12 @@ void SkinsView::draw(Gdiplus::Graphics& g, const SkinsModel& m, const ControlVis
         const Gdiplus::RectF figure{b.X + (b.Width - 56) / 2, b.Y + 12, 56, 112};
         if (item.texture) SkinRenderer::drawBody(g, *item.texture, figure, item.slim, false);
         else silhouette(g, figure, Gdiplus::Color(255, 58, 56, 82));
+        if (item.group) {
+            // A player's skin on the server, not a shared one.
+            const Gdiplus::RectF chip{b.X + 8, b.Y + 8, 24, 24};
+            fillPill(g, chip, chosen ? Theme::Accent : Theme::Glass);
+            Icons::draw(g, Icons::Icon::Users, {chip.X + 5, chip.Y + 5, 14, 14}, chosen ? Theme::AccentInk : Theme::AccentLight, 1.8F);
+        }
         if (item.current) {
             // The skin in use says so where its name would be.
             const float width = measureText(g, L"Em uso", 12.5F, Gdiplus::FontStyleBold) + 22;
@@ -778,7 +859,7 @@ void SkinsView::draw(Gdiplus::Graphics& g, const SkinsModel& m, const ControlVis
             chosen ? Theme::Accent : blend(Theme::OutlineSubtle, Theme::AccentOutline, v.hover), chosen ? 1.6F : 1.0F);
         if (v.focused) drawFocusRing(g, b, 14, Theme::AccentLight);
     }
-    if (m.cards.size() <= 1) {
+    if (!m.explore && m.cards.size() <= 1) {
         const float y = Layout::skinCard(4).Y + library.Y - Layout::SkinsLibrary.Y;
         drawText(g, L"Use Adicionar skin para trazer um PNG de 64 × 64.\nSites como NameMC e The Skindex têm milhares de skins.",
             {library.X + 40, y + 40, library.Width - 80, 44}, 13, Gdiplus::FontStyleRegular, Theme::TextSecondary, Gdiplus::StringAlignmentCenter);

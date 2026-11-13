@@ -71,6 +71,13 @@ namespace LauncherConstants
     inline constexpr int SkinSlimButtonId = 1328;
     inline constexpr int SkinRemoveButtonId = 1329;
     inline constexpr int SkinSignInButtonId = 1330;
+    // Skins page, Explorar tab: the group's and the community's skins.
+    inline constexpr int SkinMineTabId = 1331;
+    inline constexpr int SkinExploreTabId = 1332;
+    inline constexpr int SkinShareButtonId = 1333;
+    inline constexpr int SkinSaveButtonId = 1334;
+    inline constexpr int SkinReportButtonId = 1335;
+    inline constexpr int SkinRefreshButtonId = 1336;
     inline constexpr int RetryServerButtonId = 1131;
     inline constexpr int VersionEternalButtonId = 1132;
     inline constexpr int VersionVanillaButtonId = 1133;

@@ -130,6 +130,7 @@ struct SkinCard
     const SkinTexture* texture = nullptr;  // null: the default skin (or still loading)
     bool slim = false;
     bool current = false;                  // the skin the account uses right now
+    bool group = false;                    // Explorar: a player's skin on the server
 };
 
 struct SkinsModel
@@ -147,6 +148,16 @@ struct SkinsModel
     bool messageError = false;
     float entrance = 1;
     float time = 0;
+    // Explorar: the group's skins and the ones the community shared.
+    bool explore = false;
+    bool exploreLoading = false;
+    bool exploreUnavailable = false;  // the community list did not come
+    std::wstring selectedDetail;      // who uses or shared the selected skin
+    bool selectedShareable = false;   // Minhas: a library skin, not shared yet
+    bool selectedShared = false;      // Minhas: already in Explorar
+    bool selectedMine = false;        // Explorar: shared from this computer
+    bool selectedCommunity = false;   // Explorar: a shared skin (reportable)
+    bool sharing = false;             // a share, removal or report is running
 };
 
 class SkinsView
