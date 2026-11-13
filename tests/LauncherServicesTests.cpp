@@ -1,7 +1,9 @@
+#include "components/HomeView.h"
 #include "services/ModInventory.h"
 #include "services/NewsFeed.h"
 #include "services/PlaytimeApi.h"
 #include "services/PlaytimeStore.h"
+#include "services/ScreenshotLibrary.h"
 #include "services/SkinLookup.h"
 
 #include <windows.h>
@@ -77,6 +79,75 @@ namespace {
         check(NewsFeed::formatDate(L"2026-12-31")==L"31 dez 2026" && NewsFeed::formatDate(L"amanhã")==L"amanhã","date formatting");
         const auto notes=NewsFeed::releaseNotes();
         check(notes.local && !notes.title.empty() && notes.url.rfind(L"https://",0)==0,"release notes ship with the launcher");
+        if(!parsed.items.empty()) check(parsed.items[0].isoDate==L"2026-10-05","the published ISO date is kept");
+    }
+
+    void newsReadState(const std::filesystem::path& root) {
+        check(NewsFeed::ageInDays(L"2026-11-01",L"2026-11-13")==12 && NewsFeed::ageInDays(L"2025-12-31",L"2026-01-01")==1,"age in days");
+        check(NewsFeed::ageInDays(L"",L"2026-11-13")==-1 && NewsFeed::ageInDays(L"2026-02-30",L"2026-11-13")==-1,"invalid dates have no age");
+        NewsItem recent{L"EVENTO",L"Festa",L"",L"",L"",false,L"2026-11-10"};
+        NewsItem old{L"AVISO",L"Antigo",L"",L"",L"",false,L"2026-08-01"};
+        NewsItem undated{L"AVISO",L"Sem data",L"",L"",L"",false,L""};
+        auto notes=NewsFeed::releaseNotes();
+        std::vector<NewsItem> items{recent,old,undated,notes};
+        const auto directory=root/L"news";
+        NewsReadState state;
+        state.load(directory);
+        check(!state.exists(),"no state file before the first save");
+        state.apply(items,L"2026-11-13");
+        check(items[0].unread && !items[1].unread && items[2].unread && items[3].unread,
+            "recent, undated and release notes are new; old server news never is");
+        state.markSeen(recent);
+        state.markDismissed(undated);
+        check(state.save(),"read state saves");
+        NewsReadState reloaded;
+        reloaded.load(directory);
+        check(reloaded.exists() && reloaded.seen(recent) && !reloaded.seen(undated) && reloaded.dismissed(undated) && !reloaded.dismissed(recent),
+            "seen and dismissed survive a restart separately");
+        reloaded.apply(items,L"2026-11-13");
+        check(!items[0].unread && items[2].unread,"seen items are no longer new; dismissed ones stay unread");
+        check(NewsFeed::key(notes)!=NewsFeed::key(recent),"release notes have their own key");
+    }
+
+    void screenshots(const std::filesystem::path& root) {
+        Gdiplus::GdiplusStartupInput input;ULONG_PTR token=0;
+        if(Gdiplus::GdiplusStartup(&token,&input,nullptr)!=Gdiplus::Ok) {check(false,"GDI+ starts");return;}
+        {
+            UINT count=0,size=0;Gdiplus::GetImageEncodersSize(&count,&size);
+            std::vector<BYTE> bytes(size);auto* encoders=reinterpret_cast<Gdiplus::ImageCodecInfo*>(bytes.data());
+            Gdiplus::GetImageEncoders(count,size,encoders);
+            CLSID png{};for(UINT i=0;i<count;++i) if(std::wstring_view(encoders[i].MimeType)==L"image/png") png=encoders[i].Clsid;
+            const auto modpack=root/L"shots"/L"modpack",vanilla=root/L"shots"/L"vanilla";
+            std::filesystem::create_directories(modpack);std::filesystem::create_directories(vanilla);
+            Gdiplus::Bitmap picture(640,360,PixelFormat32bppARGB);
+            check(picture.Save((modpack/L"2026-11-10_20.00.00.png").c_str(),&png)==Gdiplus::Ok,"fixture picture saves");
+            check(picture.Save((vanilla/L"2026-11-12_20.00.00.PNG").c_str(),&png)==Gdiplus::Ok,"fixture picture saves");
+            write(modpack/L"notes.txt","not a picture");
+            std::filesystem::last_write_time(modpack/L"2026-11-10_20.00.00.png",std::filesystem::file_time_type::clock::now()-std::chrono::hours(48));
+            const auto entries=ScreenshotLibrary::scan(modpack,vanilla);
+            check(entries.size()==2,"only pictures are listed, from both games");
+            if(entries.size()==2) {
+                check(entries[0].vanilla && !entries[1].vanilla && entries[0].modified>entries[1].modified,"newest first, game remembered");
+                const auto thumb=ScreenshotLibrary::load(entries[1].path,416,234,true);
+                check(thumb.bitmap && thumb.bitmap->GetWidth()==416 && thumb.bitmap->GetHeight()==234 && thumb.width==640 && thumb.height==360,
+                    "thumbnails fill their box and report the original size");
+                const auto large=ScreenshotLibrary::load(entries[1].path,320,320,false);
+                check(large.bitmap && large.bitmap->GetWidth()==320 && large.bitmap->GetHeight()==180 && large.large,"the viewer image keeps its proportions");
+                const auto original=ScreenshotLibrary::load(entries[1].path,1920,1080,false);
+                check(original.bitmap && original.bitmap->GetWidth()==640,"pictures are never enlarged");
+            }
+            check(!ScreenshotLibrary::load(modpack/L"notes.txt",100,100,true).bitmap,"a file that is not a picture loads nothing");
+            check(ScreenshotLibrary::scan(root/L"missing",{}).empty(),"a missing folder is just empty");
+            check(ScreenshotLibrary::formatDate(0)==L"Data desconhecida","unknown dates");
+        }
+        Gdiplus::GdiplusShutdown(token);
+    }
+
+    void rankTiers() {
+        check(RankTier::level(0)==1 && RankTier::level(24*3600+3599)==1,"level 1 below 25 h");
+        check(RankTier::level(25*3600)==2 && RankTier::level(75*3600)==3 && RankTier::level(150*3600)==4 && RankTier::level(300*3600)==5,
+            "each milestone raises the level");
+        check(RankTier::level(5000ULL*3600)==RankTier::Levels,"the level is capped");
     }
 
     void mods(const std::filesystem::path& root) {
@@ -167,6 +238,9 @@ int main()
     playtime(root);
     leaderboard();
     news();
+    newsReadState(root);
+    rankTiers();
+    screenshots(root);
     mods(root);
     skins();
     std::filesystem::remove_all(root,ignored);

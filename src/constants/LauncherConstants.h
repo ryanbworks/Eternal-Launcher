@@ -33,7 +33,8 @@ namespace LauncherConstants
     inline constexpr int NavSettingsId = 1114;
     inline constexpr int NavHelpId = 1115;
     inline constexpr int NavVersionsId = 1116;
-    inline constexpr int NavigationCount = 6;
+    inline constexpr int NavScreenshotsId = 1117;
+    inline constexpr int NavigationCount = 7;
     // Home.
     inline constexpr int PlayMenuButtonId = 1121;
     inline constexpr int EditNicknameButtonId = 1122;
@@ -43,7 +44,8 @@ namespace LauncherConstants
     inline constexpr int NewsCardFirstId = 1126;
     inline constexpr int NewsCardCount = 2;
     inline constexpr int NewsAllButtonId = 1129;
-    inline constexpr int ToastNewsButtonId = 1130;
+    inline constexpr int SpotlightReadButtonId = 1130;
+    inline constexpr int SpotlightDismissButtonId = 1135;
     inline constexpr int RetryServerButtonId = 1131;
     inline constexpr int VersionEternalButtonId = 1132;
     inline constexpr int VersionVanillaButtonId = 1133;
@@ -64,6 +66,18 @@ namespace LauncherConstants
     inline constexpr int HelpCopySupportButtonId = 1166;
     inline constexpr int HelpReportIssueButtonId = 1167;
     inline constexpr int HelpDataFolderButtonId = 1168;
+    // Screenshots page: a grid of cards and the full-size viewer.
+    inline constexpr int ScreenshotCardFirstId = 1171;
+    inline constexpr int ScreenshotCardCount = 12;
+    inline constexpr int ScreenshotsFolderButtonId = 1183;
+    inline constexpr int ScreenshotsRefreshButtonId = 1184;
+    inline constexpr int ViewerBackButtonId = 1185;
+    inline constexpr int ViewerPreviousButtonId = 1186;
+    inline constexpr int ViewerNextButtonId = 1187;
+    inline constexpr int ViewerCopyButtonId = 1188;
+    inline constexpr int ViewerFolderButtonId = 1189;
+    inline constexpr int ViewerOpenButtonId = 1190;
+    inline constexpr int ViewerDeleteButtonId = 1191;
 
     // Popup and tray menu commands.
     inline constexpr UINT MenuOpenGameFolder = 40001;
@@ -97,4 +111,6 @@ namespace LauncherConstants
     inline constexpr UINT PlaytimeSyncMessage = WM_APP + 14;
     inline constexpr UINT LeaderboardResultMessage = WM_APP + 15;
     inline constexpr UINT SkinLookupResultMessage = WM_APP + 16;
+    // lParam: ScreenshotImage*, or nullptr once the worker finished its list.
+    inline constexpr UINT ScreenshotImageMessage = WM_APP + 17;
 }

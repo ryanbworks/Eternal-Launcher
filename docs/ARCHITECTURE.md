@@ -27,7 +27,7 @@ the pre-rendered frame, so keyboard navigation and accessibility keep working.
 - `HomeView`: hero, status tiles, news cards and the player card (nickname, mode,
   play time, split play button and quick actions).
 - `InstallationPanelComponent`: stages, current transfer and preparation recovery controls.
-- `ContentViews`: the News, Mods and Help pages.
+- `ContentViews`: the News, Mods, Screenshots and Help pages.
 - `SettingsPage`: the General, Advanced and About tabs with their native controls.
 - `Buttons` and `Icons`: shared button styles and the stroke icon set.
 
@@ -50,6 +50,10 @@ Components only draw the data they receive. They never touch the network or disk
 - `LauncherUpdateManifest`: numeric version, RSA-PSS signature and contract validation.
 - `LauncherUpdateTransport`: asynchronous WinHTTP, cancellation and AutoUpdate limits.
 - `NewsFeed`: reads the optional `news.json` from the file server (see below).
+- `NewsReadState`: remembers which news the player read or set aside (`news-state.txt`).
+- `ScreenshotLibrary`: lists the `screenshots` folders of the modpack and of the 1.8.9,
+  decodes thumbnails and viewer images on a worker, copies to the clipboard and
+  recycles files.
 - `ModInventory`: separates server mods from the player's own and enables, disables or
   recycles player mods.
 - `PlaytimeStore` / `PlaySession`: total and last play time in `playtime.json`.
@@ -108,6 +112,18 @@ release is announced, so editing the news is a pull request away.
 ```
 
 Only `title` is required. Links must use `https://`; at most 20 items are read.
+
+An item is **new** until the player opens the News page, as long as it is dated within
+the last 21 days (undated items and the launcher's own release notes count too). The
+newest one is shown in a spotlight over the Home landscape until it is read or set aside
+with "Depois"; setting it aside keeps the counter on the News icon and the NOVO tags.
+Read and set-aside items are kept in `news-state.txt` in the data folder.
+
+### Leaderboard podium
+
+The top 3 wear gold, silver and bronze medals. Each row gets more ornate at 25, 75, 150
+and 300 hours (`RankTier` in `HomeView.h`): a medal-colored wash, then a glowing medal
+and tinted name, then a crown and a passing sheen, then a shimmering outline with sparkles.
 
 ### Utilities
 

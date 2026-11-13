@@ -215,6 +215,29 @@ void Icons::draw(Gdiplus::Graphics& g, Icon icon, const Gdiplus::RectF& b,
         p.arc(12, 13, 8, 300, 300);
         p.line(12, 3, 12, 12);
         break;
+    case Icon::Image:
+        p.rect(3, 4, 18, 16, 2.5F);
+        p.circle(8.5F, 9.5F, 1.8F);
+        p.lines({{3.5F, 18}, {9.5F, 12.5F}, {13, 15.5F}, {16, 13}, {20.5F, 17}});
+        break;
+    case Icon::ChevronLeft:
+        p.lines({{15, 6}, {9, 12}, {15, 18}});
+        break;
+    case Icon::Crown:
+    {
+        Gdiplus::SolidBrush brush(color);
+        const Gdiplus::PointF crown[] = {{3, 8}, {8, 12.5F}, {12, 5}, {16, 12.5F}, {21, 8}, {19, 19}, {5, 19}};
+        g.FillPolygon(&brush, crown, 7);
+        break;
+    }
+    case Icon::Sparkle:
+    {
+        // Four-pointed star with pinched sides.
+        Gdiplus::SolidBrush brush(color);
+        const Gdiplus::PointF star[] = {{12, 2}, {14, 10}, {22, 12}, {14, 14}, {12, 22}, {10, 14}, {2, 12}, {10, 10}};
+        g.FillPolygon(&brush, star, 8);
+        break;
+    }
     }
     g.Restore(saved);
 }

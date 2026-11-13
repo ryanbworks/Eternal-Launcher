@@ -54,6 +54,8 @@ class PlaytimeApi
 {
 public:
     using UpdateCallback = std::function<void(std::optional<std::uint64_t> totalSeconds, bool finished)>;
+    // Every player is listed on Home; the server applies its own cap as well.
+    static constexpr std::size_t LeaderboardLimit = 200;
 
     [[nodiscard]] static LeaderboardResult parseLeaderboard(std::string_view json);
     [[nodiscard]] static LeaderboardResult fetchLeaderboard(std::wstring_view baseUrl, std::wstring_view nickname,

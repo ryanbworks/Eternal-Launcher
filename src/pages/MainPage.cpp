@@ -50,8 +50,11 @@ namespace
         {NavVersionsId, true, true, L"Versões"},
         {NavNewsId, true, true, L"Notícias"},
         {NavModsId, true, true, L"Mods"},
+        {NavScreenshotsId, true, true, L"Capturas"},
         {NavSettingsId, true, true, L"Configurações"},
         {NavHelpId, true, true, L"Ajuda"},
+        {SpotlightReadButtonId, false, true, L"Ler novidade"},
+        {SpotlightDismissButtonId, false, true, L"Ver depois"},
         {NicknameInputId, false, true, nullptr},
         {EditNicknameButtonId, false, true, L"Editar nickname"},
         {OfflineButtonId, false, true, L"Nickname"},
@@ -66,7 +69,6 @@ namespace
         {QuickFolderButtonId, false, true, L"Pasta do jogo"},
         {QuickRepairButtonId, false, true, L"Reparar"},
         {QuickLogsButtonId, false, true, L"Logs"},
-        {ToastNewsButtonId, false, true, L"Ver novidades"},
         {NewsCardFirstId, false, true, L"Notícia 1"},
         {NewsCardFirstId + 1, false, true, L"Notícia 2"},
         {NewsAllButtonId, false, true, L"Ver todas as notícias"},
@@ -79,6 +81,27 @@ namespace
         {ModsRefreshButtonId, false, true, L"Atualizar lista"},
         {ModsFolderButtonId, false, true, L"Abrir pasta"},
         {ModsAddButtonId, false, true, L"Adicionar mod"},
+        {ScreenshotsRefreshButtonId, false, true, L"Atualizar capturas"},
+        {ScreenshotsFolderButtonId, false, true, L"Abrir pasta de capturas"},
+        {ScreenshotCardFirstId, false, true, L"Captura 1"},
+        {ScreenshotCardFirstId + 1, false, true, L"Captura 2"},
+        {ScreenshotCardFirstId + 2, false, true, L"Captura 3"},
+        {ScreenshotCardFirstId + 3, false, true, L"Captura 4"},
+        {ScreenshotCardFirstId + 4, false, true, L"Captura 5"},
+        {ScreenshotCardFirstId + 5, false, true, L"Captura 6"},
+        {ScreenshotCardFirstId + 6, false, true, L"Captura 7"},
+        {ScreenshotCardFirstId + 7, false, true, L"Captura 8"},
+        {ScreenshotCardFirstId + 8, false, true, L"Captura 9"},
+        {ScreenshotCardFirstId + 9, false, true, L"Captura 10"},
+        {ScreenshotCardFirstId + 10, false, true, L"Captura 11"},
+        {ScreenshotCardFirstId + 11, false, true, L"Captura 12"},
+        {ViewerBackButtonId, false, true, L"Voltar para as capturas"},
+        {ViewerCopyButtonId, false, true, L"Copiar captura"},
+        {ViewerFolderButtonId, false, true, L"Mostrar na pasta"},
+        {ViewerOpenButtonId, false, true, L"Abrir no visualizador do Windows"},
+        {ViewerDeleteButtonId, false, true, L"Mover captura para a Lixeira"},
+        {ViewerPreviousButtonId, false, true, L"Captura anterior"},
+        {ViewerNextButtonId, false, true, L"Próxima captura"},
         {HelpRepairButtonId, false, true, L"Reparar instalação"},
         {HelpInstallLogButtonId, false, true, L"Log da instalação"},
         {HelpForgeLogButtonId, false, true, L"Log do Forge"},
@@ -171,6 +194,11 @@ MainPage::~MainPage()
     if (playtimeSyncThread_.joinable()) playtimeSyncThread_.join();
     launcherUpdateThread_.request_stop();
     if (launcherUpdateThread_.joinable()) launcherUpdateThread_.join();
+    screenshotThread_.request_stop();
+    if (screenshotThread_.joinable()) screenshotThread_.join();
+    // Results the worker posted after the window closed are never read; nothing else owns them.
+    for (MSG pending{}; PeekMessageW(&pending, nullptr, ScreenshotImageMessage, ScreenshotImageMessage, PM_REMOVE);)
+        delete reinterpret_cast<ScreenshotImage*>(pending.lParam);
     releaseFrame();
     for (auto* brush : {backgroundBrush_, surfaceBrush_, inputBrush_, sunkenBrush_})
         if (brush) DeleteObject(brush);
@@ -233,7 +261,7 @@ bool MainPage::create(int showCommand, bool checkLauncherUpdate, std::wstring up
     if (!settingsPage_.create(window_, instance_)) { DestroyWindow(window_); return false; }
     settingsPage_.show(false);
     layoutControls();
-    checkVersionToast();
+    loadNewsReadState();
     syncControls();
     portalEntrance_ = motionEnabled_ ? 0.0F : 1.0F;
     portalBurst_ = motionEnabled_ ? 1.0F : 0.0F;
@@ -469,8 +497,38 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             items.push_back(NewsFeed::releaseNotes());
             viewState_.news = std::move(items);
             newsFirst_ = 0;
+            applyNewsReadState();
+            // Arriving while the list is open counts as read.
+            if (page_ == LauncherPage::News) markNewsRead();
         }
         redraw();
+        return 0;
+    }
+    case ScreenshotImageMessage:
+    {
+        std::unique_ptr<ScreenshotImage> image(reinterpret_cast<ScreenshotImage*>(lParam));
+        if (!image) {
+            // The worker went through its list; anything that became visible since gets a turn.
+            if (screenshotThread_.joinable()) screenshotThread_.join();
+            screenshotLoading_ = false;
+            requestScreenshotImages();
+            redraw();
+            return 0;
+        }
+        std::shared_ptr<Gdiplus::Bitmap> bitmap(image->bitmap.release());
+        if (image->large) {
+            if (const auto* current = currentScreenshot(); current && current->path.wstring() == image->path) {
+                viewerImage_ = bitmap;
+                viewerImagePath_ = image->path;
+                viewerWidth_ = image->width;
+                viewerHeight_ = image->height;
+                if (!viewerImage_) setScreenshotsMessage(L"Não foi possível abrir esta captura.", true);
+            }
+        } else {
+            // A failed decode still stores an entry so it is not retried in a loop.
+            screenshotThumbnails_[image->path] = bitmap;
+        }
+        if (page_ == LauncherPage::Screenshots) redraw();
         return 0;
     }
     case PlaytimeSyncMessage:
@@ -503,6 +561,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         if (result && result->success) {
             leaderboard_ = std::move(*result);
             rankingState_ = RankingState::Ready;
+            rankingScroll_ = std::min(rankingScroll_, HomeView::maximumRankingScroll(leaderboard_.players.size()));
             if (leaderboard_.hasYou) { serverTotalSeconds_ = leaderboard_.yourSeconds; serverTotalName_ = leaderboard_.playerName; }
         } else if (rankingState_ == RankingState::Loading) {
             rankingState_ = RankingState::Unavailable;
@@ -922,21 +981,36 @@ HomeModel MainPage::homeModel(bool preview) const
     model.energy = preview || !motionEnabled_ ? 0 : std::max({portalEnergy_, portalBurst_, .28F});
     model.phase = animationPhase_;
     model.drift = preview ? 0 : particlePhase_;
-    model.toastReveal = preview ? (toastVisible_ ? 1.0F : 0.0F) : toastReveal_;
-    model.toast = model.toastReveal > .01F && !installation_.visible;
-    model.toastText = toastText_;
+    {
+        const int spotlight = spotlightIndex();
+        model.spotlightReveal = preview ? (spotlight >= 0 ? 1.0F : 0.0F) : spotlightReveal_;
+        model.spotlight = spotlight >= 0 && model.spotlightReveal > .01F && !installation_.visible;
+        if (spotlight >= 0) model.spotlightItem = viewState_.news[static_cast<std::size_t>(spotlight)];
+        model.unreadNews = unreadNewsCount();
+    }
     model.entrance = preview ? 1.0F : std::min(pageFade_, portalEntrance_);
     model.serverMods = serverMods;
     model.userMods = modsScanned_ ? static_cast<int>(mods_.user.size()) : -1;
     if (preview) {
-        model.ranking = {{1, L"Aurora_", L"182 h", true, false}, {2, L"Pedrinho", L"147 h", false, false}, {3, L"Steve", L"96 h 20 min", true, true},
-            {4, L"LunaCraft", L"71 h 5 min", false, false}, {5, L"Tico_BR", L"44 h", false, false}};
-        model.rankingYou = L"Você · #3 · 96 h 20 min";
+        // Preview players span the play-time levels of the podium.
+        constexpr std::uint64_t hour = 3600;
+        const std::uint64_t seconds[] = {previewRankingHours_[0] * hour, previewRankingHours_[1] * hour, previewRankingHours_[2] * hour + 20 * 60,
+            71 * hour + 5 * 60, 44 * hour};
+        const wchar_t* names[] = {L"Aurora_", L"Pedrinho", L"Steve", L"LunaCraft", L"Tico_BR"};
+        for (int i = 0; i < 5; ++i)
+            model.ranking.push_back({i + 1, names[i], PlaytimeStore::formatDuration(seconds[i]), i == 0 || i == 2, i == 2, seconds[i]});
+        for (int i = 0; i < previewExtraPlayers_; ++i) {
+            const std::uint64_t extra = (40 - static_cast<std::uint64_t>(i) * 3) * hour;
+            model.ranking.push_back({i + 6, L"Jogador" + std::to_wstring(i + 1), PlaytimeStore::formatDuration(extra), false, false, extra});
+        }
+        model.rankingYou = L"Você · #3 · " + model.ranking[2].time;
+        model.rankingScroll = previewRankingScroll_;
     } else if (rankingState_ == RankingState::Ready) {
         for (const auto& entry : leaderboard_.players)
             model.ranking.push_back({entry.rank, entry.name, PlaytimeStore::formatDuration(entry.totalSeconds), entry.online,
-                !account.empty() && _wcsicmp(entry.name.c_str(), account.c_str()) == 0});
+                !account.empty() && _wcsicmp(entry.name.c_str(), account.c_str()) == 0, entry.totalSeconds});
         model.rankingNotice = L"Ninguém no ranking ainda. Seja o primeiro!";
+        model.rankingScroll = rankingScroll_;
         model.rankingYou = leaderboard_.hasYou && leaderboard_.playerName == account
             ? L"Você · #" + std::to_wstring(leaderboard_.yourRank) + L" · " + PlaytimeStore::formatDuration(leaderboard_.yourSeconds)
             : std::wstring(L"Jogue para entrar no ranking");
@@ -1000,6 +1074,9 @@ void MainPage::render(Gdiplus::Graphics& g, float width, float height, bool prev
     case LauncherPage::Mods:
         modsView_.draw(g, modsModel(), visuals);
         break;
+    case LauncherPage::Screenshots:
+        screenshotsView_.draw(g, screenshotsModel(preview), visuals);
+        break;
     case LauncherPage::Settings:
         settingsPage_.draw(g, preview);
         break;
@@ -1020,8 +1097,10 @@ void MainPage::render(Gdiplus::Graphics& g, float width, float height, bool prev
     // Chrome: anchored to the window edges, scaled only.
     saved = g.Save();
     g.ScaleTransform(s, s);
+    // The badge stays while unread news exist, except on the News page itself.
+    const int badge = page_ == LauncherPage::News ? 0 : unreadNewsCount();
     chrome_.draw(g, width / s, height / s, page_, window_ && IsZoomed(window_), windowActive_ || preview, visuals,
-        preview ? navigationTarget() : navIndicator_);
+        preview ? navigationTarget() : navIndicator_, badge, preview ? 1.0F : motionEnabled_ && page_ == LauncherPage::Home ? time_ : -1.0F);
     g.Restore(saved);
 }
 
@@ -1036,7 +1115,7 @@ void MainPage::updateMotionPreference()
         portalEntrance_ = 1;
         pageFade_ = 1;
         navIndicator_ = navigationTarget();
-        toastReveal_ = toastTarget();
+        spotlightReveal_ = spotlightTarget();
         playSweep_ = 1; playPulse_ = 0;
         settingsPage_.settle();
     }
@@ -1085,7 +1164,7 @@ void MainPage::redraw(bool animationFrame)
     for (const float pulse : completionPulse_) unsettled |= pulse > 0;
     const bool pressed = findControl(PlayButtonId) && findControl(PlayButtonId)->window &&
         (SendMessageW(findControl(PlayButtonId)->window, BM_GETSTATE, 0, 0) & BST_PUSHED) != 0;
-    unsettled |= std::abs(navIndicator_ - navigationTarget()) > .75F || std::abs(toastReveal_ - toastTarget()) > .01F;
+    unsettled |= std::abs(navIndicator_ - navigationTarget()) > .75F || std::abs(spotlightReveal_ - spotlightTarget()) > .01F;
     unsettled |= playSweep_ < 1 || playPulse_ > 0 || std::abs(playPress_ - (pressed ? 1.0F : 0.0F)) > .01F ||
         std::abs(playLight_ - playLightTarget_) > .005F;
     for (const auto& mod : mods_.user) {
@@ -1103,7 +1182,7 @@ void MainPage::redraw(bool animationFrame)
         installationFill_ = fillTarget;
         portalEntrance_ = 1; portalEnergy_ = 0; portalBurst_ = 0; pageFade_ = 1;
         completionPulse_ = {};
-        navIndicator_ = navigationTarget(); toastReveal_ = toastTarget();
+        navIndicator_ = navigationTarget(); spotlightReveal_ = spotlightTarget();
         playSweep_ = 1; playPulse_ = 0; playPress_ = pressed ? 1.0F : 0.0F; playLight_ = playLightTarget_;
         for (const auto& mod : mods_.user) modKnobs_[mod.name] = mod.enabled ? 1.0F : 0.0F;
         settingsPage_.settle();
@@ -1116,8 +1195,11 @@ void MainPage::redraw(bool animationFrame)
     const bool indeterminate = home && (installation_.visible ? installation_.running && !installation_.cancelling : busy);
     const bool hero = home && !installation_.visible;
     const bool ambient = ambientMotion_ && hero && GetForegroundWindow() == window_;
+    // Placeholders shimmer while screenshot thumbnails decode.
+    const bool screenshotsLoading = page_ == LauncherPage::Screenshots && screenshotLoading_;
     const bool running = motionEnabled_ && IsWindowVisible(window_) && !IsIconic(window_) && !closing_ &&
-        (unsettled || indeterminate || (home && !skinPending_.empty()) || (hero &&(ambient || portalEntrance_ < 1 || portalHovered_ || portalEnergy_ > .005F || portalBurst_ > 0)));
+        (unsettled || indeterminate || screenshotsLoading || (home && !skinPending_.empty()) ||
+         (hero &&(ambient || portalEntrance_ < 1 || portalHovered_ || portalEnergy_ > .005F || portalBurst_ > 0)));
     if (running && !animationTimer_) {
         previousFrame_ = std::chrono::steady_clock::now();
         animationTimer_ = SetTimer(window_, AnimationTimerId, USER_TIMER_MINIMUM, nullptr) != 0;
@@ -1155,7 +1237,7 @@ void MainPage::animate()
     const float dt = std::clamp(std::chrono::duration<float, std::milli>(now - previousFrame_).count(), 0.0F, 100.0F);
     previousFrame_ = now;
     // Remember what is on screen so only what actually moves gets repainted.
-    const float fadeBefore = pageFade_, navBefore = navIndicator_, toastBefore = toastReveal_, selectionBefore = identitySelection_;
+    const float fadeBefore = pageFade_, navBefore = navIndicator_, spotlightBefore = spotlightReveal_, selectionBefore = identitySelection_;
     const float playBefore[] = {playSweep_, playPulse_, playPress_, playLight_, playProgressShown_, displayedProgress_};
     const float fillBefore = installationFill_, entranceBefore = portalEntrance_;
     const auto pulsesBefore = completionPulse_;
@@ -1195,11 +1277,7 @@ void MainPage::animate()
         if (std::abs(goal - value) < snap) value = goal;
     };
     approach(navIndicator_, navigationTarget(), 50, .75F);
-    approach(toastReveal_, toastTarget(), 90, .01F);
-    if (toastVisible_ && page_ == LauncherPage::Home && !installation_.visible && GetForegroundWindow() == window_) {
-        toastAge_ += dt;
-        if (toastAge_ > 12000) { toastVisible_ = false; syncControls(); }
-    }
+    approach(spotlightReveal_, spotlightTarget(), 90, .01F);
     playSweep_ = std::min(1.0F, playSweep_ + dt / 560);
     playPulse_ = std::max(0.0F, playPulse_ - dt / 420);
     const auto* play = findControl(PlayButtonId);
@@ -1235,7 +1313,17 @@ void MainPage::animate()
             markContent(Layout::Hero, 2);  // particles drift every frame
             if (portalEntrance_ != entranceBefore) markContent(Layout::LeftColumn, 24);  // tiles and cards rise
         }
-        if (toastReveal_ != toastBefore) markContent(Layout::Hero, 2);
+        if (spotlightReveal_ != spotlightBefore) markContent(Layout::Hero, 2);
+        // The badge rings and the podium shimmers while the window is in front.
+        if (ambientNow || working || playing) {
+            if (unreadNewsCount() > 0) {
+                const auto news = Layout::navButton(static_cast<int>(LauncherPage::News));
+                markChrome({news.X, news.Y - 10, news.Width + 16, news.Height}, 8);
+            }
+            if (rankingState_ == RankingState::Ready)
+                for (std::size_t i = 0; i < 3 && i < leaderboard_.players.size(); ++i)
+                    if (RankTier::level(leaderboard_.players[i].totalSeconds) >= 3) { markContent(Layout::rankingCard(), 4); break; }
+        }
         if (identitySelection_ != selectionBefore)
             markContent({Layout::OfflineMode.X, Layout::OfflineMode.Y, Layout::OriginalMode.GetRight() - Layout::OfflineMode.X,
                 Layout::OfflineMode.Height}, 4);
@@ -1258,6 +1346,8 @@ void MainPage::animate()
             markContent(Layout::Installation, 4);
     }
     if (page_ == LauncherPage::Mods && modKnobs_ != knobsBefore) markContent(Layout::ModsUser, 4);
+    if (page_ == LauncherPage::Screenshots && screenshotLoading_ && screenshotViewer_ < 0)
+        markContent({100, 168, 1156, 608}, 4);
     if (settingsBefore || settingsMoving) markContent(Layout::Content, 4);
     redraw(true);
 }
@@ -1321,9 +1411,9 @@ float MainPage::navigationTarget() const
     return Layout::navButton(static_cast<int>(page_)).Y;
 }
 
-float MainPage::toastTarget() const
+float MainPage::spotlightTarget() const
 {
-    return toastVisible_ && page_ == LauncherPage::Home && !installation_.visible ? 1.0F : 0.0F;
+    return spotlightIndex() >= 0 && page_ == LauncherPage::Home && !installation_.visible ? 1.0F : 0.0F;
 }
 
 void MainPage::syncModKnobs()
@@ -1352,7 +1442,8 @@ Gdiplus::RectF MainPage::controlBounds(int id) const
     case NavVersionsId: return Layout::navButton(1);
     case NavNewsId: return Layout::navButton(2);
     case NavModsId: return Layout::navButton(3);
-    case NavSettingsId: return Layout::navButton(4);
+    case NavScreenshotsId: return Layout::navButton(4);
+    case NavSettingsId: return Layout::navButton(5);
     case NavHelpId: return Layout::sidebarHelp(chromeHeight());
     case NicknameInputId: return Layout::NicknameEdit;
     case EditNicknameButtonId: return Layout::EditNickname;
@@ -1369,7 +1460,17 @@ Gdiplus::RectF MainPage::controlBounds(int id) const
     case QuickFolderButtonId: return Layout::quickAction(0);
     case QuickRepairButtonId: return Layout::quickAction(1);
     case QuickLogsButtonId: return Layout::quickAction(2);
-    case ToastNewsButtonId: return Layout::ToastButton;
+    case SpotlightReadButtonId: return Layout::SpotlightRead;
+    case SpotlightDismissButtonId: return Layout::SpotlightDismiss;
+    case ScreenshotsRefreshButtonId: return Layout::ScreenshotsRefresh;
+    case ScreenshotsFolderButtonId: return Layout::ScreenshotsFolder;
+    case ViewerBackButtonId: return Layout::ViewerBack;
+    case ViewerPreviousButtonId: return Layout::ViewerPrevious;
+    case ViewerNextButtonId: return Layout::ViewerNext;
+    case ViewerCopyButtonId: return Layout::ViewerCopy;
+    case ViewerFolderButtonId: return Layout::ViewerFolder;
+    case ViewerOpenButtonId: return Layout::ViewerOpen;
+    case ViewerDeleteButtonId: return Layout::ViewerDelete;
     case NewsAllButtonId: return {Layout::NewsAll.X + 20, Layout::NewsAll.Y, Layout::NewsAll.Width - 20, Layout::NewsAll.Height};
     case InstallationLogButtonId: return Layout::InstallationLog;
     case CancelInstallationButtonId: return Layout::InstallationCancel;
@@ -1388,6 +1489,7 @@ Gdiplus::RectF MainPage::controlBounds(int id) const
     }
     if (inRange(id, NewsCardFirstId, NewsCardCount)) return Layout::newsCard(id - NewsCardFirstId);
     if (inRange(id, NewsLinkFirstId, NewsLinkCount)) return Layout::newsLink(id - NewsLinkFirstId);
+    if (inRange(id, ScreenshotCardFirstId, ScreenshotCardCount)) return Layout::screenshotCard(id - ScreenshotCardFirstId);
     return {};
 }
 
@@ -1418,8 +1520,22 @@ bool MainPage::controlVisible(int id) const
         return home && !updateWarning_.empty() && viewState_.playEnabled;
     case RetryServerButtonId:
         return home && serverOffline_ && !vanillaSelected_ && updateWarning_.empty() && viewState_.playEnabled && !installation_.visible;
-    case ToastNewsButtonId:
-        return heroVisible && toastVisible_;
+    case SpotlightReadButtonId:
+    case SpotlightDismissButtonId:
+        return heroVisible && spotlightIndex() >= 0;
+    case ScreenshotsRefreshButtonId:
+    case ScreenshotsFolderButtonId:
+        return page_ == LauncherPage::Screenshots && screenshotViewer_ < 0;
+    case ViewerBackButtonId:
+    case ViewerCopyButtonId:
+    case ViewerFolderButtonId:
+    case ViewerOpenButtonId:
+    case ViewerDeleteButtonId:
+        return page_ == LauncherPage::Screenshots && currentScreenshot();
+    case ViewerPreviousButtonId:
+        return page_ == LauncherPage::Screenshots && currentScreenshot() && screenshotViewer_ > 0;
+    case ViewerNextButtonId:
+        return page_ == LauncherPage::Screenshots && currentScreenshot() && static_cast<std::size_t>(screenshotViewer_) + 1 < screenshots_.size();
     case NewsAllButtonId:
         return leftColumn;
     case InstallationLogButtonId:
@@ -1440,6 +1556,10 @@ bool MainPage::controlVisible(int id) const
         return page_ == LauncherPage::News && index < viewState_.news.size() && !viewState_.news[index].url.empty();
     }
     if (inRange(id, HelpRepairButtonId, 8)) return page_ == LauncherPage::Help;
+    if (inRange(id, ScreenshotCardFirstId, ScreenshotCardCount)) {
+        const auto index = screenshotRow_ * Layout::ScreenshotColumns + static_cast<std::size_t>(id - ScreenshotCardFirstId);
+        return page_ == LauncherPage::Screenshots && screenshotViewer_ < 0 && index < screenshots_.size();
+    }
     return false;
 }
 
@@ -1485,14 +1605,30 @@ std::wstring MainPage::controlLabel(int id) const
     default: break;
     }
     if (inRange(id, NavHomeId, NavigationCount)) {
-        const wchar_t* names[] = {L"Início", L"Notícias", L"Mods", L"Configurações", L"Ajuda", L"Versões"};
-        const LauncherPage pages[] = {LauncherPage::Home, LauncherPage::News, LauncherPage::Mods, LauncherPage::Settings, LauncherPage::Help, LauncherPage::Versions};
+        // Indexed by id: Home, News, Mods, Settings, Help, Versions, Screenshots.
+        const wchar_t* names[] = {L"Início", L"Notícias", L"Mods", L"Configurações", L"Ajuda", L"Versões", L"Capturas"};
+        const LauncherPage pages[] = {LauncherPage::Home, LauncherPage::News, LauncherPage::Mods, LauncherPage::Settings, LauncherPage::Help,
+            LauncherPage::Versions, LauncherPage::Screenshots};
         const auto index = static_cast<std::size_t>(id - NavHomeId);
-        return std::wstring(names[index]) + (page_ == pages[index] ? L" (página atual)" : L"");
+        std::wstring label = names[index];
+        if (id == NavNewsId) {
+            const int unread = unreadNewsCount();
+            if (unread > 0) label += L", " + std::to_wstring(unread) + (unread == 1 ? L" novidade" : L" novidades");
+        }
+        return label + (page_ == pages[index] ? L" (página atual)" : L"");
     }
     if (inRange(id, NewsCardFirstId, NewsCardCount)) {
         const auto index = static_cast<std::size_t>(id - NewsCardFirstId);
-        return index < viewState_.news.size() ? viewState_.news[index].title : std::wstring{};
+        if (index >= viewState_.news.size()) return {};
+        return (viewState_.news[index].unread ? L"Nova: " : L"") + viewState_.news[index].title;
+    }
+    if (id == SpotlightReadButtonId) {
+        const int spotlight = spotlightIndex();
+        return spotlight >= 0 ? L"Ler novidade: " + viewState_.news[static_cast<std::size_t>(spotlight)].title : std::wstring(L"Ler novidade");
+    }
+    if (inRange(id, ScreenshotCardFirstId, ScreenshotCardCount)) {
+        const auto index = screenshotRow_ * Layout::ScreenshotColumns + static_cast<std::size_t>(id - ScreenshotCardFirstId);
+        return index < screenshots_.size() ? L"Captura de " + ScreenshotLibrary::formatDate(screenshots_[index].modified) : std::wstring{};
     }
     for (const auto& spec : ControlSpecs) if (spec.id == id && spec.label) return spec.label;
     return {};
@@ -1559,7 +1695,7 @@ void MainPage::syncControls()
     if (page_ == LauncherPage::Settings) settingsPage_.setLocked(!viewState_.playEnabled || gameRunning());
     // Never leave keyboard focus on a control that just disappeared.
     if (focused && focused != window_ && IsChild(window_, focused) && !(GetWindowLongPtrW(focused, GWL_STYLE) & WS_VISIBLE)) {
-        const int navigation[] = {NavHomeId, NavVersionsId, NavNewsId, NavModsId, NavSettingsId, NavHelpId};
+        const int navigation[] = {NavHomeId, NavVersionsId, NavNewsId, NavModsId, NavScreenshotsId, NavSettingsId, NavHelpId};
         if (const auto* control = findControl(navigation[static_cast<int>(page_)]); control && control->window)
             SetFocus(control->window);
     }
@@ -1615,6 +1751,14 @@ LRESULT CALLBACK MainPage::controlProcedure(HWND control, UINT message, WPARAM w
 bool MainPage::handleKeyboard(MSG& message)
 {
     if (message.message == WM_KEYDOWN) {
+        if (page_ == LauncherPage::Screenshots && screenshotViewer_ >= 0) {
+            if (message.wParam == VK_ESCAPE) { closeScreenshot(); return true; }
+            if (message.wParam == VK_LEFT && screenshotViewer_ > 0) { openScreenshot(screenshotViewer_ - 1); return true; }
+            if (message.wParam == VK_RIGHT && static_cast<std::size_t>(screenshotViewer_) + 1 < screenshots_.size()) {
+                openScreenshot(screenshotViewer_ + 1);
+                return true;
+            }
+        }
         if (message.wParam == VK_ESCAPE && page_ != LauncherPage::Home) { showPage(LauncherPage::Home); return true; }
         if (message.wParam == VK_RETURN) {
             const HWND focus = GetFocus();
@@ -1647,6 +1791,10 @@ void MainPage::showPage(LauncherPage page)
     if (page_ == page) return;
     const HWND focused = GetFocus();
     if (page_ == LauncherPage::Settings) settingsPage_.show(false);
+    // Leaving the list: what was on it is read now, so the NOVO tags go away.
+    if (page_ == LauncherPage::News)
+        for (auto& item : viewState_.news) item.unread = false;
+    if (page_ == LauncherPage::Screenshots) { screenshotViewer_ = -1; viewerImage_.reset(); viewerImagePath_.clear(); }
     page_ = page;
     if (page == LauncherPage::Settings) {
         settingsPage_.open(settings_, settingsWarning_);
@@ -1654,7 +1802,8 @@ void MainPage::showPage(LauncherPage page)
         settingsPage_.show(true);
     }
     if (page == LauncherPage::Mods) { refreshMods(); modsMessage_.clear(); modsMessageError_ = false; }
-    if (page == LauncherPage::News) toastVisible_ = false;
+    if (page == LauncherPage::News) markNewsRead();
+    if (page == LauncherPage::Screenshots) { screenshotsMessage_.clear(); screenshotsMessageError_ = false; refreshScreenshots(); }
     if (page == LauncherPage::Help) helpMessage_.clear();
     if (page == LauncherPage::Versions) vanillaInstalled_ = VanillaMinecraftService::isInstalled();
     portalHovered_ = false;
@@ -1663,7 +1812,7 @@ void MainPage::showPage(LauncherPage page)
     redraw();
     // Keyboard focus follows the page: a control of the previous page never keeps it.
     if (focused && focused != window_ && IsChild(window_, focused) && !(GetWindowLongPtrW(focused, GWL_STYLE) & WS_VISIBLE)) {
-        const int navigation[] = {NavHomeId, NavVersionsId, NavNewsId, NavModsId, NavSettingsId, NavHelpId};
+        const int navigation[] = {NavHomeId, NavVersionsId, NavNewsId, NavModsId, NavScreenshotsId, NavSettingsId, NavHelpId};
         if (const auto* control = findControl(navigation[static_cast<int>(page_)]); control && control->window)
             SetFocus(control->window);
     }
@@ -1684,6 +1833,10 @@ void MainPage::handleCommand(int id, int)
             ShellExecuteW(window_, L"open", viewState_.news[index].url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         return;
     }
+    if (inRange(id, ScreenshotCardFirstId, ScreenshotCardCount)) {
+        openScreenshot(static_cast<int>(screenshotRow_ * Layout::ScreenshotColumns) + id - ScreenshotCardFirstId);
+        return;
+    }
     const auto logs = gameDirectory() / L"logs";
     switch (id) {
     case MinimizeButtonId: PostMessageW(window_, WM_SYSCOMMAND, SC_MINIMIZE, 0); break;
@@ -1696,6 +1849,10 @@ void MainPage::handleCommand(int id, int)
         break;
     case NavNewsId: showPage(LauncherPage::News); break;
     case NavModsId: showPage(LauncherPage::Mods); break;
+    case NavScreenshotsId:
+        if (page_ == LauncherPage::Screenshots) closeScreenshot();
+        else showPage(LauncherPage::Screenshots);
+        break;
     case NavSettingsId: showPage(LauncherPage::Settings); break;
     case NavHelpId: showPage(LauncherPage::Help); break;
     case PlayButtonId: handlePrimaryAction(); break;
@@ -1740,11 +1897,52 @@ void MainPage::handleCommand(int id, int)
     case HelpLogsFolderButtonId:
         openPath(logs, true);
         break;
-    case ToastNewsButtonId:
+    case SpotlightReadButtonId:
+    {
+        // Open the list at the announced item.
+        const int spotlight = spotlightIndex();
+        const auto count = viewState_.news.size();
+        const auto last = count > NewsView::Visible ? count - NewsView::Visible : 0;
+        newsFirst_ = spotlight >= 0 ? std::min(static_cast<std::size_t>(spotlight), last) : 0;
+        showPage(LauncherPage::News);
+        break;
+    }
+    case SpotlightDismissButtonId:
+        dismissSpotlight();
+        break;
     case NewsAllButtonId:
         newsFirst_ = 0;
         showPage(LauncherPage::News);
         break;
+    case ScreenshotsRefreshButtonId:
+        refreshScreenshots();
+        setScreenshotsMessage(screenshots_.empty() ? L"Nenhuma captura encontrada." : L"Lista atualizada.");
+        break;
+    case ScreenshotsFolderButtonId:
+        openPath(gameDirectory() / L"screenshots", true);
+        break;
+    case ViewerBackButtonId: closeScreenshot(); break;
+    case ViewerPreviousButtonId: if (screenshotViewer_ > 0) openScreenshot(screenshotViewer_ - 1); break;
+    case ViewerNextButtonId: openScreenshot(screenshotViewer_ + 1); break;
+    case ViewerCopyButtonId:
+        if (const auto* shot = currentScreenshot()) {
+            std::wstring error;
+            if (ScreenshotLibrary::copyToClipboard(window_, shot->path, error))
+                setScreenshotsMessage(L"Copiada! Cole no Discord ou no WhatsApp com Ctrl+V.");
+            else setScreenshotsMessage(error, true);
+        }
+        break;
+    case ViewerFolderButtonId:
+        if (const auto* shot = currentScreenshot()) {
+            // Explorer opens the folder with the file selected.
+            const std::wstring arguments = L"/select,\"" + shot->path.wstring() + L"\"";
+            ShellExecuteW(window_, L"open", L"explorer.exe", arguments.c_str(), nullptr, SW_SHOWNORMAL);
+        }
+        break;
+    case ViewerOpenButtonId:
+        if (const auto* shot = currentScreenshot()) openPath(shot->path);
+        break;
+    case ViewerDeleteButtonId: deleteScreenshot(); break;
     case CancelInstallationButtonId: cancelInstallation(); break;
     case RetryServerButtonId: retryServer(); break;
     case InstallationLogButtonId:
@@ -1795,11 +1993,31 @@ void MainPage::showPlayMenu()
 void MainPage::scrollContent(int delta, Gdiplus::PointF point)
 {
     const int notches = delta / WHEEL_DELTA != 0 ? delta / WHEEL_DELTA : (delta > 0 ? 1 : -1);
-    if (page_ == LauncherPage::News) {
+    if (page_ == LauncherPage::Home) {
+        if (!Layout::rankingCard().Contains(point.X, point.Y) || rankingState_ != RankingState::Ready) return;
+        // Two rows per wheel notch.
+        const float maximum = HomeView::maximumRankingScroll(leaderboard_.players.size());
+        const float target = std::clamp(rankingScroll_ - static_cast<float>(notches) * 2 * HomeView::RankingRowHeight, 0.0F, maximum);
+        if (target != rankingScroll_) { rankingScroll_ = target; redraw(); }
+    } else if (page_ == LauncherPage::News) {
         const auto count = viewState_.news.size();
         const auto last = static_cast<int>(count > NewsView::Visible ? count - NewsView::Visible : 0);
         const int first = std::clamp(static_cast<int>(newsFirst_) - notches, 0, last);
         if (static_cast<std::size_t>(first) != newsFirst_) { newsFirst_ = static_cast<std::size_t>(first); redraw(); }
+    } else if (page_ == LauncherPage::Screenshots) {
+        if (screenshotViewer_ >= 0) {
+            // In the viewer the wheel steps through the pictures.
+            const int target = std::clamp(screenshotViewer_ - notches, 0, static_cast<int>(screenshots_.size()) - 1);
+            if (target != screenshotViewer_) openScreenshot(target);
+            return;
+        }
+        const int last = static_cast<int>(ScreenshotsView::lastFirstRow(screenshots_.size()));
+        const int row = std::clamp(static_cast<int>(screenshotRow_) - notches, 0, last);
+        if (static_cast<std::size_t>(row) != screenshotRow_) {
+            screenshotRow_ = static_cast<std::size_t>(row);
+            requestScreenshotImages();
+            redraw();
+        }
     } else if (page_ == LauncherPage::Mods) {
         const auto model = modsModel();
         const float step = static_cast<float>(notches) * 3 * ModsView::ServerRowHeight;
@@ -1954,9 +2172,14 @@ void MainPage::copySupportInformation()
         L"Não foi possível usar a área de transferência. Tente de novo.", !copied);
 }
 
-void MainPage::checkVersionToast()
+// ---------------------------------------------------------------------------------------------
+// News read state
+// ---------------------------------------------------------------------------------------------
+
+void MainPage::loadNewsReadState()
 {
     const auto directory = LauncherSettingsStore::dataDirectory();
+    newsRead_.load(directory);
     const auto file = directory / L"last-version.txt";
     const std::string current(LauncherConfig::NumericVersion);
     std::string previous;
@@ -1967,15 +2190,227 @@ void MainPage::checkVersionToast()
         std::getline(input, previous);
         while (!previous.empty() && (previous.back() == '\r' || previous.back() == ' ')) previous.pop_back();
     }
-    if (previous == current) return;
-    // Existing players (a saved nickname) get the toast; a first install does not.
-    if (existed || std::filesystem::exists(NicknameStore::filePath(directory), ignored)) {
-        toastVisible_ = true;
-        toastText_ = L"Launcher atualizado";
+    if (previous != current) {
+        // Existing players (a saved nickname) are told what changed; a first install is not.
+        const bool returning = existed || std::filesystem::exists(NicknameStore::filePath(directory), ignored);
+        if (!returning) { newsRead_.markSeen(NewsFeed::releaseNotes()); newsRead_.save(); }
+        std::filesystem::create_directories(directory, ignored);
+        std::ofstream output(file, std::ios::binary | std::ios::trunc);
+        output << current << "\n";
     }
-    std::filesystem::create_directories(directory, ignored);
-    std::ofstream output(file, std::ios::binary | std::ios::trunc);
-    output << current << "\n";
+    applyNewsReadState();
+}
+
+void MainPage::applyNewsReadState()
+{
+    SYSTEMTIME now{};
+    GetLocalTime(&now);
+    wchar_t today[16]{};
+    swprintf_s(today, L"%04u-%02u-%02u", now.wYear, now.wMonth, now.wDay);
+    newsRead_.apply(viewState_.news, today);
+}
+
+int MainPage::spotlightIndex() const
+{
+    // The newest unread item the player has not set aside; server news come before the
+    // launcher's own notes in the list.
+    for (std::size_t i = 0; i < viewState_.news.size(); ++i)
+        if (viewState_.news[i].unread && !newsRead_.dismissed(viewState_.news[i])) return static_cast<int>(i);
+    return -1;
+}
+
+int MainPage::unreadNewsCount() const
+{
+    return static_cast<int>(std::count_if(viewState_.news.begin(), viewState_.news.end(), [](const NewsItem& item) { return item.unread; }));
+}
+
+void MainPage::dismissSpotlight()
+{
+    const int index = spotlightIndex();
+    if (index < 0) return;
+    // "Later" only quiets the spotlight; the item stays unread with its badge and tag.
+    newsRead_.markDismissed(viewState_.news[static_cast<std::size_t>(index)]);
+    newsRead_.save();
+    if (const auto* read = findControl(SpotlightReadButtonId); read && GetFocus() == read->window)
+        if (const auto* play = findControl(PlayButtonId); play && play->window) SetFocus(play->window);
+    redraw();
+}
+
+void MainPage::markNewsRead()
+{
+    // Opening the list reads everything on it. The flags stay while the page is open so the
+    // NOVO tags can still be seen there.
+    for (const auto& item : viewState_.news) newsRead_.markSeen(item);
+    newsRead_.save();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Screenshots
+// ---------------------------------------------------------------------------------------------
+
+ScreenshotsModel MainPage::screenshotsModel(bool preview) const
+{
+    ScreenshotsModel model;
+    model.entries = &screenshots_;
+    model.thumbnails = &screenshotThumbnails_;
+    model.firstRow = screenshotRow_;
+    model.viewer = screenshotViewer_;
+    if (const auto* shot = currentScreenshot(); shot && viewerImagePath_ == shot->path.wstring()) {
+        model.viewerImage = viewerImage_.get();
+        model.viewerWidth = viewerWidth_;
+        model.viewerHeight = viewerHeight_;
+    }
+    model.message = screenshotsMessage_;
+    model.messageError = screenshotsMessageError_;
+    model.entrance = preview ? 1.0F : pageFade_;
+    model.time = preview ? 0.0F : time_;
+    return model;
+}
+
+const ScreenshotEntry* MainPage::currentScreenshot() const
+{
+    if (screenshotViewer_ < 0 || static_cast<std::size_t>(screenshotViewer_) >= screenshots_.size()) return nullptr;
+    return &screenshots_[static_cast<std::size_t>(screenshotViewer_)];
+}
+
+void MainPage::refreshScreenshots()
+{
+    screenshots_ = ScreenshotLibrary::scan(gameDirectory() / L"screenshots", VanillaMinecraftService::gameDirectory() / L"screenshots");
+    screenshotRow_ = std::min(screenshotRow_, ScreenshotsView::lastFirstRow(screenshots_.size()));
+    if (screenshotViewer_ >= static_cast<int>(screenshots_.size())) screenshotViewer_ = static_cast<int>(screenshots_.size()) - 1;
+    // Forget thumbnails of files that are gone (or were replaced under the same name).
+    std::map<std::wstring, std::shared_ptr<Gdiplus::Bitmap>> kept;
+    for (const auto& entry : screenshots_)
+        if (const auto found = screenshotThumbnails_.find(entry.path.wstring()); found != screenshotThumbnails_.end())
+            kept.insert(*found);
+    screenshotThumbnails_ = std::move(kept);
+    requestScreenshotImages();
+}
+
+void MainPage::requestScreenshotImages()
+{
+    if (!window_ || page_ != LauncherPage::Screenshots) return;
+    // One worker at a time; when it finishes, this runs again for whatever is still missing.
+    if (screenshotLoading_) return;
+    if (screenshotThumbnails_.size() > 72) {
+        // Keep memory flat on large folders: only thumbnails around the visible rows stay.
+        const std::size_t visibleFirst = screenshotRow_ * Layout::ScreenshotColumns;
+        const std::size_t keepFirst = visibleFirst > 24 ? visibleFirst - 24 : 0;
+        const std::size_t keepLast = std::min(screenshots_.size(), visibleFirst + ScreenshotsView::Visible + 24);
+        std::map<std::wstring, std::shared_ptr<Gdiplus::Bitmap>> kept;
+        for (std::size_t i = keepFirst; i < keepLast; ++i)
+            if (const auto found = screenshotThumbnails_.find(screenshots_[i].path.wstring()); found != screenshotThumbnails_.end())
+                kept.insert(*found);
+        screenshotThumbnails_ = std::move(kept);
+    }
+    struct Job { std::filesystem::path path; bool large; };
+    std::vector<Job> jobs;
+    const auto* shot = currentScreenshot();
+    if (shot && viewerImagePath_ != shot->path.wstring()) jobs.push_back({shot->path, true});
+    // Visible cards first, then the next row so scrolling down finds them ready.
+    const std::size_t first = screenshotRow_ * Layout::ScreenshotColumns;
+    const std::size_t last = std::min(screenshots_.size(), first + ScreenshotsView::Visible + Layout::ScreenshotColumns);
+    for (std::size_t i = first; i < last; ++i)
+        if (!screenshotThumbnails_.count(screenshots_[i].path.wstring())) jobs.push_back({screenshots_[i].path, false});
+    if (shot) {
+        // In the viewer, the neighbours' thumbnails stand in while their full pictures load.
+        for (const int neighbour : {screenshotViewer_ - 1, screenshotViewer_ + 1})
+            if (neighbour >= 0 && static_cast<std::size_t>(neighbour) < screenshots_.size() &&
+                !screenshotThumbnails_.count(screenshots_[static_cast<std::size_t>(neighbour)].path.wstring()))
+                jobs.push_back({screenshots_[static_cast<std::size_t>(neighbour)].path, false});
+    }
+    if (jobs.empty()) return;
+    // Thumbnails decode at 1.5x the card so they stay sharp on high-DPI screens.
+    constexpr int thumbWidth = 416, thumbHeight = 234;
+    if (screenshotThread_.joinable()) screenshotThread_.join();
+    screenshotLoading_ = true;
+    const HWND window = window_;
+    screenshotThread_ = std::jthread([window, jobs = std::move(jobs)](std::stop_token stop) {
+        const auto post = [window](ScreenshotImage* image) {
+            if (!PostMessageW(window, ScreenshotImageMessage, 0, reinterpret_cast<LPARAM>(image))) delete image;
+        };
+        for (const auto& job : jobs) {
+            if (stop.stop_requested()) break;
+            auto image = std::make_unique<ScreenshotImage>(job.large ? ScreenshotLibrary::load(job.path, 1920, 1080, false)
+                                                                     : ScreenshotLibrary::load(job.path, thumbWidth, thumbHeight, true));
+            post(image.release());
+        }
+        post(nullptr);
+    });
+    // Keep the placeholders shimmering while the worker runs.
+    redraw();
+}
+
+void MainPage::openScreenshot(int index)
+{
+    if (index < 0 || static_cast<std::size_t>(index) >= screenshots_.size()) return;
+    const bool wasGrid = screenshotViewer_ < 0;
+    screenshotViewer_ = index;
+    screenshotsMessage_.clear();
+    screenshotsMessageError_ = false;
+    if (viewerImagePath_ != screenshots_[static_cast<std::size_t>(index)].path.wstring()) {
+        viewerImage_.reset();
+        viewerImagePath_.clear();
+        viewerWidth_ = viewerHeight_ = 0;
+    }
+    // Keep the grid scrolled to the picture, so going back lands where it is.
+    const auto row = static_cast<std::size_t>(index) / Layout::ScreenshotColumns;
+    if (row < screenshotRow_) screenshotRow_ = row;
+    else if (row >= screenshotRow_ + Layout::ScreenshotRows) screenshotRow_ = row - Layout::ScreenshotRows + 1;
+    requestScreenshotImages();
+    redraw();
+    if (wasGrid)
+        if (const auto* back = findControl(ViewerBackButtonId); back && back->window && GetFocus() != back->window) {
+            const HWND focus = GetFocus();
+            // Focus left a grid card that is now hidden; put it on the viewer.
+            if (!focus || !(GetWindowLongPtrW(focus, GWL_STYLE) & WS_VISIBLE)) SetFocus(back->window);
+        }
+}
+
+void MainPage::closeScreenshot()
+{
+    if (screenshotViewer_ < 0) return;
+    const auto index = static_cast<std::size_t>(screenshotViewer_);
+    screenshotViewer_ = -1;
+    screenshotsMessage_.clear();
+    screenshotsMessageError_ = false;
+    viewerImage_.reset();
+    viewerImagePath_.clear();
+    requestScreenshotImages();
+    redraw();
+    // Focus returns to the card of the picture that was open.
+    const auto slot = index - std::min(index, screenshotRow_ * Layout::ScreenshotColumns);
+    if (slot < ScreenshotsView::Visible)
+        if (const auto* card = findControl(ScreenshotCardFirstId + static_cast<int>(slot)); card && card->window) SetFocus(card->window);
+}
+
+void MainPage::deleteScreenshot()
+{
+    const auto* shot = currentScreenshot();
+    if (!shot) return;
+    const auto name = shot->path.filename().wstring();
+    const auto prompt = L"Mover \"" + name + L"\" para a Lixeira?\n\nVocê pode recuperá-la de lá se mudar de ideia.";
+    if (MessageBoxW(window_, prompt.c_str(), L"Excluir captura", MB_OKCANCEL | MB_ICONQUESTION | MB_DEFBUTTON2) != IDOK) return;
+    // Release the decoded picture before the file moves.
+    viewerImage_.reset();
+    viewerImagePath_.clear();
+    std::wstring error;
+    const auto path = shot->path;
+    if (!ScreenshotLibrary::remove(path, error)) { setScreenshotsMessage(error, true); return; }
+    screenshotThumbnails_.erase(path.wstring());
+    const int index = screenshotViewer_;
+    refreshScreenshots();
+    if (screenshots_.empty()) { screenshotViewer_ = -1; setScreenshotsMessage(name + L" foi para a Lixeira."); return; }
+    screenshotViewer_ = std::min(index, static_cast<int>(screenshots_.size()) - 1);
+    openScreenshot(screenshotViewer_);
+    setScreenshotsMessage(name + L" foi para a Lixeira.");
+}
+
+void MainPage::setScreenshotsMessage(std::wstring message, bool error)
+{
+    screenshotsMessage_ = std::move(message);
+    screenshotsMessageError_ = error;
+    redraw();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2247,7 +2682,8 @@ void MainPage::fetchLeaderboardAsync()
     leaderboardPending_ = true;
     SetTimer(window_, LeaderboardTimerId, 5 * 60 * 1000, nullptr);
     leaderboardThread_ = std::jthread([window = window_, name = rankingName()](std::stop_token stop) {
-        auto result = PlaytimeApi::fetchLeaderboard(LauncherConfig::FileServerBaseUrl, name, 5, stop);
+        auto result = PlaytimeApi::fetchLeaderboard(LauncherConfig::FileServerBaseUrl, name,
+            static_cast<int>(PlaytimeApi::LeaderboardLimit), stop);
         if (stop.stop_requested()) return;
         auto* transferred = new LeaderboardResult(std::move(result));
         if (!PostMessageW(window, LeaderboardResultMessage, 0, reinterpret_cast<LPARAM>(transferred))) delete transferred;
@@ -2756,8 +3192,10 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
         playtime_ = {4 * 3600 + 12 * 60, 3600, wallClock() - 26 * 3600};
         originalMode_ = false; updatingLauncher_ = false; updateWarning_.clear();
         installation_ = {};
-        toastVisible_ = false;
         serverOffline_ = false;
+        screenshots_.clear(); screenshotThumbnails_.clear(); screenshotRow_ = 0; screenshotViewer_ = -1;
+        viewerImage_.reset(); viewerImagePath_.clear(); screenshotsMessage_.clear();
+        previewRankingHours_ = {312, 167, 96};
         page_ = LauncherPage::Home;
         newsFirst_ = 0; newsLoading_ = false; newsError_.clear();
         modsMessage_.clear(); helpMessage_.clear();
@@ -2770,8 +3208,24 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
     if (!save(L"desktop.png", 1)) return false;
     if (!save(L"compact.png", .8F)) return false;
     if (!save(L"wide.png", 1, 1600, 800)) return false;
-    toastVisible_ = true; toastText_ = L"Launcher atualizado";
-    if (!save(L"toast.png", 1)) return false;
+    // Unread news: spotlight, NOVO tags and the rail badge.
+    viewState_.news[0].unread = true; viewState_.news[1].unread = true;
+    if (!save(L"spotlight.png", 1)) return false;
+    ready(); viewState_.news.back().unread = true;
+    if (!save(L"spotlight-update.png", 1)) return false;
+    ready(); page_ = LauncherPage::News;
+    viewState_.news[0].unread = true; viewState_.news[1].unread = true;
+    if (!save(L"news-unread.png", 1)) return false;
+    // Podium at the first play-time levels.
+    ready(); previewRankingHours_ = {60, 30, 8};
+    if (!save(L"ranking-early.png", 1)) return false;
+    // Every player: the card scrolls.
+    ready(); previewExtraPlayers_ = 9;
+    if (!save(L"ranking-all.png", 1)) return false;
+    previewRankingScroll_ = 4 * HomeView::RankingRowHeight;
+    if (!save(L"ranking-scrolled.png", 1)) return false;
+    previewExtraPlayers_ = 0; previewRankingScroll_ = 0;
+    ready();
     ready(); originalMode_ = true;
     if (!save(L"original.png", 1)) return false;
     ready(); vanillaSelected_ = true;
@@ -2898,6 +3352,62 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
     if (!save(L"mods.png", 1)) return false;
     mods_.user.clear();
     if (!save(L"mods-empty.png", 1)) return false;
+    // Screenshots: generated blocky landscapes stand in for real captures.
+    {
+        const auto scene = [](int seed, int width, int height) {
+            auto bitmap = std::make_shared<Gdiplus::Bitmap>(width, height, PixelFormat32bppPARGB);
+            Gdiplus::Graphics g(bitmap.get());
+            const BYTE skies[][6] = {{86, 148, 232, 186, 214, 250}, {38, 30, 82, 214, 120, 120}, {14, 18, 46, 70, 52, 120},
+                                     {120, 190, 240, 230, 240, 250}, {60, 40, 90, 250, 170, 110}};
+            const auto& sky = skies[seed % 5];
+            Gdiplus::LinearGradientBrush fill(Gdiplus::PointF(0, 0), Gdiplus::PointF(0, static_cast<float>(height)),
+                Gdiplus::Color(255, sky[0], sky[1], sky[2]), Gdiplus::Color(255, sky[3], sky[4], sky[5]));
+            g.FillRectangle(&fill, 0, 0, width, height);
+            const float cell = static_cast<float>(width) / 30;
+            for (int column = 0; column < 31; ++column) {
+                const int ground = 11 + static_cast<int>(3 * std::sin(column * .35F + seed) + 2 * std::sin(column * .9F + seed * 2.3F));
+                for (int row = ground; row < 20; ++row) {
+                    const int shade = (column * 73 + row * 151 + seed * 31) % 5 * 6 - 12;
+                    const auto channel = [shade](int value) { return static_cast<BYTE>(std::clamp(value + shade, 0, 255)); };
+                    const bool top = row == ground;
+                    Gdiplus::SolidBrush block(top ? Gdiplus::Color(255, channel(84), channel(170), channel(88)) :
+                        row < ground + 3 ? Gdiplus::Color(255, channel(130), channel(92), channel(64)) :
+                                           Gdiplus::Color(255, channel(110), channel(112), channel(122)));
+                    g.FillRectangle(&block, static_cast<float>(column) * cell, static_cast<float>(row) * cell, cell + .5F, cell + .5F);
+                }
+                if ((column * 7 + seed) % 9 == 0) {
+                    // A tree.
+                    Gdiplus::SolidBrush trunk(Gdiplus::Color(255, 104, 74, 46)), leaves(Gdiplus::Color(255, 52, 128, 60));
+                    g.FillRectangle(&trunk, static_cast<float>(column) * cell, static_cast<float>(ground - 3) * cell, cell, 3 * cell);
+                    g.FillRectangle(&leaves, static_cast<float>(column - 1) * cell, static_cast<float>(ground - 6) * cell, 3 * cell, 3 * cell);
+                }
+            }
+            return bitmap;
+        };
+        ready(); page_ = LauncherPage::Screenshots;
+        const auto now = wallClock();
+        for (int i = 0; i < 18; ++i) {
+            ScreenshotEntry entry;
+            entry.path = L"C:\\preview\\screenshots\\2026-11-" + std::to_wstring(13 - i / 3) + L"_2" + std::to_wstring(i % 3) + L".14.0" +
+                std::to_wstring(i % 10) + L".png";
+            entry.size = 1'800'000 + static_cast<std::uintmax_t>(i) * 137'000;
+            entry.modified = now - i * 7 * 3600;
+            entry.vanilla = i == 4 || i == 9;
+            screenshots_.push_back(entry);
+            if (i != 7) screenshotThumbnails_[entry.path.wstring()] = scene(i, 416, 234);  // one still loading
+        }
+        if (!save(L"screenshots.png", 1)) return false;
+        if (!save(L"screenshots-compact.png", .8F)) return false;
+        screenshotViewer_ = 2;
+        viewerImage_ = scene(2, 1920, 1080);
+        viewerImagePath_ = screenshots_[2].path.wstring();
+        viewerWidth_ = 1920; viewerHeight_ = 1080;
+        if (!save(L"screenshot-viewer.png", 1)) return false;
+        screenshotsMessage_ = L"Copiada! Cole no Discord ou no WhatsApp com Ctrl+V.";
+        if (!save(L"screenshot-viewer-copied.png", 1)) return false;
+        ready(); page_ = LauncherPage::Screenshots;
+        if (!save(L"screenshots-empty.png", 1)) return false;
+    }
     ready(); page_ = LauncherPage::Help;
     if (!save(L"help.png", 1)) return false;
     helpMessage_ = L"Informações copiadas. Cole no grupo ou no relato do GitHub.";
@@ -2929,6 +3439,7 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
     page_ = LauncherPage::Home;
     originalMode_ = false;
     installation_ = {};
+    screenshots_.clear(); screenshotThumbnails_.clear(); screenshotViewer_ = -1; viewerImage_.reset(); viewerImagePath_.clear();
     viewScale_ = 1;
     return true;
 }

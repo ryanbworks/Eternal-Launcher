@@ -89,28 +89,83 @@ void HomeView::draw(Gdiplus::Graphics& g, const HomeModel& model, const HeroComp
 {
     if (drawHero) {
         hero.draw(g, Layout::Hero, model.reveal, model.energy, model.phase, model.drift, model.chips);
-        if (model.toast && model.toastReveal > .01F) {
-            // The toast drops in from the top edge of the landscape.
-            const auto saved = g.Save();
-            g.SetClip(Layout::Hero, Gdiplus::CombineModeIntersect);
-            g.TranslateTransform(0, -(Layout::Toast.GetBottom() - Layout::Hero.Y) * (1 - easeOut(model.toastReveal)));
-            const auto& t = Layout::Toast;
-            fillRoundedRectangle(g, t, 12, Gdiplus::Color(214, 13, 14, 20));
-            drawRoundedRectangle(g, {t.X + .5F, t.Y + .5F, t.Width - 1, t.Height - 1}, 12, Theme::GlassOutline);
-            Gdiplus::SolidBrush badge(Theme::SuccessTint);
-            g.FillEllipse(&badge, t.X + 12, t.Y + 10, 20.0F, 20.0F);
-            Icons::draw(g, Icons::Icon::Check, {t.X + 16, t.Y + 14, 12, 12}, Theme::Success, 1.8F);
-            drawText(g, model.toastText, {t.X + 40, t.Y, 170, t.Height}, 12.5F, Gdiplus::FontStyleRegular, Theme::TextPrimary,
-                Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
-            Buttons::draw(g, Layout::ToastButton, L"Ver novidades", visuals(LauncherConstants::ToastNewsButtonId),
-                Buttons::Style::Link, std::nullopt, false, 12.5F);
-            g.Restore(saved);
-        }
+        if (model.spotlight && model.spotlightReveal > .01F) drawSpotlight(g, model, visuals);
     }
     drawTiles(g, model);
     drawNews(g, model, hero, visuals);
     drawRanking(g, model);
     drawPlayerCard(g, model.player, visuals);
+}
+
+void HomeView::drawSpotlight(Gdiplus::Graphics& g, const HomeModel& model, const ControlVisuals& visuals) const
+{
+    using namespace LauncherConstants;
+    const auto& item = model.spotlightItem;
+    const float time = model.player.time;
+    const bool ambient = model.player.ambient;
+    const auto saved = g.Save();
+    g.SetClip(Layout::Hero, Gdiplus::CombineModeIntersect);
+    // Drops in from the top edge of the landscape, then stays until read or dismissed.
+    g.TranslateTransform(0, -(Layout::Spotlight.GetBottom() - Layout::Hero.Y) * (1 - easeOut(model.spotlightReveal)));
+    const auto& s = Layout::Spotlight;
+
+    // A violet halo breathes around the card so it is noticed without being in the way.
+    const float breath = ambient ? .5F + .5F * std::sin(time * 6.2831853F / 2.6F) : .5F;
+    for (int layer = 4; layer >= 1; --layer) {
+        const float grow = static_cast<float>(layer) * (2.2F + 1.2F * breath);
+        const auto alpha = static_cast<BYTE>((9 + 9 * breath) / static_cast<float>(layer) * 1.7F);
+        fillRoundedRectangle(g, {s.X - grow, s.Y - grow, s.Width + 2 * grow, s.Height + 2 * grow}, 16 + grow,
+            Gdiplus::Color(alpha, 165, 130, 255));
+    }
+    fillRoundedRectangle(g, s, 16, Gdiplus::Color(232, 17, 15, 30));
+    {
+        const auto inner = g.Save();
+        auto clip = createRoundedPath(s, 16);
+        g.SetClip(clip.get(), Gdiplus::CombineModeIntersect);
+        // Violet wash from the left edge and an accent rail marking it as news.
+        Gdiplus::LinearGradientBrush wash(Gdiplus::PointF(s.X - 1, 0), Gdiplus::PointF(s.X + s.Width * .7F + 1, 0),
+            Gdiplus::Color(70, 165, 130, 255), Gdiplus::Color(0, 165, 130, 255));
+        g.FillRectangle(&wash, s.X, s.Y, s.Width * .7F, s.Height);
+        Gdiplus::LinearGradientBrush rail(Gdiplus::PointF(0, s.Y), Gdiplus::PointF(0, s.GetBottom()), Theme::AccentLight, Theme::Accent);
+        g.FillRectangle(&rail, s.X, s.Y, 4.0F, s.Height);
+        // An occasional sheen crosses the card.
+        if (ambient) {
+            const float cycle = std::fmod(time + 1.5F, 5.5F) / 1.3F;
+            if (cycle < 1) lightBand(g, s.X - 60 + (s.Width + 120) * easeInOut(cycle), s.Y, s.Height, 90,
+                static_cast<BYTE>(40 * std::sin(cycle * 3.14159265F)));
+        }
+        g.Restore(inner);
+    }
+    drawRoundedRectangle(g, {s.X + .5F, s.Y + .5F, s.Width - 1, s.Height - 1}, 16, Theme::AccentOutline);
+
+    // Kicker: a solid tag with a live dot, then the category and date.
+    const std::wstring tag = item.local ? L"LAUNCHER ATUALIZADO" : L"NOVIDADE";
+    const float tagWidth = measureText(g, tag, 10.5F, Gdiplus::FontStyleBold) + 34;
+    const Gdiplus::RectF pill{s.X + 20, s.Y + 16, tagWidth, 22};
+    fillPill(g, pill, Theme::Accent);
+    dot(g, pill.X + 9, pill.Y + 7, Theme::AccentInk, 8);
+    if (ambient) pulseRing(g, pill.X + 13, pill.Y + 11, Theme::AccentInk, time, 1.6F);
+    drawText(g, tag, {pill.X + 22, pill.Y, pill.Width - 26, pill.Height}, 10.5F, Gdiplus::FontStyleBold, Theme::AccentInk,
+        Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+    std::wstring meta = item.local ? item.date : item.category + (item.date.empty() ? L"" : L" · " + item.date);
+    drawText(g, meta, {pill.GetRight() + 10, pill.Y, s.GetRight() - pill.GetRight() - 30, pill.Height}, 11.5F, Gdiplus::FontStyleBold,
+        Theme::AccentLight, Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+
+    drawDisplayText(g, item.title, {s.X + 20, s.Y + 44, s.Width - 40, 26}, 17, Theme::TextPrimary, Gdiplus::StringAlignmentNear,
+        Gdiplus::StringAlignmentCenter);
+    drawText(g, item.description, {s.X + 20, s.Y + 72, s.Width - 40, 20}, 12.5F, Gdiplus::FontStyleRegular, Theme::TextSecondary,
+        Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+
+    Buttons::draw(g, Layout::SpotlightRead, L"Ler agora", visuals(SpotlightReadButtonId), Buttons::Style::Primary,
+        Icons::Icon::News, false, 13);
+    Buttons::draw(g, Layout::SpotlightDismiss, L"Depois", visuals(SpotlightDismissButtonId), Buttons::Style::Link,
+        std::nullopt, false, 12.5F);
+    if (model.unreadNews > 1) {
+        const std::wstring more = L"+" + std::to_wstring(model.unreadNews - 1) + (model.unreadNews == 2 ? L" novidade" : L" novidades");
+        drawText(g, more, {Layout::SpotlightDismiss.GetRight() + 8, Layout::SpotlightRead.Y, s.GetRight() - Layout::SpotlightDismiss.GetRight() - 28,
+            Layout::SpotlightRead.Height}, 12, Gdiplus::FontStyleRegular, Theme::TextMuted, Gdiplus::StringAlignmentFar, Gdiplus::StringAlignmentCenter);
+    }
+    g.Restore(saved);
 }
 
 void HomeView::drawTiles(Gdiplus::Graphics& g, const HomeModel& model) const
@@ -173,6 +228,13 @@ void HomeView::drawNews(Gdiplus::Graphics& g, const HomeModel& model, const Hero
         g.SetClip(clip.get(), Gdiplus::CombineModeIntersect);
         hero.drawThumbnail(g, {b.X, b.Y, b.Width, 78}, static_cast<std::size_t>(i), focus[i][0], focus[i][1]);
         g.Restore(saved);
+        if (item.unread) {
+            const Gdiplus::RectF fresh{b.GetRight() - 62, b.Y + 10, 52, 22};
+            fillPill(g, {fresh.X - 2, fresh.Y - 2, fresh.Width + 4, fresh.Height + 4}, Gdiplus::Color(120, 13, 14, 20));
+            fillPill(g, fresh, Theme::Accent);
+            drawText(g, L"NOVO", fresh, 10.5F, Gdiplus::FontStyleBold, Theme::AccentInk, Gdiplus::StringAlignmentCenter,
+                Gdiplus::StringAlignmentCenter);
+        }
         drawRoundedRectangle(g, {b.X + .5F, b.Y + .5F, b.Width - 1, b.Height - 1}, Theme::CardRadius,
             blend(Theme::Divider, Theme::AccentOutline, visual.hover));
         drawText(g, item.category, {b.X + 14, b.Y + 90, b.Width - 28, 16}, 11, Gdiplus::FontStyleBold, Theme::AccentLight);
@@ -182,10 +244,115 @@ void HomeView::drawNews(Gdiplus::Graphics& g, const HomeModel& model, const Hero
     }
 }
 
+void HomeView::drawPodiumRow(Gdiplus::Graphics& g, const Gdiplus::RectF& line, const RankingRowModel& row, float time, bool ambient)
+{
+    // Light and deep tone of each medal: gold, silver, bronze.
+    static const Gdiplus::Color Medals[3][2] = {
+        {Gdiplus::Color(255, 255, 228, 140), Gdiplus::Color(255, 222, 164, 38)},
+        {Gdiplus::Color(255, 238, 242, 250), Gdiplus::Color(255, 148, 160, 182)},
+        {Gdiplus::Color(255, 250, 196, 158), Gdiplus::Color(255, 186, 106, 60)}};
+    const int place = row.rank - 1;
+    const auto light = Medals[place][0], deep = Medals[place][1];
+    const auto tint = [](const Gdiplus::Color& c, BYTE alpha) { return Gdiplus::Color(alpha, c.GetR(), c.GetG(), c.GetB()); };
+    const int level = RankTier::level(row.seconds);
+    const float phase = static_cast<float>(place) * 1.3F;
+
+    // Level 2: the row is washed in the medal color.
+    if (level >= 2) {
+        const auto saved = g.Save();
+        auto clip = createRoundedPath(line, 8);
+        g.SetClip(clip.get(), Gdiplus::CombineModeIntersect);
+        Gdiplus::LinearGradientBrush wash(Gdiplus::PointF(line.X, 0), Gdiplus::PointF(line.GetRight(), 0),
+            tint(deep, static_cast<BYTE>(level >= 4 ? 70 : 46)), tint(deep, 0));
+        g.FillRectangle(&wash, line);
+        // Level 4: a sheen sweeps across the row every few seconds.
+        if (level >= 4 && ambient) {
+            const float cycle = std::fmod(time + phase, 4.2F) / 1.1F;
+            if (cycle < 1) lightBand(g, line.X - 40 + (line.Width + 80) * easeInOut(cycle), line.Y, line.Height, 54,
+                static_cast<BYTE>(70 * std::sin(cycle * 3.14159265F)));
+        }
+        g.Restore(saved);
+    }
+    // Level 5: an outline that shimmers between the medal and the launcher's violet.
+    if (level >= 5) {
+        const float shift = ambient ? .5F + .5F * std::sin(time * 2.1F + phase) : .5F;
+        Gdiplus::LinearGradientBrush edge(Gdiplus::PointF(line.X - line.Width * shift, 0), Gdiplus::PointF(line.GetRight() + line.Width * (1 - shift), 0),
+            light, Theme::Accent);
+        const Gdiplus::Color colors[] = {tint(light, 230), tint(Theme::Accent, 200), tint(light, 230)};
+        const Gdiplus::REAL positions[] = {0, .5F, 1};
+        edge.SetInterpolationColors(colors, positions, 3);
+        Gdiplus::Pen pen(&edge, 1.3F);
+        auto path = createRoundedPath({line.X + .65F, line.Y + .65F, line.Width - 1.3F, line.Height - 1.3F}, 8);
+        g.DrawPath(&pen, path.get());
+    }
+
+    // The medal: a coin with the position, glowing from level 3.
+    const Gdiplus::RectF coin{line.X + 6, line.Y + 3, 20, 20};
+    if (level >= 3) {
+        const float glow = ambient ? .6F + .4F * std::sin(time * 3.0F + phase) : .8F;
+        for (int ring = 3; ring >= 1; --ring) {
+            const float grow = static_cast<float>(ring) * 1.6F;
+            Gdiplus::SolidBrush halo(tint(light, static_cast<BYTE>(58 * glow / static_cast<float>(ring))));
+            g.FillEllipse(&halo, coin.X - grow, coin.Y - grow, coin.Width + 2 * grow, coin.Height + 2 * grow);
+        }
+    }
+    Gdiplus::LinearGradientBrush face(Gdiplus::PointF(0, coin.Y), Gdiplus::PointF(0, coin.GetBottom()), light, deep);
+    g.FillEllipse(&face, coin);
+    Gdiplus::Pen rim(tint(light, 200), 1);
+    g.DrawEllipse(&rim, coin.X + 1.5F, coin.Y + 1.5F, coin.Width - 3, coin.Height - 3);
+    drawText(g, std::to_wstring(row.rank), coin, 11, Gdiplus::FontStyleBold, Gdiplus::Color(255, 46, 32, 12),
+        Gdiplus::StringAlignmentCenter, Gdiplus::StringAlignmentCenter);
+    if (row.online) {
+        Gdiplus::SolidBrush ring(Theme::Surface);
+        g.FillEllipse(&ring, coin.GetRight() - 7, coin.GetBottom() - 7, 10.0F, 10.0F);
+        dot(g, coin.GetRight() - 5.5F, coin.GetBottom() - 5.5F, Theme::Success, 7);
+    }
+    // Level 5: sparkles twinkle around the medal.
+    if (level >= 5) {
+        const struct { float x, y, size, offset; } sparks[] = {{-3, -4, 7, 0}, {17, -3, 6, .45F}, {19, 15, 5, .8F}};
+        for (const auto& spark : sparks) {
+            const float twinkle = ambient ? std::max(0.0F, std::sin((time / 1.6F + spark.offset + phase) * 6.2831853F)) : .7F;
+            if (twinkle < .05F) continue;
+            const float size = spark.size * (.6F + .4F * twinkle);
+            Icons::draw(g, Icons::Icon::Sparkle, {coin.X + spark.x + (spark.size - size) / 2, coin.Y + spark.y + (spark.size - size) / 2, size, size},
+                tint(light, static_cast<BYTE>(255 * twinkle)));
+        }
+    }
+
+    // Name and time take the medal color as the level rises; level 4 earns a crown.
+    const float nameX = line.X + 44;  // same column as the rows below the podium
+    const float timeWidth = 76;
+    const float nameRoom = line.Width - 44 - timeWidth - 8 - (level >= 4 ? 16.0F : 0.0F);
+    drawText(g, row.name, {nameX, line.Y, nameRoom, line.Height}, 12.5F, Gdiplus::FontStyleBold, level >= 3 ? light : Theme::TextPrimary,
+        Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+    if (level >= 4) {
+        const float nameWidth = std::min(nameRoom, measureText(g, row.name, 12.5F, Gdiplus::FontStyleBold));
+        Icons::draw(g, Icons::Icon::Crown, {nameX + nameWidth + 4, line.Y + 7, 12, 12}, deep);
+    }
+    drawText(g, row.time, {line.GetRight() - timeWidth - 8, line.Y, timeWidth, line.Height}, 12,
+        level >= 2 ? Gdiplus::FontStyleBold : Gdiplus::FontStyleRegular, level >= 2 ? blend(Theme::TextSecondary, light, .55F) : Theme::TextSecondary,
+        Gdiplus::StringAlignmentFar, Gdiplus::StringAlignmentCenter);
+}
+
+Gdiplus::RectF HomeView::rankingList()
+{
+    // Above the divider and the "you" line at the bottom of the card.
+    const auto card = Layout::rankingCard();
+    return {card.X, card.Y + 4, card.Width, 143};
+}
+
+float HomeView::maximumRankingScroll(std::size_t rows)
+{
+    return std::max(0.0F, static_cast<float>(rows) * RankingRowHeight + 8 - rankingList().Height);
+}
+
 void HomeView::drawRanking(Gdiplus::Graphics& g, const HomeModel& model) const
 {
     drawDisplayText(g, L"Top jogadores", Layout::RankingHeading, 17, Theme::TextPrimary, Gdiplus::StringAlignmentNear,
         Gdiplus::StringAlignmentCenter);
+    if (model.ranking.size() > 5)
+        drawText(g, std::to_wstring(model.ranking.size()) + L" jogadores", Layout::RankingHeading, 12, Gdiplus::FontStyleRegular,
+            Theme::TextMuted, Gdiplus::StringAlignmentFar, Gdiplus::StringAlignmentCenter);
     auto b = Layout::rankingCard();
     b.Y += std::round(22 * (1 - easeOut((model.entrance - .41F) / .5F)));
     fillRoundedRectangle(g, b, Theme::CardRadius, Theme::Surface);
@@ -195,19 +362,53 @@ void HomeView::drawRanking(Gdiplus::Graphics& g, const HomeModel& model) const
             Gdiplus::StringAlignmentCenter, Gdiplus::StringAlignmentCenter);
         return;
     }
-    const float left = b.X + 8, width = b.Width - 16;
-    const std::size_t rows = std::min<std::size_t>(model.ranking.size(), 5);
+    // The list moves with the card's entrance; scrolling happens inside it.
+    auto list = rankingList();
+    list.Y = b.Y + (list.Y - Layout::rankingCard().Y);
+    const std::size_t rows = model.ranking.size();
+    const bool scrolls = maximumRankingScroll(rows) > 0;
+    const float left = b.X + 8, width = b.Width - 16 - (scrolls ? 6.0F : 0.0F);
+    const float time = model.player.time;
+    const bool ambient = model.player.ambient;
+    const float scroll = std::clamp(model.rankingScroll, 0.0F, maximumRankingScroll(rows));
+    const auto clipState = g.Save();
+    g.SetClip(list, Gdiplus::CombineModeIntersect);
     for (std::size_t i = 0; i < rows; ++i) {
         const auto& row = model.ranking[i];
-        const float y = b.Y + 8 + static_cast<float>(i) * 27;
-        if (row.you) fillRoundedRectangle(g, {left, y, width, 26}, 8, Theme::AccentTint);
-        drawText(g, std::to_wstring(row.rank), {left + 10, y, 20, 26}, 12.5F, Gdiplus::FontStyleBold,
-            i < 3 ? Theme::AccentLight : Theme::TextMuted, Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
-        if (row.online) dot(g, left + 30, y + 9, Theme::Success);
-        drawText(g, row.name, {left + 44, y, width - 44 - 80, 26}, 12.5F, Gdiplus::FontStyleBold, Theme::TextPrimary,
-            Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
-        drawText(g, row.time, {left + width - 84, y, 76, 26}, 12, Gdiplus::FontStyleRegular, Theme::TextSecondary,
-            Gdiplus::StringAlignmentFar, Gdiplus::StringAlignmentCenter);
+        const float y = list.Y + 4 + static_cast<float>(i) * RankingRowHeight - scroll;
+        if (y + RankingRowHeight < list.Y || y > list.GetBottom()) continue;
+        const Gdiplus::RectF line{left, y, width, 26};
+        if (row.you) fillRoundedRectangle(g, line, 8, Theme::AccentTint);
+        // Podium positions use the medal colors; anything below keeps the plain row.
+        const bool podium = i < 3 && row.rank >= 1 && row.rank <= 3;
+        if (!podium) {
+            drawText(g, std::to_wstring(row.rank), {left + 10, y, 20, 26}, 12.5F, Gdiplus::FontStyleBold, Theme::TextMuted,
+                Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+            if (row.online) dot(g, left + 30, y + 9, Theme::Success);
+            drawText(g, row.name, {left + 44, y, width - 44 - 80, 26}, 12.5F, Gdiplus::FontStyleBold, Theme::TextPrimary,
+                Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+            drawText(g, row.time, {left + width - 84, y, 76, 26}, 12, Gdiplus::FontStyleRegular, Theme::TextSecondary,
+                Gdiplus::StringAlignmentFar, Gdiplus::StringAlignmentCenter);
+            continue;
+        }
+        drawPodiumRow(g, line, row, time, ambient);
+    }
+    if (scrolls) {
+        // Rows fade at the edge that has more players behind it.
+        const auto fade = [&](float top, bool down) {
+            const Gdiplus::Color surface = Theme::Surface, clear(0, surface.GetR(), surface.GetG(), surface.GetB());
+            Gdiplus::LinearGradientBrush brush(Gdiplus::PointF(0, top - 1), Gdiplus::PointF(0, top + 15), down ? clear : surface, down ? surface : clear);
+            g.FillRectangle(&brush, list.X, top, list.Width, 14.0F);
+        };
+        if (scroll > .5F) fade(list.Y, false);
+        if (scroll < maximumRankingScroll(rows) - .5F) fade(list.GetBottom() - 14, true);
+    }
+    g.Restore(clipState);
+    if (scrolls) {
+        const float content = static_cast<float>(rows) * RankingRowHeight + 8;
+        const float thumb = std::max(20.0F, list.Height * list.Height / content);
+        const float travel = (list.Height - 8 - thumb) * scroll / maximumRankingScroll(rows);
+        fillPill(g, {b.GetRight() - 9, list.Y + 4 + travel, 3, thumb}, Theme::Border);
     }
     Gdiplus::Pen line(Theme::Divider);
     g.DrawLine(&line, b.X + 16, b.Y + 147, b.GetRight() - 16, b.Y + 147);

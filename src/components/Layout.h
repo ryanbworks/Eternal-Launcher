@@ -50,8 +50,10 @@ namespace Layout
     inline const Rect Play{940, 636, 226, 58};
     inline const Rect PlayMenu{1172, 636, 60, 58};
     inline Rect quickAction(int index) { return {940 + static_cast<float>(index) * 100, 708, 92, 44}; }
-    inline const Rect Toast{546, 84, 330, 40};
-    inline const Rect ToastButton{758, 89, 110, 30};
+    // "Something new" spotlight over the top of the landscape. It stays until read or dismissed.
+    inline const Rect Spotlight{120, 86, 440, 148};
+    inline const Rect SpotlightRead{140, 186, 132, 34};
+    inline const Rect SpotlightDismiss{280, 186, 96, 34};
 
     // Everything left of the player card: hero, tiles, news and ranking.
     inline const Rect LeftColumn{100, 68, 792, 708};
@@ -82,6 +84,26 @@ namespace Layout
     inline const Rect ModsAdd{1112, 84, 144, 44};
     inline const Rect ModsServer{100, 168, 568, 608};
     inline const Rect ModsUser{688, 168, 568, 608};
+
+    // Screenshots: a 4 x 3 grid of cards and a full-size viewer.
+    inline const Rect ScreenshotsRefresh{1036, 84, 48, 44};
+    inline const Rect ScreenshotsFolder{1096, 84, 160, 44};
+    inline constexpr int ScreenshotColumns = 4;
+    inline constexpr int ScreenshotRows = 3;
+    inline constexpr float ScreenshotImageHeight = 156;
+    inline Rect screenshotCard(int index)
+    {
+        return {100 + static_cast<float>(index % ScreenshotColumns) * 293, 168 + static_cast<float>(index / ScreenshotColumns) * 206, 277, 194};
+    }
+    inline const Rect ViewerBack{100, 84, 116, 44};
+    inline const Rect ViewerTitle{236, 80, 560, 52};
+    inline const Rect ViewerCopy{810, 84, 116, 44};
+    inline const Rect ViewerFolder{934, 84, 150, 44};
+    inline const Rect ViewerOpen{1092, 84, 108, 44};
+    inline const Rect ViewerDelete{1208, 84, 48, 44};
+    inline const Rect ViewerImage{100, 148, 1156, 628};
+    inline const Rect ViewerPrevious{120, 434, 52, 52};
+    inline const Rect ViewerNext{1184, 434, 52, 52};
 
     // Help.
     inline Rect helpCard(int index) { return {100 + static_cast<float>(index % 2) * 588, 168 + static_cast<float>(index / 2) * 236, 568, 220}; }

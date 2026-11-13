@@ -85,7 +85,7 @@ LeaderboardResult PlaytimeApi::parseLeaderboard(std::string_view json)
         item.rank = static_cast<int>(seconds(entry, "rank"));
         if (const auto* online = entry.find("online")) item.online = online->boolValue(false);
         result.players.push_back(std::move(item));
-        if (result.players.size() == 20) break;
+        if (result.players.size() == LeaderboardLimit) break;
     }
     if (const auto* you = document->find("you"); you && you->objectValue()) {
         result.hasYou = true;

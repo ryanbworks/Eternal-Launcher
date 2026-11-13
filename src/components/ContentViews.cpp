@@ -199,7 +199,17 @@ void NewsView::draw(Gdiplus::Graphics& g, const NewsModel& m, const ControlVisua
         fillPill(g, pill, Theme::AccentTint);
         drawText(g, item.category, pill, 11, Gdiplus::FontStyleBold, Theme::AccentLight, Gdiplus::StringAlignmentCenter,
             Gdiplus::StringAlignmentCenter);
-        drawText(g, item.date, {pill.GetRight() + 12, pill.Y, 260, 22}, 12, Gdiplus::FontStyleRegular, Theme::TextMuted,
+        float dateX = pill.GetRight() + 12;
+        if (item.unread) {
+            // Unread on arrival: a solid accent tag and an accent edge on the card.
+            const Gdiplus::RectF fresh{pill.GetRight() + 8, pill.Y, 54, 22};
+            fillPill(g, fresh, Theme::Accent);
+            drawText(g, L"NOVO", fresh, 11, Gdiplus::FontStyleBold, Theme::AccentInk, Gdiplus::StringAlignmentCenter,
+                Gdiplus::StringAlignmentCenter);
+            fillPill(g, {b.X, b.Y + 24, 3, b.Height - 48}, Theme::Accent);
+            dateX = fresh.GetRight() + 12;
+        }
+        drawText(g, item.date, {dateX, pill.Y, 260, 22}, 12, Gdiplus::FontStyleRegular, Theme::TextMuted,
             Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
         drawDisplayText(g, item.title, {b.X + 24, b.Y + 52, b.Width - 200, 28}, 18, Theme::TextPrimary);
         drawText(g, item.description, {b.X + 24, b.Y + 84, b.Width - 200, 44}, 13, Gdiplus::FontStyleRegular, Theme::TextSecondary);
@@ -331,6 +341,216 @@ void ModsView::draw(Gdiplus::Graphics& g, const ModsModel& m, const ControlVisua
         g.Restore(saved);
     }
     scrollbar(g, userBounds, static_cast<float>(user) * UserRowHeight, m.userScroll);
+}
+
+std::size_t ScreenshotsView::rowCount(std::size_t entries)
+{
+    return (entries + Layout::ScreenshotColumns - 1) / Layout::ScreenshotColumns;
+}
+
+std::size_t ScreenshotsView::lastFirstRow(std::size_t entries)
+{
+    const auto rows = rowCount(entries);
+    return rows > static_cast<std::size_t>(Layout::ScreenshotRows) ? rows - Layout::ScreenshotRows : 0;
+}
+
+void ScreenshotsView::draw(Gdiplus::Graphics& g, const ScreenshotsModel& m, const ControlVisuals& visuals) const
+{
+    const auto count = m.entries ? m.entries->size() : 0;
+    if (m.viewer >= 0 && static_cast<std::size_t>(m.viewer) < count) drawViewer(g, m, visuals);
+    else drawGrid(g, m, visuals);
+}
+
+void ScreenshotsView::drawGrid(Gdiplus::Graphics& g, const ScreenshotsModel& m, const ControlVisuals& visuals) const
+{
+    using namespace LauncherConstants;
+    const auto count = m.entries ? m.entries->size() : 0;
+    std::wstring subtitle = !m.message.empty() ? m.message :
+        count == 0 ? std::wstring(L"Suas capturas de tela do jogo, num lugar só.") :
+        std::to_wstring(count) + (count == 1 ? L" captura" : L" capturas") + L" · aperte F2 no jogo para tirar mais";
+    header(g, L"Capturas", subtitle, m.messageError);
+    Buttons::drawIcon(g, Layout::ScreenshotsRefresh, Icons::Icon::Refresh, visuals(ScreenshotsRefreshButtonId), false, 18);
+    Buttons::draw(g, Layout::ScreenshotsFolder, L"Abrir pasta", visuals(ScreenshotsFolderButtonId), Buttons::Style::Ghost, Icons::Icon::Folder);
+
+    if (count == 0) {
+        const Gdiplus::RectF b{100, 168, 1156, 608};
+        auto box = b;
+        box.Y += rise(m.entrance, 0);
+        card(g, box);
+        const float cx = box.X + box.Width / 2, top = box.Y + 190;
+        fillRoundedRectangle(g, {cx - 36, top, 72, 72}, 20, Theme::AccentTint);
+        Icons::draw(g, Icons::Icon::Image, {cx - 18, top + 18, 36, 36}, Theme::AccentLight, 1.8F);
+        drawDisplayText(g, L"Nenhuma captura ainda", {box.X, top + 94, box.Width, 32}, 20, Theme::TextPrimary,
+            Gdiplus::StringAlignmentCenter, Gdiplus::StringAlignmentCenter);
+        drawText(g, L"Dentro do jogo, aperte F2 para tirar uma captura de tela.\nEla aparece aqui, pronta para ver, copiar e mandar para o grupo.",
+            {box.X + 200, top + 134, box.Width - 400, 48}, 13.5F, Gdiplus::FontStyleRegular, Theme::TextSecondary,
+            Gdiplus::StringAlignmentCenter);
+        return;
+    }
+
+    const std::size_t first = m.firstRow * Layout::ScreenshotColumns;
+    for (std::size_t slot = 0; slot < Visible && first + slot < count; ++slot) {
+        const auto& entry = (*m.entries)[first + slot];
+        const int column = static_cast<int>(slot) % Layout::ScreenshotColumns;
+        const int row = static_cast<int>(slot) / Layout::ScreenshotColumns;
+        auto b = Layout::screenshotCard(static_cast<int>(slot));
+        b.Y += rise(m.entrance, row + column / 2);
+        const auto visual = visuals(ScreenshotCardFirstId + static_cast<int>(slot));
+        // Hover lifts the card over a soft shadow, like the news cards on Home.
+        if (visual.hover > .01F) {
+            for (int layer = 3; layer >= 1; --layer) {
+                const float spread = static_cast<float>(layer) * 3;
+                fillRoundedRectangle(g, {b.X - spread + 4, b.Y + 6 + spread, b.Width + 2 * spread - 8, b.Height - 4},
+                    Theme::CardRadius + spread, Gdiplus::Color(static_cast<BYTE>(22 * visual.hover), 0, 0, 0));
+            }
+        }
+        b.Y -= std::round(4 * visual.hover);
+        fillRoundedRectangle(g, b, Theme::CardRadius, blend(Theme::Surface, Theme::SurfaceElevated, visual.hover * .6F));
+        const Gdiplus::RectF image{b.X, b.Y, b.Width, Layout::ScreenshotImageHeight};
+        {
+            const auto saved = g.Save();
+            auto clip = createRoundedPath(b, Theme::CardRadius);
+            g.SetClip(clip.get(), Gdiplus::CombineModeIntersect);
+            const Gdiplus::Bitmap* thumbnail = nullptr;
+            if (m.thumbnails)
+                if (const auto found = m.thumbnails->find(entry.path.wstring()); found != m.thumbnails->end()) thumbnail = found->second.get();
+            if (thumbnail) {
+                g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBilinear);
+                g.DrawImage(const_cast<Gdiplus::Bitmap*>(thumbnail), image);
+                // Hover brightens the picture a touch.
+                if (visual.hover > .01F) {
+                    Gdiplus::SolidBrush light(Gdiplus::Color(static_cast<BYTE>(18 * visual.hover), 255, 255, 255));
+                    g.FillRectangle(&light, image);
+                }
+            } else {
+                Gdiplus::SolidBrush placeholder(Theme::SurfaceSunken);
+                g.FillRectangle(&placeholder, image);
+                Icons::draw(g, Icons::Icon::Image, {image.X + image.Width / 2 - 14, image.Y + image.Height / 2 - 14, 28, 28}, Theme::Border, 1.6F);
+                // Still decoding: a band of light crosses the placeholder.
+                const float t = std::fmod(m.time / 1.4F + static_cast<float>(slot) * .07F, 1.0F);
+                const float center = image.X - 80 + (image.Width + 160) * t;
+                Gdiplus::LinearGradientBrush band(Gdiplus::PointF(center - 60, 0), Gdiplus::PointF(center + 60, 0),
+                    Gdiplus::Color(0, 255, 255, 255), Gdiplus::Color(0, 255, 255, 255));
+                const Gdiplus::Color colors[] = {Gdiplus::Color(0, 255, 255, 255), Gdiplus::Color(14, 255, 255, 255), Gdiplus::Color(0, 255, 255, 255)};
+                const Gdiplus::REAL positions[] = {0, .5F, 1};
+                band.SetInterpolationColors(colors, positions, 3);
+                g.FillRectangle(&band, center - 60, image.Y, 120.0F, image.Height);
+            }
+            g.Restore(saved);
+        }
+        if (entry.vanilla) {
+            const Gdiplus::RectF chip{image.X + 10, image.Y + 10, 50, 22};
+            fillPill(g, chip, Theme::Glass);
+            drawText(g, L"1.8.9", chip, 11, Gdiplus::FontStyleBold, Theme::TextPrimary, Gdiplus::StringAlignmentCenter, Gdiplus::StringAlignmentCenter);
+        }
+        drawText(g, ScreenshotLibrary::formatDate(entry.modified), {b.X + 14, image.GetBottom() + 4, b.Width - 100, b.GetBottom() - image.GetBottom() - 8},
+            12.5F, Gdiplus::FontStyleBold, Theme::TextPrimary, Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+        drawText(g, ModInventory::formatSize(entry.size), {b.GetRight() - 94, image.GetBottom() + 4, 80, b.GetBottom() - image.GetBottom() - 8},
+            12, Gdiplus::FontStyleRegular, Theme::TextMuted, Gdiplus::StringAlignmentFar, Gdiplus::StringAlignmentCenter);
+        drawRoundedRectangle(g, {b.X + .5F, b.Y + .5F, b.Width - 1, b.Height - 1}, Theme::CardRadius,
+            blend(Theme::Divider, Theme::AccentOutline, visual.hover));
+        if (visual.focused) drawFocusRing(g, b, Theme::CardRadius, Theme::AccentLight);
+    }
+    const auto rows = rowCount(count);
+    if (rows > static_cast<std::size_t>(Layout::ScreenshotRows)) {
+        const Gdiplus::RectF list{100, 168, 1156, 608};
+        scrollbar(g, list, static_cast<float>(rows) * 206 - 14, static_cast<float>(m.firstRow) * 206 *
+            (static_cast<float>(rows) * 206 - 14 - list.Height) / std::max(1.0F, static_cast<float>(lastFirstRow(count)) * 206));
+        const std::wstring position = std::to_wstring(first + 1) + L"–" + std::to_wstring(std::min(count, first + Visible)) +
+            L" de " + std::to_wstring(count) + L" · role para ver mais";
+        drawText(g, position, {Layout::PageSubtitle.X + 600, Layout::PageSubtitle.Y, 556, 22}, 12.5F, Gdiplus::FontStyleRegular,
+            Theme::TextMuted, Gdiplus::StringAlignmentFar);
+    }
+}
+
+void ScreenshotsView::drawViewer(Gdiplus::Graphics& g, const ScreenshotsModel& m, const ControlVisuals& visuals) const
+{
+    using namespace LauncherConstants;
+    const auto count = m.entries->size();
+    const auto index = static_cast<std::size_t>(m.viewer);
+    const auto& entry = (*m.entries)[index];
+
+    Buttons::draw(g, Layout::ViewerBack, L"Voltar", visuals(ViewerBackButtonId), Buttons::Style::Ghost, Icons::Icon::ChevronLeft);
+    const auto& title = Layout::ViewerTitle;
+    drawDisplayText(g, ScreenshotLibrary::formatDate(entry.modified), {title.X, title.Y, title.Width, 28}, 19, Theme::TextPrimary,
+        Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+    std::wstring detail = m.message;
+    if (detail.empty()) {
+        detail = std::to_wstring(index + 1) + L" de " + std::to_wstring(count);
+        if (m.viewerWidth > 0) detail += L" · " + std::to_wstring(m.viewerWidth) + L" × " + std::to_wstring(m.viewerHeight);
+        detail += L" · " + ModInventory::formatSize(entry.size) + (entry.vanilla ? L" · Minecraft 1.8.9" : L" · Modpack Eternal");
+    }
+    if (!m.message.empty() && !m.messageError)
+        Icons::draw(g, Icons::Icon::Check, {title.X, title.Y + 33, 14, 14}, Theme::Success, 1.8F);
+    drawText(g, detail, {title.X + (!m.message.empty() && !m.messageError ? 20.0F : 0.0F), title.Y + 30, title.Width, 20}, 12.5F,
+        Gdiplus::FontStyleRegular, m.messageError ? Theme::Danger : !m.message.empty() ? Theme::TextPrimary : Theme::TextMuted,
+        Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+
+    Buttons::draw(g, Layout::ViewerCopy, L"Copiar", visuals(ViewerCopyButtonId), Buttons::Style::Secondary, Icons::Icon::Copy);
+    Buttons::draw(g, Layout::ViewerFolder, L"Mostrar na pasta", visuals(ViewerFolderButtonId), Buttons::Style::Ghost, Icons::Icon::Folder, false, 12.5F);
+    Buttons::draw(g, Layout::ViewerOpen, L"Abrir", visuals(ViewerOpenButtonId), Buttons::Style::Ghost, Icons::Icon::External);
+    const Gdiplus::Color removeHover(255, 52, 30, 40);
+    Buttons::drawIcon(g, Layout::ViewerDelete, Icons::Icon::Trash, visuals(ViewerDeleteButtonId), false, 18, &removeHover);
+
+    // The picture fits the stage whole, on a dark plate.
+    const auto& stage = Layout::ViewerImage;
+    fillRoundedRectangle(g, stage, Theme::PanelRadius, Gdiplus::Color(255, 8, 9, 13));
+    const Gdiplus::Bitmap* picture = m.viewerImage;
+    float pictureWidth = static_cast<float>(m.viewerWidth), pictureHeight = static_cast<float>(m.viewerHeight);
+    bool preview = false;
+    if (!picture && m.thumbnails) {
+        // While the full picture decodes, the grid thumbnail stands in.
+        if (const auto found = m.thumbnails->find(entry.path.wstring()); found != m.thumbnails->end()) {
+            picture = found->second.get();
+            preview = true;
+        }
+    }
+    if (picture) {
+        if (pictureWidth <= 0 || pictureHeight <= 0 || preview) {
+            pictureWidth = static_cast<float>(const_cast<Gdiplus::Bitmap*>(picture)->GetWidth());
+            pictureHeight = static_cast<float>(const_cast<Gdiplus::Bitmap*>(picture)->GetHeight());
+            if (preview && m.viewerWidth > 0) { pictureWidth = static_cast<float>(m.viewerWidth); pictureHeight = static_cast<float>(m.viewerHeight); }
+        }
+        const float scale = std::min(stage.Width / pictureWidth, stage.Height / pictureHeight);
+        const Gdiplus::RectF placed{stage.X + (stage.Width - pictureWidth * scale) / 2, stage.Y + (stage.Height - pictureHeight * scale) / 2,
+            pictureWidth * scale, pictureHeight * scale};
+        const auto saved = g.Save();
+        auto clip = createRoundedPath(stage, Theme::PanelRadius);
+        g.SetClip(clip.get(), Gdiplus::CombineModeIntersect);
+        g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBilinear);
+        auto* bitmap = const_cast<Gdiplus::Bitmap*>(picture);
+        if (preview) {
+            // A thumbnail is a center crop; show the matching part of the stage.
+            const float cropScale = std::max(placed.Width / static_cast<float>(bitmap->GetWidth()), placed.Height / static_cast<float>(bitmap->GetHeight()));
+            const float w = static_cast<float>(bitmap->GetWidth()) * cropScale, h = static_cast<float>(bitmap->GetHeight()) * cropScale;
+            g.SetClip(placed, Gdiplus::CombineModeIntersect);
+            g.DrawImage(bitmap, Gdiplus::RectF(placed.X + (placed.Width - w) / 2, placed.Y + (placed.Height - h) / 2, w, h));
+        } else {
+            g.DrawImage(bitmap, placed);
+        }
+        g.Restore(saved);
+    } else {
+        Icons::draw(g, Icons::Icon::Image, {stage.X + stage.Width / 2 - 20, stage.Y + stage.Height / 2 - 34, 40, 40}, Theme::Border, 1.6F);
+        drawText(g, L"Carregando captura...", {stage.X, stage.Y + stage.Height / 2 + 14, stage.Width, 22}, 13, Gdiplus::FontStyleRegular,
+            Theme::TextMuted, Gdiplus::StringAlignmentCenter);
+    }
+    drawRoundedRectangle(g, {stage.X + .5F, stage.Y + .5F, stage.Width - 1, stage.Height - 1}, Theme::PanelRadius, Theme::Divider);
+
+    // Previous / next: round glass buttons floating over the picture's edges.
+    const struct { int id; const Gdiplus::RectF* bounds; Icons::Icon icon; bool available; } arrows[] = {
+        {ViewerPreviousButtonId, &Layout::ViewerPrevious, Icons::Icon::ChevronLeft, index > 0},
+        {ViewerNextButtonId, &Layout::ViewerNext, Icons::Icon::ChevronRight, index + 1 < count}};
+    for (const auto& arrow : arrows) {
+        if (!arrow.available) continue;
+        const auto& b = *arrow.bounds;
+        const auto v = visuals(arrow.id);
+        Gdiplus::SolidBrush fill(blend(Gdiplus::Color(170, 13, 14, 20), Gdiplus::Color(235, 47, 40, 80), v.hover));
+        g.FillEllipse(&fill, b);
+        Gdiplus::Pen outline(blend(Theme::GlassOutline, Theme::AccentOutline, v.hover), 1);
+        g.DrawEllipse(&outline, b.X + .5F, b.Y + .5F, b.Width - 1, b.Height - 1);
+        Icons::draw(g, arrow.icon, {b.X + 14, b.Y + 14, 24, 24}, blend(Theme::TextPrimary, Theme::AccentLight, v.hover), 2.2F);
+        if (v.focused) drawFocusRing(g, b, b.Width / 2, Theme::AccentLight);
+    }
 }
 
 void HelpView::draw(Gdiplus::Graphics& g, const HelpModel& m, const ControlVisuals& visuals) const

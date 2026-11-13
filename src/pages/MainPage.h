@@ -16,7 +16,9 @@
 #include "services/LauncherUpdateService.h"
 #include "services/MicrosoftAuthService.h"
 #include "services/ModInventory.h"
+#include "services/NewsFeed.h"
 #include "services/PlaytimeApi.h"
+#include "services/ScreenshotLibrary.h"
 #include "services/PlaytimeStore.h"
 #include "services/SkinLookup.h"
 #include "types/LauncherState.h"
@@ -96,7 +98,7 @@ private:
     float chromeWidth() const;
     float chromeHeight() const;
     float navigationTarget() const;
-    float toastTarget() const;
+    float spotlightTarget() const;
     void syncModKnobs();
 
     // Navigation.
@@ -160,7 +162,24 @@ private:
     void openLog(const std::filesystem::path& file);
     void copySupportInformation();
     void setHelpMessage(std::wstring message, bool error = false);
-    void checkVersionToast();
+
+    // News read state: spotlight on Home, badge on the rail, NOVO tags.
+    void loadNewsReadState();
+    void applyNewsReadState();
+    int spotlightIndex() const;
+    int unreadNewsCount() const;
+    void dismissSpotlight();
+    void markNewsRead();
+
+    // Screenshots.
+    ScreenshotsModel screenshotsModel(bool preview) const;
+    void refreshScreenshots();
+    void requestScreenshotImages();
+    void openScreenshot(int index);
+    void closeScreenshot();
+    void deleteScreenshot();
+    void setScreenshotsMessage(std::wstring message, bool error = false);
+    const ScreenshotEntry* currentScreenshot() const;
 
     HINSTANCE instance_;
     HWND window_ = nullptr;
@@ -176,8 +195,7 @@ private:
     float pageFade_ = 1;
     float time_ = 0;              // seconds; drives idle effects (breathing, blinking, sheens)
     float navIndicator_ = 60;     // logical top of the sliding navigation selection
-    float toastReveal_ = 0;
-    float toastAge_ = 0;          // milliseconds the toast has been on screen
+    float spotlightReveal_ = 0;
     float playSweep_ = 1;
     float playPulse_ = 0;
     float playPress_ = 0;
@@ -250,8 +268,21 @@ private:
     bool newsLoading_ = false;
     bool newsRequested_ = false;
     std::wstring newsError_;
-    bool toastVisible_ = false;
-    std::wstring toastText_;
+    NewsReadState newsRead_;
+
+    // Screenshots.
+    ScreenshotsView screenshotsView_;
+    std::vector<ScreenshotEntry> screenshots_;
+    std::size_t screenshotRow_ = 0;
+    int screenshotViewer_ = -1;
+    std::map<std::wstring, std::shared_ptr<Gdiplus::Bitmap>> screenshotThumbnails_;
+    std::shared_ptr<Gdiplus::Bitmap> viewerImage_;
+    std::wstring viewerImagePath_;
+    int viewerWidth_ = 0;
+    int viewerHeight_ = 0;
+    bool screenshotLoading_ = false;
+    std::wstring screenshotsMessage_;
+    bool screenshotsMessageError_ = false;
 
     // Mods.
     ModInventorySnapshot mods_;
@@ -282,7 +313,12 @@ private:
     bool leaderboardPending_ = false;
     RankingState rankingState_ = RankingState::Loading;
     LeaderboardResult leaderboard_;
+    float rankingScroll_ = 0;
     std::optional<std::uint64_t> serverTotalSeconds_;
+    // Hours of the preview podium (previews only), chosen to show different levels.
+    std::array<std::uint64_t, 3> previewRankingHours_{312, 167, 96};
+    int previewExtraPlayers_ = 0;
+    float previewRankingScroll_ = 0;
     std::wstring serverTotalName_;
 
     // Skin faces by lowercase name. Unavailable results are retried on the next lookup.
@@ -311,6 +347,7 @@ private:
     std::jthread leaderboardThread_;
     std::jthread playtimeSyncThread_;
     std::jthread skinThread_;
+    std::jthread screenshotThread_;
     // Last member: destruction joins before any state captured by the worker is destroyed.
     std::jthread launcherUpdateThread_;
     // Last: all captured services, tracking state and HWND outlive this worker.

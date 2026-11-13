@@ -2,12 +2,14 @@
 
 #include "components/Buttons.h"
 #include "services/ModInventory.h"
+#include "services/ScreenshotLibrary.h"
 #include "types/LauncherState.h"
 
 #include <objidl.h>
 #include <gdiplus.h>
 
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -70,6 +72,35 @@ class VersionsView
 {
 public:
     void draw(Gdiplus::Graphics& graphics, const VersionsModel& model, const HeroComponent& hero, const ControlVisuals& visuals) const;
+};
+
+struct ScreenshotsModel
+{
+    const std::vector<ScreenshotEntry>* entries = nullptr;
+    // Decoded thumbnails by path; a missing one draws a placeholder while it loads.
+    const std::map<std::wstring, std::shared_ptr<Gdiplus::Bitmap>>* thumbnails = nullptr;
+    std::size_t firstRow = 0;
+    // Index of the picture open in the viewer, or -1 for the grid.
+    int viewer = -1;
+    const Gdiplus::Bitmap* viewerImage = nullptr;
+    int viewerWidth = 0;
+    int viewerHeight = 0;
+    std::wstring message;
+    bool messageError = false;
+    float entrance = 1;
+    float time = 0;
+};
+
+class ScreenshotsView
+{
+public:
+    static constexpr std::size_t Visible = 12;
+    void draw(Gdiplus::Graphics& graphics, const ScreenshotsModel& model, const ControlVisuals& visuals) const;
+    static std::size_t rowCount(std::size_t entries);
+    static std::size_t lastFirstRow(std::size_t entries);
+private:
+    void drawGrid(Gdiplus::Graphics& graphics, const ScreenshotsModel& model, const ControlVisuals& visuals) const;
+    void drawViewer(Gdiplus::Graphics& graphics, const ScreenshotsModel& model, const ControlVisuals& visuals) const;
 };
 
 struct HelpModel

@@ -115,7 +115,7 @@ public:
     static void tick(MainPage& page) {page.previousFrame_=std::chrono::steady_clock::now()-std::chrono::milliseconds(32);page.animate();}
 
     static void chromeAndNavigation(MainPage& page) {
-        for(const int id:{NavHomeId,NavNewsId,NavModsId,NavSettingsId,NavHelpId,MinimizeButtonId,MaximizeButtonId,CloseButtonId})
+        for(const int id:{NavHomeId,NavNewsId,NavModsId,NavScreenshotsId,NavSettingsId,NavHelpId,MinimizeButtonId,MaximizeButtonId,CloseButtonId})
             check(shown(control(page,id)),"window chrome and navigation are always visible");
         check(shown(control(page,PlayButtonId)) && shown(page.nicknameInput_) && !shown(control(page,ModsAddButtonId)),
             "home shows the player card only");
@@ -164,6 +164,25 @@ public:
         check(page.vanillaSelected_ && page.page_==LauncherPage::Versions,"choosing a version selects it and stays on the page");
         SendMessageW(control(page,VersionEternalButtonId),BM_CLICK,0,0);
         check(!page.vanillaSelected_,"the group's modpack can be selected again");
+        SendMessageW(control(page,NavScreenshotsId),BM_CLICK,0,0);
+        check(page.page_==LauncherPage::Screenshots && shown(control(page,ScreenshotsFolderButtonId)) && !shown(control(page,PlayButtonId)) &&
+              !shown(control(page,ViewerBackButtonId)),"the screenshots page shows its grid controls");
+        {
+            // Two fake pictures: the grid exposes one card each, the viewer replaces the grid.
+            page.screenshots_={{L"C:\\none\\a.png",1,2,false},{L"C:\\none\\b.png",1,1,true}};
+            page.screenshotLoading_=true;  // keep the worker away from the fake paths
+            page.redraw();
+            check(shown(control(page,ScreenshotCardFirstId)) && shown(control(page,ScreenshotCardFirstId+1)) &&
+                  !shown(control(page,ScreenshotCardFirstId+2)),"one card per picture");
+            SendMessageW(control(page,ScreenshotCardFirstId+1),BM_CLICK,0,0);
+            check(page.screenshotViewer_==1 && shown(control(page,ViewerBackButtonId)) && shown(control(page,ViewerPreviousButtonId)) &&
+                  !shown(control(page,ViewerNextButtonId)) && !shown(control(page,ScreenshotCardFirstId)),"a card opens the viewer");
+            MSG left{};left.hwnd=page.window_;left.message=WM_KEYDOWN;left.wParam=VK_LEFT;
+            check(page.handleKeyboard(left) && page.screenshotViewer_==0,"arrow keys step through pictures");
+            check(page.handleKeyboard(escape) && page.page_==LauncherPage::Screenshots && page.screenshotViewer_<0,
+                "Escape closes the viewer before leaving the page");
+            page.screenshots_.clear();page.screenshotLoading_=false;
+        }
         SendMessageW(control(page,NavHelpId),BM_CLICK,0,0);
         check(page.page_==LauncherPage::Help && shown(control(page,HelpRepairButtonId)) && shown(control(page,HelpCopySupportButtonId)),
             "help page exposes its actions");
@@ -370,7 +389,7 @@ public:
         page.redraw();
         const auto cancel=control(page,CancelInstallationButtonId);
         check(shown(cancel) && shown(control(page,InstallationLogButtonId)),"installation exposes native cancel and log controls");
-        check(shown(control(page,NewsAllButtonId)) && !shown(control(page,ToastNewsButtonId)) && shown(control(page,PlayButtonId)),
+        check(shown(control(page,NewsAllButtonId)) && !shown(control(page,SpotlightReadButtonId)) && shown(control(page,PlayButtonId)),
             "installation replaces the hero only; news and the player card stay");
         check(!IsWindowEnabled(control(page,PlayButtonId)) && IsWindowEnabled(cancel),"preparation blocks play and allows cancellation");
         const auto attempt=page.installation_.attempt;
@@ -480,7 +499,7 @@ public:
         page.installation_={};page.viewState_=initial;page.page_=LauncherPage::Home;page.pageFade_=1;
         page.portalEntrance_=1;page.portalBurst_=0;page.portalEnergy_=0;page.displayedProgress_=0;
         page.originalMode_=false;page.identitySelection_=0;
-        page.navIndicator_=page.navigationTarget();page.toastReveal_=0;page.playSweep_=1;page.playLight_=page.playLightTarget_;
+        page.navIndicator_=page.navigationTarget();page.spotlightReveal_=0;page.playSweep_=1;page.playLight_=page.playLightTarget_;
         page.motionEnabled_=true;page.ambientMotion_=false;
         for(auto& entry:page.controls_) {entry.hover=0;entry.hovered=false;}
         ShowWindow(page.window_,SW_SHOWNOACTIVATE);page.redraw();page.prepareFrame();

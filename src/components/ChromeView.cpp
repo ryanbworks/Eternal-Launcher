@@ -6,6 +6,9 @@
 #include "styles/Theme.h"
 #include "utils/DrawingUtils.h"
 
+#include <algorithm>
+#include <cmath>
+#include <iterator>
 #include <string>
 
 namespace
@@ -21,7 +24,7 @@ namespace
 }
 
 void ChromeView::draw(Gdiplus::Graphics& g, float width, float height, LauncherPage page, bool maximized,
-                      bool active, const ControlVisuals& visuals, float indicatorY) const
+                      bool active, const ControlVisuals& visuals, float indicatorY, int newsBadge, float time) const
 {
     using namespace LauncherConstants;
     Gdiplus::SolidBrush background(Theme::Background);
@@ -69,6 +72,7 @@ void ChromeView::draw(Gdiplus::Graphics& g, float width, float height, LauncherP
         {NavVersionsId, Icons::Icon::Layers, LauncherPage::Versions},
         {NavNewsId, Icons::Icon::News, LauncherPage::News},
         {NavModsId, Icons::Icon::Mods, LauncherPage::Mods},
+        {NavScreenshotsId, Icons::Icon::Image, LauncherPage::Screenshots},
         {NavSettingsId, Icons::Icon::Settings, LauncherPage::Settings}};
     // One selection pill travels between the icons, with an accent bar on the rail edge.
     const Gdiplus::RectF indicator{14, indicatorY, 48, 48};
@@ -80,6 +84,26 @@ void ChromeView::draw(Gdiplus::Graphics& g, float width, float height, LauncherP
         Buttons::drawIcon(g, bounds, glyph, visual, false, 22);
         if (selected) Icons::draw(g, glyph, {bounds.X + 13, bounds.Y + 13, 22, 22}, Theme::AccentLight, 1.8F);
     };
-    for (int i = 0; i < 5; ++i) icon(Layout::navButton(i), navigation[i].icon, navigation[i].id, page == navigation[i].page);
+    for (int i = 0; i < static_cast<int>(std::size(navigation)); ++i)
+        icon(Layout::navButton(i), navigation[i].icon, navigation[i].id, page == navigation[i].page);
     icon(Layout::sidebarHelp(height), Icons::Icon::Help, NavHelpId, page == LauncherPage::Help);
+
+    if (newsBadge > 0) {
+        // Unread news: a counter on the corner of the News icon, with a soft ring that keeps
+        // calling while it is there.
+        const auto news = Layout::navButton(static_cast<int>(LauncherPage::News));
+        const std::wstring count = newsBadge > 9 ? std::wstring(L"9+") : std::to_wstring(newsBadge);
+        const float badgeWidth = std::max(18.0F, DrawingUtils::measureText(g, count, 10.5F, Gdiplus::FontStyleBold) + 9);
+        const Gdiplus::RectF badge{news.GetRight() - badgeWidth + 4, news.Y + 3, badgeWidth, 18};
+        if (time >= 0) {
+            const float t = std::fmod(time, 2.2F) / 2.2F;
+            const float grow = 7 * (1 - (1 - t) * (1 - t));
+            DrawingUtils::drawRoundedRectangle(g, {badge.X - grow, badge.Y - grow, badge.Width + 2 * grow, badge.Height + 2 * grow},
+                9 + grow, Gdiplus::Color(static_cast<BYTE>(150 * (1 - t)), 165, 130, 255), 1.5F);
+        }
+        DrawingUtils::fillPill(g, {badge.X - 2, badge.Y - 2, badge.Width + 4, badge.Height + 4}, Theme::Background);
+        DrawingUtils::fillPill(g, badge, Theme::Accent);
+        DrawingUtils::drawText(g, count, badge, 10.5F, Gdiplus::FontStyleBold, Theme::AccentInk,
+            Gdiplus::StringAlignmentCenter, Gdiplus::StringAlignmentCenter);
+    }
 }
