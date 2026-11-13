@@ -22,7 +22,8 @@ and versions use [SemVer](https://semver.org/) plus a codename.
   your account or save it to your library. Share a library skin with one click; you can
   take it back later, and anyone can report one. Served by the `eternal-gallery` service.
   A search field finds the skin of any original Minecraft account by nickname (or of a
-  Conta Eternal), ready to use or save.
+  Conta Eternal), ready to use or save. A Populares catalog of skins from well-known
+  players fills the tab from the start, with filters for each source.
 - **First access hint.** The sign-in panel and the player card explain that a reserved
   Conta Eternal signs in the first time with the nickname alone, then gets a password.
 
@@ -31,6 +32,12 @@ and versions use [SemVer](https://semver.org/) plus a codename.
   aside, with a counter on the News icon and NOVO tags.
 - **Top players.** The podium wears gold, silver and bronze and gets more ornate with
   hours; the card now scrolls through every player (the server lists up to 200).
+- **Screens on Home.** Sign-in, the installation and the play-time levels open as
+  screens centered over a dimmed Home instead of sharing the landscape's slot.
+
+### Fixed
+- Cancelling or failing an installation no longer leaves its panel on Home for good,
+  hiding the news spotlight, sign-in and the levels until the next game.
 
 ## [2.2.0] — Horizon · 2026-11-11
 

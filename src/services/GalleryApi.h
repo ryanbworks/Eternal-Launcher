@@ -53,14 +53,17 @@ struct CommunitySkinList
 {
     bool success = false;
     std::vector<CommunitySkin> skins;
+    // The Populares catalog: skins of well-known original accounts, kept by the server.
+    std::vector<CommunitySkin> featured;
 };
 
 // Client of server/gallery_api.py, published under /api/gallery/.
 namespace GalleryApi
 {
-    // Community skins: the list and every texture (a few KB each).
+    // Community skins and the Populares catalog: the lists and every texture (a few KB
+    // each), kept in `cache` by id so later visits download only new ones.
     CommunitySkinList parseSkins(std::string_view json);
-    CommunitySkinList fetchSkins(std::wstring_view baseUrl, std::stop_token stop = {});
+    CommunitySkinList fetchSkins(std::wstring_view baseUrl, const std::filesystem::path& cache, std::stop_token stop = {});
     GalleryUploadResult shareSkin(std::wstring_view baseUrl, const std::string& png, const std::wstring& nickname, const std::wstring& title,
                                   bool slim, std::stop_token stop = {});
     bool removeSkin(std::wstring_view baseUrl, const std::wstring& id, const std::string& token, std::wstring& error);

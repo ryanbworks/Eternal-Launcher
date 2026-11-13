@@ -781,7 +781,8 @@ void SkinsView::draw(Gdiplus::Graphics& g, const SkinsModel& m, const ControlVis
         const float room = stage.Width - 48 - 80;
         const float width = std::min(room, measureText(g, m.selectedDetail, 12, Gdiplus::FontStyleRegular) * 1.1F + 12);
         const float x = stage.GetRight() - 24 - width;
-        const auto icon = selected->searched ? Icons::Icon::Search : selected->group ? Icons::Icon::Users : Icons::Icon::Share;
+        const auto icon = selected->searched ? Icons::Icon::Search : selected->featured ? Icons::Icon::Crown
+                        : selected->group ? Icons::Icon::Users : Icons::Icon::Share;
         Icons::draw(g, icon, {x - 19, infoY + 32, 13, 13}, Theme::AccentLight, 1.8F);
         drawTextLine(g, m.selectedDetail, {x, infoY + 30, width, 18}, 12, Gdiplus::FontStyleRegular, Theme::TextSecondary,
             Gdiplus::StringAlignmentFar);
@@ -821,9 +822,28 @@ void SkinsView::draw(Gdiplus::Graphics& g, const SkinsModel& m, const ControlVis
     card(g, library);
     drawText(g, m.explore ? L"Explorar skins" : L"Sua biblioteca", {library.X + 24, library.Y + 22, 300, 24}, 16, Gdiplus::FontStyleBold,
         Theme::TextPrimary);
-    drawText(g, m.explore ? L"Escolha uma para ver de perto, usar no servidor ou guardar na sua biblioteca."
-                          : L"Skins que você adicionou. Escolha uma e use no servidor.",
-        {library.X + 24, library.Y + 48, 620, 20}, 12.5F, Gdiplus::FontStyleRegular, Theme::TextMuted);
+    if (m.explore) {
+        const auto count = m.filterCounts[static_cast<std::size_t>(std::clamp(m.filter, 0, 3))];
+        drawText(g, count == 1 ? std::wstring(L"1 skin para escolher") : std::to_wstring(count) + L" skins para escolher",
+            {library.X + 24, library.Y + 48, 200, 20}, 12.5F, Gdiplus::FontStyleRegular, Theme::TextMuted);
+        static constexpr const wchar_t* Filters[] = {L"Todas", L"Do grupo", L"Compartilhadas", L"Populares"};
+        for (int i = 0; i < 4; ++i) {
+            auto chip = Layout::skinsFilter(i);
+            chip.Y += library.Y - Layout::SkinsLibrary.Y;
+            Buttons::draw(g, chip, Filters[i], visuals(SkinFilterFirstId + i), Buttons::Style::Chip, std::nullopt, m.filter == i, 12.5F);
+        }
+    } else {
+        drawText(g, L"Skins que você adicionou. Escolha uma e use no servidor.", {library.X + 24, library.Y + 48, 620, 20}, 12.5F,
+            Gdiplus::FontStyleRegular, Theme::TextMuted);
+    }
+    if (m.explore && m.cards.empty() && m.filter != 0 && !m.exploreLoading) {
+        static constexpr const wchar_t* Empty[] = {L"", L"Ninguém do servidor trocou de skin ainda.",
+            L"Ninguém compartilhou uma skin ainda. Em Minhas skins, compartilhe uma da sua biblioteca.",
+            L"O catálogo de skins populares ainda está vazio."};
+        drawText(g, Empty[std::clamp(m.filter, 1, 3)], {library.X + 60, library.Y + 280, library.Width - 120, 48}, 13.5F,
+            Gdiplus::FontStyleRegular, Theme::TextSecondary, Gdiplus::StringAlignmentCenter);
+        return;
+    }
     if (m.explore && m.cards.empty()) {
         const float cx = library.X + library.Width / 2, top = library.Y + 190;
         fillRoundedRectangle(g, {cx - 36, top, 72, 72}, 20, Theme::AccentTint);
@@ -859,12 +879,12 @@ void SkinsView::draw(Gdiplus::Graphics& g, const SkinsModel& m, const ControlVis
         const Gdiplus::RectF figure{b.X + (b.Width - 56) / 2, b.Y + 12, 56, 112};
         if (item.texture) SkinRenderer::drawBody(g, *item.texture, figure, item.slim, false);
         else silhouette(g, figure, Gdiplus::Color(255, 58, 56, 82));
-        if (item.group || item.searched) {
-            // A player's skin on the server, or the one found by nickname; not a shared one.
+        if (item.group || item.searched || item.featured) {
+            // Where it comes from: the server's players, the search or the Populares catalog.
             const Gdiplus::RectF chip{b.X + 8, b.Y + 8, 24, 24};
             fillPill(g, chip, chosen ? Theme::Accent : Theme::Glass);
-            Icons::draw(g, item.searched ? Icons::Icon::Search : Icons::Icon::Users, {chip.X + 5, chip.Y + 5, 14, 14},
-                chosen ? Theme::AccentInk : Theme::AccentLight, 1.8F);
+            const auto icon = item.searched ? Icons::Icon::Search : item.featured ? Icons::Icon::Crown : Icons::Icon::Users;
+            Icons::draw(g, icon, {chip.X + 5, chip.Y + 5, 14, 14}, chosen ? Theme::AccentInk : Theme::AccentLight, 1.8F);
         }
         if (item.current) {
             // The skin in use says so where its name would be.

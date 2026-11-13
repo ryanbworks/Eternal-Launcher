@@ -167,6 +167,10 @@ namespace {
         check(skins.success && skins.skins.size()==1 && skins.skins[0].title==L"Cavaleiro (fino)" && skins.skins[0].slim,
               "community skins keep only well-formed entries");
         check(!GalleryApi::parseSkins(R"({"skins":"x"})").success,"a malformed skin list is rejected");
+        const auto catalog=GalleryApi::parseSkins(R"({"skins":[],"featured":[{"id":"0123456789abcdef","name":"Technoblade","title":"Technoblade"}]})");
+        check(catalog.success && catalog.skins.empty() && catalog.featured.size()==1 && catalog.featured[0].name==L"Technoblade",
+              "the Populares catalog comes apart from the shared skins");
+        check(GalleryApi::parseSkins(R"({"skins":[]})").success,"servers without a catalog still list");
         check(GalleryApi::skinTitle(L"  Mago<>do  Fogo?! ")==L"Mago do Fogo !" && GalleryApi::skinTitle(L"%%%")==L"Skin" &&
               GalleryApi::skinTitle(L"Ação") == L"Ação" && GalleryApi::skinTitle(std::wstring(40,L'a')).size()==32,
               "library names become titles the server accepts");
@@ -231,7 +235,7 @@ namespace {
                 const std::string png((std::istreambuf_iterator<char>(skinInput)),std::istreambuf_iterator<char>());
                 const auto shared=GalleryApi::shareSkin(url.data(),png,L"Steve",L"Mago do Fogo (ação)",true);
                 check(shared.success && shared.id.size()==16 && !shared.deleteToken.empty(),"a skin is shared");
-                const auto community=GalleryApi::fetchSkins(url.data());
+                const auto community=GalleryApi::fetchSkins(url.data(),root/L"skin-cache");
                 const bool listedSkin=std::any_of(community.skins.begin(),community.skins.end(),[&](const CommunitySkin& s) {
                     return s.id==shared.id && s.title==L"Mago do Fogo (ação)" && s.slim && s.png==png;});
                 check(community.success && listedSkin,"the shared skin is listed with its title, model and texture");
@@ -239,7 +243,7 @@ namespace {
                 check(GalleryApi::reportSkin(url.data(),shared.id,error),"a skin can be reported");
                 check(!GalleryApi::removeSkin(url.data(),shared.id,"wrong-token",error),"a wrong token cannot remove a skin");
                 check(GalleryApi::removeSkin(url.data(),shared.id,shared.deleteToken,error),"the owner removes the skin");
-                const auto after=GalleryApi::fetchSkins(url.data());
+                const auto after=GalleryApi::fetchSkins(url.data(),root/L"skin-cache");
                 check(std::none_of(after.skins.begin(),after.skins.end(),[&](const CommunitySkin& s) {return s.id==shared.id;}),"a removed skin is gone");
                 std::cout << "gallery integration: ran against ETERNAL_GALLERY_TEST_URL\n";
             }

@@ -9,6 +9,7 @@
 #include <objidl.h>
 #include <gdiplus.h>
 
+#include <array>
 #include <map>
 #include <memory>
 #include <string>
@@ -132,6 +133,7 @@ struct SkinCard
     bool current = false;                  // the skin the account uses right now
     bool group = false;                    // Explorar: a player's skin on the server
     bool searched = false;                 // Explorar: found by nickname
+    bool featured = false;                 // Explorar: from the Populares catalog
 };
 
 struct SkinsModel
@@ -161,6 +163,8 @@ struct SkinsModel
     bool sharing = false;             // a share, removal or report is running
     bool searching = false;           // a nickname search is running
     std::wstring searchPreview;       // previews only: text drawn in the search field
+    int filter = 0;                   // 0 all, 1 group, 2 shared, 3 popular
+    std::array<std::size_t, 4> filterCounts{};
 };
 
 class SkinsView

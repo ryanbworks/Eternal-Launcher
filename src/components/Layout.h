@@ -157,6 +157,14 @@ namespace Layout
     inline const Rect SkinsTabs{548, 86, 380, 40};
     inline Rect skinsTab(int index) { return {552 + static_cast<float>(index) * 186, 90, 186, 32}; }
     inline const Rect SkinsRefresh{1208, 84, 48, 44};
+    // Explorar filters (Todas, Do grupo, Compartilhadas, Populares), right of the list title.
+    inline Rect skinsFilter(int index)
+    {
+        static constexpr float Widths[4] = {76, 100, 136, 108};
+        float x = 1232 - (Widths[0] + Widths[1] + Widths[2] + Widths[3] + 24);
+        for (int i = 0; i < index; ++i) x += Widths[i] + 8;
+        return {x, 186, Widths[index < 0 || index > 3 ? 0 : index], 32};
+    }
     // Explorar: find the skin of any nickname (a well holding an EDIT, and its go button).
     inline const Rect SkinsSearch{940, 84, 256, 44};
     inline const Rect SkinsSearchGo{1156, 88, 36, 36};

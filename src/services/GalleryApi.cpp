@@ -278,45 +278,76 @@ std::wstring GalleryApi::skinTitle(std::wstring_view name)
     return title.empty() ? L"Skin" : title;
 }
 
+namespace
+{
+    std::vector<CommunitySkin> skinArray(const JsonValue* value, std::size_t limit)
+    {
+        std::vector<CommunitySkin> result;
+        const auto* list = value ? value->arrayValue() : nullptr;
+        if (!list) return result;
+        for (const auto& entry : *list) {
+            const auto* id = entry.find("id");
+            const auto* name = entry.find("name");
+            const auto* title = entry.find("title");
+            if (!id || !id->stringValue() || !name || !name->stringValue() || !title || !title->stringValue()) continue;
+            CommunitySkin skin;
+            skin.id = wide(*id->stringValue());
+            skin.name = wide(*name->stringValue());
+            skin.title = wide(*title->stringValue());
+            if (!validId(skin.id) || !validNickname(skin.name) || skin.title.empty() || skin.title.size() > 32) continue;
+            if (const auto* slim = entry.find("slim")) skin.slim = slim->boolValue(false);
+            if (const auto* created = entry.find("created")) skin.created = static_cast<std::int64_t>(created->numberValue(0));
+            result.push_back(std::move(skin));
+            if (result.size() == limit) break;
+        }
+        return result;
+    }
+}
+
 CommunitySkinList GalleryApi::parseSkins(std::string_view json)
 {
     CommunitySkinList result;
     const auto document = JsonValue::parse(json);
     const auto* skins = document && document->objectValue() ? document->find("skins") : nullptr;
-    const auto* list = skins ? skins->arrayValue() : nullptr;
-    if (!list) return result;
-    for (const auto& entry : *list) {
-        const auto* id = entry.find("id");
-        const auto* name = entry.find("name");
-        const auto* title = entry.find("title");
-        if (!id || !id->stringValue() || !name || !name->stringValue() || !title || !title->stringValue()) continue;
-        CommunitySkin skin;
-        skin.id = wide(*id->stringValue());
-        skin.name = wide(*name->stringValue());
-        skin.title = wide(*title->stringValue());
-        if (!validId(skin.id) || !validNickname(skin.name) || skin.title.empty() || skin.title.size() > 32) continue;
-        if (const auto* slim = entry.find("slim")) skin.slim = slim->boolValue(false);
-        if (const auto* created = entry.find("created")) skin.created = static_cast<std::int64_t>(created->numberValue(0));
-        result.skins.push_back(std::move(skin));
-        if (result.skins.size() == 200) break;
-    }
+    if (!skins || !skins->arrayValue()) return result;
+    result.skins = skinArray(skins, 200);
+    // Servers from before the catalog send no "featured".
+    result.featured = skinArray(document->find("featured"), 300);
     result.success = true;
     return result;
 }
 
-CommunitySkinList GalleryApi::fetchSkins(std::wstring_view baseUrl, std::stop_token stop)
+CommunitySkinList GalleryApi::fetchSkins(std::wstring_view baseUrl, const std::filesystem::path& cache, std::stop_token stop)
 {
     const auto response = HttpDownloadClient{}.getText(endpoint(baseUrl, L"skins?limit=120"), stop);
     if (!response.success) return {};
     auto result = parseSkins(response.content);
-    for (auto& skin : result.skins) {
-        if (stop.stop_requested()) return {};
-        const auto texture = HttpDownloadClient{}.getText(endpoint(baseUrl, L"skins/" + skin.id + L".png"), stop);
-        if (texture.success && texture.content.size() <= 64 * 1024) skin.png = texture.content;
-    }
-    // A skin whose texture did not come is left out.
-    result.skins.erase(std::remove_if(result.skins.begin(), result.skins.end(), [](const CommunitySkin& skin) { return skin.png.empty(); }),
-        result.skins.end());
+    std::error_code ignored;
+    if (!cache.empty()) std::filesystem::create_directories(cache, ignored);
+    const auto download = [&](std::vector<CommunitySkin>& skins) {
+        for (auto& skin : skins) {
+            if (stop.stop_requested()) return;
+            // A texture never changes under its id, so a cached copy is as good as new.
+            const auto file = cache.empty() ? std::filesystem::path{} : cache / (skin.id + L".png");
+            if (!file.empty()) {
+                std::ifstream input(file, std::ios::binary);
+                std::string png((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+                if (!png.empty() && png.size() <= 64 * 1024) { skin.png = std::move(png); continue; }
+            }
+            const auto texture = HttpDownloadClient{}.getText(endpoint(baseUrl, L"skins/" + skin.id + L".png"), stop);
+            if (!texture.success || texture.content.empty() || texture.content.size() > 64 * 1024) continue;
+            skin.png = texture.content;
+            if (!file.empty()) {
+                std::ofstream output(file, std::ios::binary | std::ios::trunc);
+                output.write(skin.png.data(), static_cast<std::streamsize>(skin.png.size()));
+            }
+        }
+        // A skin whose texture did not come is left out.
+        skins.erase(std::remove_if(skins.begin(), skins.end(), [](const CommunitySkin& skin) { return skin.png.empty(); }), skins.end());
+    };
+    download(result.skins);
+    download(result.featured);
+    if (stop.stop_requested()) return {};
     return result;
 }
 

@@ -100,6 +100,10 @@ namespace
         {SkinExploreTabId, false, true, L"Explorar skins"},
         {SkinSearchInputId, false, true, nullptr},
         {SkinSearchButtonId, false, true, L"Buscar skin pelo nick"},
+        {SkinFilterFirstId, false, true, L"Todas"},
+        {SkinFilterFirstId + 1, false, true, L"Do grupo"},
+        {SkinFilterFirstId + 2, false, true, L"Compartilhadas"},
+        {SkinFilterFirstId + 3, false, true, L"Populares"},
         {SkinFolderButtonId, false, true, L"Abrir pasta de skins"},
         {SkinAddButtonId, false, true, L"Adicionar skin"},
         {SkinRefreshButtonId, false, true, L"Atualizar skins"},
@@ -1853,6 +1857,7 @@ Gdiplus::RectF MainPage::controlBounds(int id) const
     if (inRange(id, NewsLinkFirstId, NewsLinkCount)) return Layout::newsLink(id - NewsLinkFirstId);
     if (inRange(id, ScreenshotCardFirstId, ScreenshotCardCount)) return Layout::screenshotCard(id - ScreenshotCardFirstId);
     if (inRange(id, SkinCardFirstId, SkinCardCount)) return Layout::skinCard(id - SkinCardFirstId);
+    if (inRange(id, SkinFilterFirstId, SkinFilterCount)) return Layout::skinsFilter(id - SkinFilterFirstId);
     return {};
 }
 
@@ -1906,13 +1911,13 @@ bool MainPage::controlVisible(int id) const
     case SkinRemoveButtonId:
         if (skinExplore_) {
             const auto* skin = exploreSkin(exploreSelected_);
-            return page_ == LauncherPage::Skins && skin && !skin->group && !skin->searched && skinsShared_.byId(skin->id);
+            return page_ == LauncherPage::Skins && skin && !skin->group && !skin->searched && !skin->featured && skinsShared_.byId(skin->id);
         }
         return page_ == LauncherPage::Skins && skinSelected_ > 0 && static_cast<std::size_t>(skinSelected_) <= skinLibrary_.size();
     case SkinReportButtonId:
     {
         const auto* skin = skinExplore_ ? exploreSkin(exploreSelected_) : nullptr;
-        return page_ == LauncherPage::Skins && skin && !skin->group && !skin->searched && !skinsShared_.byId(skin->id);
+        return page_ == LauncherPage::Skins && skin && !skin->group && !skin->searched && !skin->featured && !skinsShared_.byId(skin->id);
     }
     case LoginUserInputId:
     case LoginPasswordInputId:
@@ -2002,6 +2007,7 @@ bool MainPage::controlVisible(int id) const
         const auto index = screenshotRow_ * Layout::ScreenshotColumns + static_cast<std::size_t>(id - ScreenshotCardFirstId);
         return page_ == LauncherPage::Screenshots && screenshotViewer_ < 0 && index < shotCount();
     }
+    if (inRange(id, SkinFilterFirstId, SkinFilterCount)) return page_ == LauncherPage::Skins && skinExplore_;
     if (inRange(id, SkinCardFirstId, SkinCardCount)) {
         if (skinExplore_)
             return page_ == LauncherPage::Skins && exploreRow_ * Layout::SkinColumns + static_cast<std::size_t>(id - SkinCardFirstId) < exploreCount();
@@ -2119,7 +2125,14 @@ std::wstring MainPage::controlLabel(int id) const
         const auto* skin = exploreSkin(static_cast<int>(exploreRow_ * Layout::SkinColumns) + id - SkinCardFirstId);
         if (!skin) return {};
         if (skin->searched) return L"Skin de " + skin->title + L", encontrada na busca";
+        if (skin->featured) return L"Skin de " + skin->title + L", popular";
         return skin->group ? L"Skin de " + skin->title + L", jogador do servidor" : L"Skin " + skin->title + L", compartilhada por " + skin->author;
+    }
+    if (inRange(id, SkinFilterFirstId, SkinFilterCount)) {
+        static constexpr const wchar_t* Names[] = {L"Todas as skins", L"Skins do grupo", L"Skins compartilhadas", L"Skins populares"};
+        const int filter = id - SkinFilterFirstId;
+        return std::wstring(Names[filter]) + L", " + std::to_wstring(exploreList(filter).size() - (exploreSearch_ ? 1 : 0)) +
+            (filter == exploreFilter_ ? L" (selecionado)" : L"");
     }
     if (id == SkinMineTabId) return skinExplore_ ? L"Minhas skins" : L"Minhas skins (selecionada)";
     if (id == SkinExploreTabId) return skinExplore_ ? L"Explorar skins (selecionada)" : L"Explorar skins";
@@ -2405,6 +2418,10 @@ void MainPage::handleCommand(int id, int)
     }
     if (inRange(id, ScreenshotCardFirstId, ScreenshotCardCount)) {
         openScreenshot(static_cast<int>(screenshotRow_ * Layout::ScreenshotColumns) + id - ScreenshotCardFirstId);
+        return;
+    }
+    if (inRange(id, SkinFilterFirstId, SkinFilterCount)) {
+        setExploreFilter(id - SkinFilterFirstId);
         return;
     }
     if (inRange(id, SkinCardFirstId, SkinCardCount)) {
@@ -3631,14 +3648,17 @@ SkinsModel MainPage::skinsModel(bool preview) const
         model.selectedRemovable = false;
         model.exploreLoading = exploreLoading_;
         model.exploreUnavailable = exploreUnavailable_;
-        for (int i = 0; i < static_cast<int>(exploreCount()); ++i) {
-            const auto* skin = exploreSkin(i);
-            model.cards.push_back({skin->title, &skin->texture, skin->slim, false, skin->group, skin->searched});
-        }
+        for (const auto* skin : exploreList(exploreFilter_))
+            model.cards.push_back({skin->title, &skin->texture, skin->slim, false, skin->group, skin->searched, skin->featured});
+        model.filter = exploreFilter_;
+        // Counts leave the search result out: it is not part of any category.
+        const std::size_t searched = exploreSearch_ ? 1 : 0;
+        for (int filter = 0; filter < 4; ++filter) model.filterCounts[static_cast<std::size_t>(filter)] = exploreList(filter).size() - searched;
         if (const auto* skin = exploreSkin(exploreSelected_)) {
-            const bool community = !skin->group && !skin->searched;
+            const bool community = !skin->group && !skin->searched && !skin->featured;
             const bool mine = community && skinsShared_.byId(skin->id);
-            model.selectedDetail = skin->searched ? skin->author : skin->group ? std::wstring(L"Em uso no servidor")
+            model.selectedDetail = skin->searched ? skin->author : skin->featured ? std::wstring(L"Skin popular de conta original")
+                                 : skin->group ? std::wstring(L"Em uso no servidor")
                                  : mine ? std::wstring(L"Compartilhada por você") : L"Compartilhada por " + skin->author;
             model.selectedMine = mine;
             model.selectedCommunity = community;
@@ -3670,11 +3690,34 @@ std::wstring MainPage::librarySourceKey(std::size_t libraryIndex) const
 const MainPage::ExploreSkin* MainPage::exploreSkin(int index) const
 {
     if (index < 0) return nullptr;
-    if (exploreSearch_ && index == 0) return &*exploreSearch_;
-    const auto i = static_cast<std::size_t>(index) - (exploreSearch_ ? 1 : 0);
-    if (i < exploreGroup_.size()) return &exploreGroup_[i];
-    if (i - exploreGroup_.size() < exploreCommunity_.size()) return &exploreCommunity_[i - exploreGroup_.size()];
-    return nullptr;
+    const auto list = exploreList(exploreFilter_);
+    return static_cast<std::size_t>(index) < list.size() ? list[static_cast<std::size_t>(index)] : nullptr;
+}
+
+std::vector<const MainPage::ExploreSkin*> MainPage::exploreList(int filter) const
+{
+    std::vector<const ExploreSkin*> list;
+    // The skin just searched stays first whatever the filter.
+    if (exploreSearch_) list.push_back(&*exploreSearch_);
+    const std::vector<ExploreSkin>* sources[] = {&exploreGroup_, &exploreCommunity_, &exploreFeatured_};
+    for (int source = 0; source < 3; ++source) {
+        if (filter != 0 && filter != source + 1) continue;
+        for (const auto& skin : *sources[source]) list.push_back(&skin);
+    }
+    return list;
+}
+
+void MainPage::setExploreFilter(int filter)
+{
+    if (filter < 0 || filter > 3 || filter == exploreFilter_) return;
+    exploreFilter_ = filter;
+    exploreSelected_ = 0;
+    exploreRow_ = 0;
+    if (const auto* skin = exploreSkin(0)) skinSlimChoice_ = skin->slim;
+    skinsMessage_.clear();
+    skinsMessageError_ = false;
+    layoutControls();
+    redraw();
 }
 
 void MainPage::showSkinsTab(bool explore)
@@ -3715,17 +3758,24 @@ void MainPage::loadExplore()
     if (eternalSignedIn() && std::find(names.begin(), names.end(), eternalSession_.name) == names.end()) names.push_back(eternalSession_.name);
     const auto generation = ++exploreGeneration_;
     if (exploreThread_.joinable()) exploreThread_.join();
-    exploreThread_ = std::jthread([window = window_, accounts = accountsBaseUrl_, gallery = galleryBaseUrl_, names, generation](std::stop_token stop) {
-        // Shared skins first: one list and small files. The players' skins follow.
+    exploreThread_ = std::jthread([window = window_, accounts = accountsBaseUrl_, gallery = galleryBaseUrl_, names, generation,
+                                   cache = LauncherSettingsStore::dataDirectory() / L"skin-cache"](std::stop_token stop) {
+        // Shared and Populares skins first: one list and small, cached files. The players' skins follow.
         auto* community = new SkinEvent;
         community->kind = SkinEvent::Kind::ExploreCommunity;
         community->generation = generation;
-        auto list = GalleryApi::fetchSkins(gallery, stop);
+        auto list = GalleryApi::fetchSkins(gallery, cache, stop);
         community->success = list.success;
         for (auto& shared : list.skins) {
             auto texture = SkinRenderer::decode(shared.png);
             if (!texture) continue;
             community->explore.push_back({shared.id, shared.title, shared.name, false, shared.slim, std::move(shared.png), std::move(*texture)});
+        }
+        for (auto& popular : list.featured) {
+            auto texture = SkinRenderer::decode(popular.png);
+            if (!texture) continue;
+            community->featured.push_back({popular.id, popular.title, popular.name, false, popular.slim, std::move(popular.png),
+                                           std::move(*texture), false, true});
         }
         if (!PostMessageW(window, SkinEventMessage, 0, reinterpret_cast<LPARAM>(community))) delete community;
         if (stop.stop_requested()) return;
@@ -3812,7 +3862,7 @@ void MainPage::handleExploreEvent(SkinEvent& event)
     }
     const auto selectedKey = [this] {
         const auto* skin = exploreSkin(exploreSelected_);
-        return skin ? (skin->searched ? L"s:" + skin->title : skin->group ? L"g:" + skin->title : L"c:" + skin->id) : std::wstring{};
+        return skin ? (skin->searched ? L"s:" + skin->title : skin->group ? L"g:" + skin->title : (skin->featured ? L"f:" : L"c:") + skin->id) : std::wstring{};
     }();
     switch (event.kind) {
     case SkinEvent::Kind::ExploreCommunity:
@@ -3820,6 +3870,7 @@ void MainPage::handleExploreEvent(SkinEvent& event)
         if (event.generation != exploreGeneration_) return;
         if (event.kind == SkinEvent::Kind::ExploreCommunity) {
             exploreCommunity_ = std::move(event.explore);
+            exploreFeatured_ = std::move(event.featured);
             exploreUnavailable_ = !event.success;
         } else {
             exploreGroup_ = std::move(event.explore);
@@ -3865,7 +3916,7 @@ void MainPage::handleExploreEvent(SkinEvent& event)
     bool kept = false;
     for (int i = 0; i < static_cast<int>(exploreCount()); ++i) {
         const auto* skin = exploreSkin(i);
-        if (!selectedKey.empty() && (skin->searched ? L"s:" + skin->title : skin->group ? L"g:" + skin->title : L"c:" + skin->id) == selectedKey) { exploreSelected_ = i; kept = true; }
+        if (!selectedKey.empty() && (skin->searched ? L"s:" + skin->title : skin->group ? L"g:" + skin->title : (skin->featured ? L"f:" : L"c:") + skin->id) == selectedKey) { exploreSelected_ = i; kept = true; }
     }
     exploreRow_ = std::min(exploreRow_, SkinsView::lastFirstRow(exploreCount()));
     // A newly selected skin brings its own arm model; a kept one keeps the player's choice.
@@ -3929,7 +3980,7 @@ void MainPage::shareLibrarySkin()
 void MainPage::removeCommunitySkin()
 {
     const auto* skin = exploreSkin(exploreSelected_);
-    if (skinSharing_ || !skin || skin->group || skin->searched) return;
+    if (skinSharing_ || !skin || skin->group || skin->searched || skin->featured) return;
     const auto* mine = skinsShared_.byId(skin->id);
     if (!mine) return;
     const auto prompt = L"Tirar \"" + skin->title + L"\" de Explorar?\n\nEla continua na sua biblioteca.";
@@ -3949,7 +4000,7 @@ void MainPage::removeCommunitySkin()
 void MainPage::reportCommunitySkin()
 {
     const auto* skin = exploreSkin(exploreSelected_);
-    if (skinSharing_ || !skin || skin->group || skin->searched) return;
+    if (skinSharing_ || !skin || skin->group || skin->searched || skin->featured) return;
     const auto prompt = L"Denunciar \"" + skin->title + L"\", de " + skin->author +
         L"?\n\nUse para skins ofensivas. Com algumas denúncias ela some de Explorar até um admin olhar.";
     if (MessageBoxW(window_, prompt.c_str(), L"Denunciar skin", MB_OKCANCEL | MB_ICONWARNING | MB_DEFBUTTON2) != IDOK) return;
@@ -4959,8 +5010,15 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
                                       {L"Viking", L"zNippw"}, {L"Cientista", L"Rafa"}};
         for (int i = 0; i < 6; ++i)
             exploreCommunity_.push_back({L"00000000000000a" + std::to_wstring(i), shared[i][0], shared[i][1], false, i % 3 == 1, "", makeSkin(i + 11, i % 3 == 1)});
+        const wchar_t* popular[] = {L"Technoblade", L"Grian", L"Dream", L"Notch", L"Etho", L"MumboJumbo", L"TommyInnit", L"Ph1LzA"};
+        for (int i = 0; i < 8; ++i)
+            exploreFeatured_.push_back({L"00000000000000b" + std::to_wstring(i), popular[i], popular[i], false, i % 4 == 1, "",
+                                        makeSkin(i + 30, i % 4 == 1), false, true});
         exploreSelected_ = 4; skinSlimChoice_ = true;
         if (!save(L"skins-explore.png", 1)) return false;
+        exploreFilter_ = 3; exploreSelected_ = 0; skinSlimChoice_ = false;
+        if (!save(L"skins-explore-popular.png", 1)) return false;
+        exploreFilter_ = 0; exploreFeatured_.clear();
         exploreSelected_ = 1; skinSlimChoice_ = false;
         if (!save(L"skins-explore-player.png", 1)) return false;
         exploreSearch_ = ExploreSkin{{}, L"Technoblade", L"Conta original do Minecraft", false, false, "", makeSkin(20, false), true};

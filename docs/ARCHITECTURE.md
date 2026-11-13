@@ -153,6 +153,11 @@ library (`skins/` in the data folder). Explorar loads two sources on a worker:
   (`/authlib-injector/api/profiles/minecraft`), then each player's session profile and
   texture. Players on the default skin are left out.
 
+The same list carries the Populares catalog (`featured`): skins of well-known original
+accounts that the server's admin loads once from Mojang (`gallery_api.py feature`), so
+Explorar always has plenty to show without every launcher calling Mojang. Textures are
+cached by id in `skin-cache/` in the data folder. Chips filter the grid by source.
+
 The search field looks a nickname up on Mojang's public APIs (`SkinLookup::fetchOriginal`:
 profile, session profile, then the texture from `textures.minecraft.net` only) and, when
 there is no original account, on the Drasl. The result comes first in the grid.

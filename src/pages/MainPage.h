@@ -201,6 +201,7 @@ private:
         std::string png;
         SkinTexture texture;
         bool searched = false;  // found by nickname; `author` then says where
+        bool featured = false;  // from the Populares catalog
     };
     struct SkinEvent
     {
@@ -210,6 +211,7 @@ private:
         std::wstring error;
         // Explorar results.
         std::vector<ExploreSkin> explore;
+        std::vector<ExploreSkin> featured;
         bool last = false;                // the loader finished
         std::wstring id;                  // the shared skin acted on
         GalleryUploadResult shared;
@@ -218,7 +220,11 @@ private:
     };
     void showSkinsTab(bool explore);
     void loadExplore();
-    std::size_t exploreCount() const { return (exploreSearch_ ? 1 : 0) + exploreGroup_.size() + exploreCommunity_.size(); }
+    // What Explorar shows under the current filter: the search result, then the group's,
+    // the shared and the Populares skins.
+    std::vector<const ExploreSkin*> exploreList(int filter) const;
+    std::size_t exploreCount() const { return exploreList(exploreFilter_).size(); }
+    void setExploreFilter(int filter);
     void searchSkin();
     const ExploreSkin* exploreSkin(int index) const;
     void selectExplore(int index);
@@ -409,6 +415,8 @@ private:
     bool skinExplore_ = false;
     std::vector<ExploreSkin> exploreGroup_;
     std::vector<ExploreSkin> exploreCommunity_;
+    std::vector<ExploreSkin> exploreFeatured_;
+    int exploreFilter_ = 0;
     bool exploreLoaded_ = false;
     bool exploreLoading_ = false;
     bool exploreUnavailable_ = false;
