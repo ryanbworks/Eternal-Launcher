@@ -72,6 +72,10 @@ struct NewsItem
     std::wstring url;
     // Written into the launcher itself (release notes), not published by the server.
     bool local = false;
+    // ISO date as published ("2026-10-25"); `date` is the display form.
+    std::wstring isoDate;
+    // Not yet opened by this player; drives the spotlight, the badge and the NOVO tags.
+    bool unread = false;
 };
 
 struct LauncherViewState
