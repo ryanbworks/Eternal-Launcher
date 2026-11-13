@@ -7,6 +7,7 @@
 #include <objidl.h>
 #include <gdiplus.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -54,6 +55,9 @@ struct PlayerCardModel
     float playPulse = 0;   // 1..0 ripple after a click
     float playLight = .5F; // pointer position across the button, 0..1
     float playPress = 0;   // 0..1 pressed compression
+    // Play-time level on the server (0 while unknown) and progress toward the next one.
+    int tier = 0;
+    float tierProgress = 0;
 };
 
 struct RankingRowModel
@@ -79,6 +83,22 @@ namespace RankTier
         for (const auto hours : Hours) if (seconds >= hours * 3600) ++result;
         return result;
     }
+    // Every player earns these levels; reaching one is celebrated on Home.
+    inline const wchar_t* name(int level)
+    {
+        static constexpr const wchar_t* Names[Levels] = {L"Pedra", L"Ferro", L"Ouro", L"Diamante", L"Netherite"};
+        return Names[std::clamp(level, 1, Levels) - 1];
+    }
+    // Hours where `level` starts (0 for level 1).
+    inline std::uint64_t startHours(int level) { return level <= 1 ? 0 : Hours[std::min(level, Levels) - 2]; }
+    // 0..1 progress from the current level toward the next; 1 at the last level.
+    inline float progress(std::uint64_t seconds)
+    {
+        const int current = level(seconds);
+        if (current >= Levels) return 1;
+        const float from = static_cast<float>(startHours(current) * 3600), to = static_cast<float>(startHours(current + 1) * 3600);
+        return std::clamp((static_cast<float>(seconds) - from) / (to - from), 0.0F, 1.0F);
+    }
 }
 
 struct HomeModel
@@ -98,6 +118,10 @@ struct HomeModel
     std::wstring rankingNotice; // shown instead of the rows while there are none
     std::wstring rankingYou;
     float rankingScroll = 0;    // logical pixels scrolled down the player list
+    // A play-time level just reached (0 for none), celebrated over the landscape.
+    int celebration = 0;
+    float celebrationReveal = 0;
+    std::uint64_t celebrationSeconds = 0;
 };
 
 class HeroComponent;
@@ -119,6 +143,14 @@ private:
     void drawTiles(Gdiplus::Graphics& graphics, const HomeModel& model) const;
     void drawRanking(Gdiplus::Graphics& graphics, const HomeModel& model) const;
     void drawSpotlight(Gdiplus::Graphics& graphics, const HomeModel& model, const ControlVisuals& visuals) const;
+    void drawCelebration(Gdiplus::Graphics& graphics, const HomeModel& model, const ControlVisuals& visuals) const;
+public:
+    // Light and deep tone of each play-time level.
+    static Gdiplus::Color tierLight(int level);
+    static Gdiplus::Color tierDeep(int level);
+    // A faceted gem in the level's colors, used as the level's emblem.
+    static void drawTierGem(Gdiplus::Graphics& graphics, const Gdiplus::RectF& bounds, int level);
+private:
     static void drawPodiumRow(Gdiplus::Graphics& graphics, const Gdiplus::RectF& line, const RankingRowModel& row,
                               float time, bool ambient);
     void drawNews(Gdiplus::Graphics& graphics, const HomeModel& model, const HeroComponent& hero,

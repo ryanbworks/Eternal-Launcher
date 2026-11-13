@@ -55,6 +55,7 @@ namespace
         {NavHelpId, true, true, L"Ajuda"},
         {SpotlightReadButtonId, false, true, L"Ler novidade"},
         {SpotlightDismissButtonId, false, true, L"Ver depois"},
+        {CelebrationButtonId, false, true, L"Fechar conquista"},
         {NicknameInputId, false, true, nullptr},
         {EditNicknameButtonId, false, true, L"Editar nickname"},
         {OfflineButtonId, false, true, L"Nickname"},
@@ -262,6 +263,7 @@ bool MainPage::create(int showCommand, bool checkLauncherUpdate, std::wstring up
     settingsPage_.show(false);
     layoutControls();
     loadNewsReadState();
+    milestones_.load(LauncherSettingsStore::dataDirectory());
     syncControls();
     portalEntrance_ = motionEnabled_ ? 0.0F : 1.0F;
     portalBurst_ = motionEnabled_ ? 1.0F : 0.0F;
@@ -535,7 +537,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
     {
         std::unique_ptr<PlaytimeSyncUpdate> update(reinterpret_cast<PlaytimeSyncUpdate*>(lParam));
         if (!update) return 0;
-        if (update->totalSeconds) { serverTotalSeconds_ = update->totalSeconds; serverTotalName_ = update->name; }
+        if (update->totalSeconds) { serverTotalSeconds_ = update->totalSeconds; serverTotalName_ = update->name; checkMilestone(); }
         if (update->finished && !playSession_.active()) {
             if (playtimeSyncThread_.joinable()) playtimeSyncThread_.join();
             fetchLeaderboardAsync();
@@ -562,7 +564,11 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             leaderboard_ = std::move(*result);
             rankingState_ = RankingState::Ready;
             rankingScroll_ = std::min(rankingScroll_, HomeView::maximumRankingScroll(leaderboard_.players.size()));
-            if (leaderboard_.hasYou) { serverTotalSeconds_ = leaderboard_.yourSeconds; serverTotalName_ = leaderboard_.playerName; }
+            if (leaderboard_.hasYou) {
+                serverTotalSeconds_ = leaderboard_.yourSeconds;
+                serverTotalName_ = leaderboard_.playerName;
+                checkMilestone();
+            }
         } else if (rankingState_ == RankingState::Loading) {
             rankingState_ = RankingState::Unavailable;
         }
@@ -927,7 +933,16 @@ HomeModel MainPage::homeModel(bool preview) const
     player.totalPlayed = record.totalSeconds > 0 || player.playing ? PlaytimeStore::formatDuration(record.totalSeconds) : std::wstring(L"—");
     // The server's number wins; the local counter is only a fallback while it is unknown.
     const auto account = originalMode_ ? microsoftIdentity_.name : nickname;
-    if (!preview && serverTotalSeconds_ && serverTotalName_ == account) player.totalPlayed = PlaytimeStore::formatDuration(*serverTotalSeconds_);
+    if (!preview && serverTotalSeconds_ && serverTotalName_ == account) {
+        player.totalPlayed = PlaytimeStore::formatDuration(*serverTotalSeconds_);
+        // Levels follow the server's number only, the same one the ranking uses.
+        player.tier = RankTier::level(*serverTotalSeconds_);
+        player.tierProgress = RankTier::progress(*serverTotalSeconds_);
+    }
+    if (preview && previewTier_ > 0) {
+        player.tier = previewTier_;
+        player.tierProgress = .62F;
+    }
     const bool busy = !viewState_.playEnabled && viewState_.operation != LauncherOperation::MinecraftRunning &&
         viewState_.operation != LauncherOperation::UpdateAvailable;
     if (preview) {
@@ -981,6 +996,9 @@ HomeModel MainPage::homeModel(bool preview) const
     model.energy = preview || !motionEnabled_ ? 0 : std::max({portalEnergy_, portalBurst_, .28F});
     model.phase = animationPhase_;
     model.drift = preview ? 0 : particlePhase_;
+    model.celebration = celebration_;
+    model.celebrationSeconds = celebrationSeconds_;
+    model.celebrationReveal = preview ? (celebration_ > 0 ? 1.0F : 0.0F) : celebrationReveal_;
     {
         const int spotlight = spotlightIndex();
         model.spotlightReveal = preview ? (spotlight >= 0 ? 1.0F : 0.0F) : spotlightReveal_;
@@ -1003,7 +1021,7 @@ HomeModel MainPage::homeModel(bool preview) const
             const std::uint64_t extra = (40 - static_cast<std::uint64_t>(i) * 3) * hour;
             model.ranking.push_back({i + 6, L"Jogador" + std::to_wstring(i + 1), PlaytimeStore::formatDuration(extra), false, false, extra});
         }
-        model.rankingYou = L"Você · #3 · " + model.ranking[2].time;
+        model.rankingYou = L"Você · #3 · " + model.ranking[2].time + L" · Nível " + RankTier::name(RankTier::level(model.ranking[2].seconds));
         model.rankingScroll = previewRankingScroll_;
     } else if (rankingState_ == RankingState::Ready) {
         for (const auto& entry : leaderboard_.players)
@@ -1012,7 +1030,8 @@ HomeModel MainPage::homeModel(bool preview) const
         model.rankingNotice = L"Ninguém no ranking ainda. Seja o primeiro!";
         model.rankingScroll = rankingScroll_;
         model.rankingYou = leaderboard_.hasYou && leaderboard_.playerName == account
-            ? L"Você · #" + std::to_wstring(leaderboard_.yourRank) + L" · " + PlaytimeStore::formatDuration(leaderboard_.yourSeconds)
+            ? L"Você · #" + std::to_wstring(leaderboard_.yourRank) + L" · " + PlaytimeStore::formatDuration(leaderboard_.yourSeconds) +
+              L" · Nível " + RankTier::name(RankTier::level(leaderboard_.yourSeconds))
             : std::wstring(L"Jogue para entrar no ranking");
     } else {
         model.rankingNotice = rankingState_ == RankingState::Loading ? L"Carregando ranking…" : L"Ranking indisponível no momento.";
@@ -1116,6 +1135,7 @@ void MainPage::updateMotionPreference()
         pageFade_ = 1;
         navIndicator_ = navigationTarget();
         spotlightReveal_ = spotlightTarget();
+        celebrationReveal_ = celebrationTarget();
         playSweep_ = 1; playPulse_ = 0;
         settingsPage_.settle();
     }
@@ -1164,7 +1184,8 @@ void MainPage::redraw(bool animationFrame)
     for (const float pulse : completionPulse_) unsettled |= pulse > 0;
     const bool pressed = findControl(PlayButtonId) && findControl(PlayButtonId)->window &&
         (SendMessageW(findControl(PlayButtonId)->window, BM_GETSTATE, 0, 0) & BST_PUSHED) != 0;
-    unsettled |= std::abs(navIndicator_ - navigationTarget()) > .75F || std::abs(spotlightReveal_ - spotlightTarget()) > .01F;
+    unsettled |= std::abs(navIndicator_ - navigationTarget()) > .75F || std::abs(spotlightReveal_ - spotlightTarget()) > .01F ||
+        std::abs(celebrationReveal_ - celebrationTarget()) > .01F;
     unsettled |= playSweep_ < 1 || playPulse_ > 0 || std::abs(playPress_ - (pressed ? 1.0F : 0.0F)) > .01F ||
         std::abs(playLight_ - playLightTarget_) > .005F;
     for (const auto& mod : mods_.user) {
@@ -1182,7 +1203,7 @@ void MainPage::redraw(bool animationFrame)
         installationFill_ = fillTarget;
         portalEntrance_ = 1; portalEnergy_ = 0; portalBurst_ = 0; pageFade_ = 1;
         completionPulse_ = {};
-        navIndicator_ = navigationTarget(); spotlightReveal_ = spotlightTarget();
+        navIndicator_ = navigationTarget(); spotlightReveal_ = spotlightTarget(); celebrationReveal_ = celebrationTarget();
         playSweep_ = 1; playPulse_ = 0; playPress_ = pressed ? 1.0F : 0.0F; playLight_ = playLightTarget_;
         for (const auto& mod : mods_.user) modKnobs_[mod.name] = mod.enabled ? 1.0F : 0.0F;
         settingsPage_.settle();
@@ -1278,6 +1299,7 @@ void MainPage::animate()
     };
     approach(navIndicator_, navigationTarget(), 50, .75F);
     approach(spotlightReveal_, spotlightTarget(), 90, .01F);
+    approach(celebrationReveal_, celebrationTarget(), 140, .01F);
     playSweep_ = std::min(1.0F, playSweep_ + dt / 560);
     playPulse_ = std::max(0.0F, playPulse_ - dt / 420);
     const auto* play = findControl(PlayButtonId);
@@ -1413,7 +1435,12 @@ float MainPage::navigationTarget() const
 
 float MainPage::spotlightTarget() const
 {
-    return spotlightIndex() >= 0 && page_ == LauncherPage::Home && !installation_.visible ? 1.0F : 0.0F;
+    return spotlightIndex() >= 0 && celebration_ == 0 && page_ == LauncherPage::Home && !installation_.visible ? 1.0F : 0.0F;
+}
+
+float MainPage::celebrationTarget() const
+{
+    return celebration_ > 0 && page_ == LauncherPage::Home && !installation_.visible ? 1.0F : 0.0F;
 }
 
 void MainPage::syncModKnobs()
@@ -1461,6 +1488,7 @@ Gdiplus::RectF MainPage::controlBounds(int id) const
     case QuickRepairButtonId: return Layout::quickAction(1);
     case QuickLogsButtonId: return Layout::quickAction(2);
     case SpotlightReadButtonId: return Layout::SpotlightRead;
+    case CelebrationButtonId: return Layout::CelebrationButton;
     case SpotlightDismissButtonId: return Layout::SpotlightDismiss;
     case ScreenshotsRefreshButtonId: return Layout::ScreenshotsRefresh;
     case ScreenshotsFolderButtonId: return Layout::ScreenshotsFolder;
@@ -1522,7 +1550,9 @@ bool MainPage::controlVisible(int id) const
         return home && serverOffline_ && !vanillaSelected_ && updateWarning_.empty() && viewState_.playEnabled && !installation_.visible;
     case SpotlightReadButtonId:
     case SpotlightDismissButtonId:
-        return heroVisible && spotlightIndex() >= 0;
+        return heroVisible && spotlightIndex() >= 0 && celebration_ == 0;
+    case CelebrationButtonId:
+        return heroVisible && celebration_ > 0;
     case ScreenshotsRefreshButtonId:
     case ScreenshotsFolderButtonId:
         return page_ == LauncherPage::Screenshots && screenshotViewer_ < 0;
@@ -1910,6 +1940,9 @@ void MainPage::handleCommand(int id, int)
     case SpotlightDismissButtonId:
         dismissSpotlight();
         break;
+    case CelebrationButtonId:
+        dismissCelebration();
+        break;
     case NewsAllButtonId:
         newsFirst_ = 0;
         showPage(LauncherPage::News);
@@ -2242,6 +2275,57 @@ void MainPage::markNewsRead()
     // NOVO tags can still be seen there.
     for (const auto& item : viewState_.news) newsRead_.markSeen(item);
     newsRead_.save();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Play-time levels
+// ---------------------------------------------------------------------------------------------
+
+std::optional<std::uint64_t> MainPage::serverSecondsForAccount() const
+{
+    const auto account = rankingName();
+    if (account.empty() || !serverTotalSeconds_ || _wcsicmp(serverTotalName_.c_str(), account.c_str()) != 0) return std::nullopt;
+    return serverTotalSeconds_;
+}
+
+void MainPage::checkMilestone()
+{
+    // Only the server's number counts, the same one the ranking shows.
+    const auto seconds = serverSecondsForAccount();
+    if (!seconds) return;
+    const auto account = rankingName();
+    const int level = RankTier::level(*seconds);
+    const int celebrated = milestones_.celebrated(account);
+    if (celebrated < 0 && level <= 1) {
+        // A new player: nothing to celebrate yet, start counting from here.
+        milestones_.setCelebrated(account, level);
+        milestones_.save();
+        return;
+    }
+    // A known player who climbed, or the first time this player is seen with a level
+    // already earned: celebrate the highest one reached (never each one in between).
+    if (level <= celebrated || (celebration_ == level && celebrationName_ == account)) {
+        if (celebration_ == level) celebrationSeconds_ = *seconds;
+        return;
+    }
+    celebration_ = level;
+    celebrationSeconds_ = *seconds;
+    celebrationName_ = account;
+    if (hiddenToTray_ && trayIcon_.visible())
+        trayIcon_.notify(std::wstring(L"Nova conquista: nível ") + RankTier::name(level) + L"!",
+            std::to_wstring(*seconds / 3600) + L" horas jogadas. Abra o launcher para ver.");
+    redraw();
+}
+
+void MainPage::dismissCelebration()
+{
+    if (celebration_ == 0) return;
+    milestones_.setCelebrated(celebrationName_, celebration_);
+    milestones_.save();
+    celebration_ = 0;
+    if (const auto* button = findControl(CelebrationButtonId); button && GetFocus() == button->window)
+        if (const auto* play = findControl(PlayButtonId); play && play->window) SetFocus(play->window);
+    redraw();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -3196,6 +3280,7 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
         screenshots_.clear(); screenshotThumbnails_.clear(); screenshotRow_ = 0; screenshotViewer_ = -1;
         viewerImage_.reset(); viewerImagePath_.clear(); screenshotsMessage_.clear();
         previewRankingHours_ = {312, 167, 96};
+        celebration_ = 0; previewTier_ = 0;
         page_ = LauncherPage::Home;
         newsFirst_ = 0; newsLoading_ = false; newsError_.clear();
         modsMessage_.clear(); helpMessage_.clear();
@@ -3216,6 +3301,13 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
     ready(); page_ = LauncherPage::News;
     viewState_.news[0].unread = true; viewState_.news[1].unread = true;
     if (!save(L"news-unread.png", 1)) return false;
+    // A play-time level reached, and the level on the player card.
+    ready(); celebration_ = 3; celebrationSeconds_ = 96 * 3600 + 20 * 60; previewTier_ = 3;
+    if (!save(L"achievement.png", 1)) return false;
+    celebration_ = 5; celebrationSeconds_ = 312 * 3600;
+    if (!save(L"achievement-max.png", 1)) return false;
+    celebration_ = 0;
+    if (!save(L"player-tier.png", 1)) return false;
     // Podium at the first play-time levels.
     ready(); previewRankingHours_ = {60, 30, 8};
     if (!save(L"ranking-early.png", 1)) return false;

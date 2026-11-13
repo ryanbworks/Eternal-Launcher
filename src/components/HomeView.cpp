@@ -7,6 +7,7 @@
 #include "utils/DrawingUtils.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <string>
 
@@ -89,12 +90,166 @@ void HomeView::draw(Gdiplus::Graphics& g, const HomeModel& model, const HeroComp
 {
     if (drawHero) {
         hero.draw(g, Layout::Hero, model.reveal, model.energy, model.phase, model.drift, model.chips);
-        if (model.spotlight && model.spotlightReveal > .01F) drawSpotlight(g, model, visuals);
+        if (model.celebration > 0 && model.celebrationReveal > .01F) drawCelebration(g, model, visuals);
+        else if (model.spotlight && model.spotlightReveal > .01F) drawSpotlight(g, model, visuals);
     }
     drawTiles(g, model);
     drawNews(g, model, hero, visuals);
     drawRanking(g, model);
     drawPlayerCard(g, model.player, visuals);
+}
+
+Gdiplus::Color HomeView::tierLight(int level)
+{
+    static const Gdiplus::Color Colors[RankTier::Levels] = {
+        Gdiplus::Color(255, 206, 208, 220), Gdiplus::Color(255, 238, 241, 248), Gdiplus::Color(255, 255, 226, 120),
+        Gdiplus::Color(255, 150, 242, 236), Gdiplus::Color(255, 206, 178, 236)};
+    return Colors[std::clamp(level, 1, RankTier::Levels) - 1];
+}
+
+Gdiplus::Color HomeView::tierDeep(int level)
+{
+    static const Gdiplus::Color Colors[RankTier::Levels] = {
+        Gdiplus::Color(255, 112, 114, 128), Gdiplus::Color(255, 150, 158, 176), Gdiplus::Color(255, 214, 158, 36),
+        Gdiplus::Color(255, 34, 180, 192), Gdiplus::Color(255, 78, 58, 96)};
+    return Colors[std::clamp(level, 1, RankTier::Levels) - 1];
+}
+
+void HomeView::drawTierGem(Gdiplus::Graphics& g, const Gdiplus::RectF& b, int level)
+{
+    const auto light = tierLight(level), deep = tierDeep(level);
+    const float w = b.Width, h = b.Height;
+    const auto at = [&](float x, float y) { return Gdiplus::PointF(b.X + w * x, b.Y + h * y); };
+    // Crown and pavilion facets, lit from the top left.
+    const Gdiplus::PointF outline[] = {at(.27F, .12F), at(.73F, .12F), at(.95F, .38F), at(.5F, .92F), at(.05F, .38F)};
+    Gdiplus::LinearGradientBrush body(at(0, .1F), at(1, .9F), light, deep);
+    g.FillPolygon(&body, outline, 5);
+    const Gdiplus::PointF table[] = {at(.27F, .12F), at(.73F, .12F), at(.62F, .38F), at(.38F, .38F)};
+    Gdiplus::SolidBrush shine(Gdiplus::Color(120, 255, 255, 255));
+    g.FillPolygon(&shine, table, 4);
+    const Gdiplus::PointF left[] = {at(.05F, .38F), at(.38F, .38F), at(.5F, .92F)};
+    Gdiplus::SolidBrush shade(Gdiplus::Color(50, 255, 255, 255));
+    g.FillPolygon(&shade, left, 3);
+    const Gdiplus::PointF right[] = {at(.62F, .38F), at(.95F, .38F), at(.5F, .92F)};
+    Gdiplus::SolidBrush dark(Gdiplus::Color(60, 0, 0, 0));
+    g.FillPolygon(&dark, right, 3);
+    Gdiplus::Pen edge(Gdiplus::Color(150, light.GetR(), light.GetG(), light.GetB()), std::max(1.0F, w / 40));
+    edge.SetLineJoin(Gdiplus::LineJoinRound);
+    g.DrawPolygon(&edge, outline, 5);
+}
+
+void HomeView::drawCelebration(Gdiplus::Graphics& g, const HomeModel& model, const ControlVisuals& visuals) const
+{
+    const int level = model.celebration;
+    const auto light = tierLight(level), deep = tierDeep(level);
+    const auto tint = [](const Gdiplus::Color& c, BYTE alpha) { return Gdiplus::Color(alpha, c.GetR(), c.GetG(), c.GetB()); };
+    const float time = model.player.time;
+    const bool ambient = model.player.ambient;
+    const float reveal = easeOut(model.celebrationReveal);
+    const auto saved = g.Save();
+    auto heroClip = createRoundedPath(Layout::Hero, Theme::PanelRadius);
+    g.SetClip(heroClip.get(), Gdiplus::CombineModeIntersect);
+
+    // The landscape dims behind the moment.
+    Gdiplus::SolidBrush veil(Gdiplus::Color(static_cast<BYTE>(170 * reveal), 9, 9, 15));
+    g.FillRectangle(&veil, Layout::Hero);
+    // Confetti in the level's colors and the launcher's violet keeps falling.
+    const Gdiplus::Color confetti[] = {light, deep, Theme::Accent, Theme::AccentLight};
+    for (int i = 0; i < 46; ++i) {
+        const float seed = static_cast<float>(i);
+        const float speed = .16F + .09F * std::fmod(seed * .37F, 1.0F);
+        const float life = std::fmod((ambient ? time : 1.2F) * speed + seed * .6180339F, 1.0F);
+        const float x = Layout::Hero.X + Layout::Hero.Width * std::fmod(seed * .2357F + .05F, 1.0F) + 14 * std::sin(life * 9 + seed);
+        const float y = Layout::Hero.Y - 12 + (Layout::Hero.Height + 24) * life;
+        const float spin = (ambient ? time : 1.2F) * (2 + std::fmod(seed, 3.0F)) + seed;
+        const float width = 3 + std::fmod(seed * 1.7F, 4.0F), height = 7 * std::abs(std::cos(spin));
+        Gdiplus::SolidBrush piece(tint(confetti[i % 4], static_cast<BYTE>(210 * reveal)));
+        g.FillRectangle(&piece, x, y, width, std::max(1.2F, height));
+    }
+
+    g.TranslateTransform(0, std::round(24 * (1 - reveal)));
+    const auto& c = Layout::Celebration;
+    // A halo in the level's color around the card.
+    for (int layer = 5; layer >= 1; --layer) {
+        const float grow = static_cast<float>(layer) * 4;
+        fillRoundedRectangle(g, {c.X - grow, c.Y - grow, c.Width + 2 * grow, c.Height + 2 * grow}, 20 + grow,
+            tint(light, static_cast<BYTE>(14 * reveal / static_cast<float>(layer) * 2)));
+    }
+    fillRoundedRectangle(g, c, 20, tint(Gdiplus::Color(255, 18, 17, 30), static_cast<BYTE>(245 * reveal)));
+    {
+        const auto inner = g.Save();
+        auto clip = createRoundedPath(c, 20);
+        g.SetClip(clip.get(), Gdiplus::CombineModeIntersect);
+        // Rays of light behind the gem slowly turn.
+        const float cx = c.X + c.Width / 2, cy = c.Y + 78;
+        const float turn = ambient ? time * 12 : 20;
+        for (int ray = 0; ray < 12; ++ray) {
+            Gdiplus::GraphicsPath beam;
+            const float a = (turn + static_cast<float>(ray) * 30) * 3.14159265F / 180, spread = .11F;
+            beam.AddPolygon(std::array<Gdiplus::PointF, 3>{Gdiplus::PointF(cx, cy),
+                Gdiplus::PointF(cx + 260 * std::cos(a - spread), cy + 260 * std::sin(a - spread)),
+                Gdiplus::PointF(cx + 260 * std::cos(a + spread), cy + 260 * std::sin(a + spread))}.data(), 3);
+            Gdiplus::PathGradientBrush brush(&beam);
+            brush.SetCenterPoint(Gdiplus::PointF(cx, cy));
+            brush.SetCenterColor(tint(light, static_cast<BYTE>(40 * reveal)));
+            Gdiplus::Color edge = tint(light, 0);
+            int count = 1;
+            brush.SetSurroundColors(&edge, &count);
+            g.FillPath(&brush, &beam);
+        }
+        Gdiplus::LinearGradientBrush wash(Gdiplus::PointF(0, c.Y - 1), Gdiplus::PointF(0, c.Y + 150),
+            tint(deep, static_cast<BYTE>(60 * reveal)), tint(deep, 0));
+        g.FillRectangle(&wash, c.X, c.Y, c.Width, 150.0F);
+        g.Restore(inner);
+    }
+    drawRoundedRectangle(g, {c.X + .5F, c.Y + .5F, c.Width - 1, c.Height - 1}, 20, tint(light, static_cast<BYTE>(110 * reveal)));
+
+    // The emblem breathes gently.
+    const float pulse = ambient ? 1 + .04F * std::sin(time * 3.2F) : 1;
+    const float size = 64 * pulse;
+    const float cx = c.X + c.Width / 2, cy = c.Y + 78;
+    for (int ring = 3; ring >= 1; --ring) {
+        const float r = size / 2 + static_cast<float>(ring) * 6;
+        Gdiplus::SolidBrush halo(tint(light, static_cast<BYTE>(26 * reveal / static_cast<float>(ring))));
+        g.FillEllipse(&halo, cx - r, cy - r, 2 * r, 2 * r);
+    }
+    drawTierGem(g, {cx - size / 2, cy - size / 2, size, size}, level);
+    // Sparkles twinkle around it.
+    const struct { float x, y, s, o; } sparks[] = {{-58, -22, 12, 0}, {50, -34, 9, .3F}, {60, 18, 11, .6F}, {-50, 26, 8, .8F}};
+    for (const auto& spark : sparks) {
+        const float twinkle = ambient ? std::max(0.0F, std::sin((time / 1.4F + spark.o) * 6.2831853F)) : .8F;
+        const float s = spark.s * (.5F + .5F * twinkle);
+        if (twinkle > .05F)
+            Icons::draw(g, Icons::Icon::Sparkle, {cx + spark.x - s / 2, cy + spark.y - s / 2, s, s}, tint(light, static_cast<BYTE>(255 * twinkle * reveal)));
+    }
+
+    drawText(g, L"NOVA CONQUISTA", {c.X, c.Y + 124, c.Width, 18}, 11.5F, Gdiplus::FontStyleBold, light,
+        Gdiplus::StringAlignmentCenter, Gdiplus::StringAlignmentCenter);
+    drawDisplayText(g, std::wstring(L"Você chegou no nível ") + RankTier::name(level) + L"!", {c.X + 20, c.Y + 144, c.Width - 40, 34}, 23,
+        Theme::TextPrimary, Gdiplus::StringAlignmentCenter, Gdiplus::StringAlignmentCenter);
+    const std::uint64_t hours = model.celebrationSeconds / 3600;
+    drawText(g, std::to_wstring(hours) + L" horas jogadas. Seu nome brilha mais no ranking.",
+        {c.X + 30, c.Y + 180, c.Width - 60, 20}, 12.5F, Gdiplus::FontStyleRegular, Theme::TextSecondary,
+        Gdiplus::StringAlignmentCenter, Gdiplus::StringAlignmentCenter);
+    // Progress toward the next level, or the top of the ladder.
+    const Gdiplus::RectF track{c.X + 80, c.Y + 216, c.Width - 160, 6};
+    if (level < RankTier::Levels) {
+        fillPill(g, track, Theme::SurfaceSunken);
+        const float fraction = RankTier::progress(model.celebrationSeconds);
+        if (fraction > .01F) {
+            Gdiplus::LinearGradientBrush fill(Gdiplus::PointF(track.X - 1, 0), Gdiplus::PointF(track.GetRight() + 1, 0), deep, light);
+            auto bar = createRoundedPath({track.X, track.Y, std::max(track.Height, track.Width * fraction), track.Height}, 3);
+            g.FillPath(&fill, bar.get());
+        }
+        drawText(g, std::wstring(L"Próximo: ") + RankTier::name(level + 1) + L" em " + std::to_wstring(RankTier::startHours(level + 1)) + L" h",
+            {c.X, track.Y + 10, c.Width, 18}, 11.5F, Gdiplus::FontStyleRegular, Theme::TextMuted, Gdiplus::StringAlignmentCenter);
+    } else {
+        drawText(g, L"Nível máximo. Lenda do servidor.", {c.X, track.Y - 4, c.Width, 18}, 12, Gdiplus::FontStyleBold, light,
+            Gdiplus::StringAlignmentCenter);
+    }
+    Buttons::draw(g, Layout::CelebrationButton, L"Show!", visuals(LauncherConstants::CelebrationButtonId), Buttons::Style::Primary,
+        Icons::Icon::Sparkle, false, 14);
+    g.Restore(saved);
 }
 
 void HomeView::drawSpotlight(Gdiplus::Graphics& g, const HomeModel& model, const ControlVisuals& visuals) const
@@ -488,6 +643,14 @@ void HomeView::drawPlayerCard(Gdiplus::Graphics& g, const PlayerCardModel& m, co
         fillRoundedRectangle(g, b, 12, Theme::SurfaceSunken);
         drawText(g, statLabels[i], {b.X + 12, b.Y + 10, b.Width - 24, 16}, 11.5F, Gdiplus::FontStyleRegular, Theme::TextMuted);
         drawText(g, statValues[i], {b.X + 12, b.Y + 28, b.Width - 24, 22}, 14, Gdiplus::FontStyleBold, Theme::TextPrimary);
+        if (i == 1 && m.tier > 0) {
+            // The player's level: its gem, and a thin bar toward the next one.
+            drawTierGem(g, {b.GetRight() - 26, b.Y + 10, 15, 15}, m.tier);
+            const Gdiplus::RectF track{b.X + 12, b.Y + b.Height - 8, b.Width - 24, 3};
+            fillPill(g, track, Gdiplus::Color(255, 40, 41, 56));
+            if (m.tierProgress > .01F)
+                fillPill(g, {track.X, track.Y, std::max(3.0F, track.Width * m.tierProgress), track.Height}, tierLight(m.tier));
+        }
     }
 
     {

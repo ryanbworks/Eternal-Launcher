@@ -46,6 +46,7 @@ namespace LauncherConstants
     inline constexpr int NewsAllButtonId = 1129;
     inline constexpr int SpotlightReadButtonId = 1130;
     inline constexpr int SpotlightDismissButtonId = 1135;
+    inline constexpr int CelebrationButtonId = 1136;
     inline constexpr int RetryServerButtonId = 1131;
     inline constexpr int VersionEternalButtonId = 1132;
     inline constexpr int VersionVanillaButtonId = 1133;

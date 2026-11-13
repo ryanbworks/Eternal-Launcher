@@ -230,6 +230,35 @@ void Icons::draw(Gdiplus::Graphics& g, Icon icon, const Gdiplus::RectF& b,
         g.FillPolygon(&brush, crown, 7);
         break;
     }
+    case Icon::Gem:
+    {
+        // A cut gem, filled, with the table facet left open.
+        Gdiplus::SolidBrush brush(color);
+        const Gdiplus::PointF gem[] = {{7, 3.5F}, {17, 3.5F}, {22, 9.5F}, {12, 21.5F}, {2, 9.5F}};
+        g.FillPolygon(&brush, gem, 5);
+        Gdiplus::Pen facet(Gdiplus::Color(110, 0, 0, 0), 1.1F);
+        g.DrawLine(&facet, 2.5F, 9.5F, 21.5F, 9.5F);
+        g.DrawLine(&facet, 9.0F, 9.5F, 12.0F, 21.0F);
+        g.DrawLine(&facet, 15.0F, 9.5F, 12.0F, 21.0F);
+        break;
+    }
+    case Icon::Share:
+        p.circle(18, 5.5F, 2.5F);
+        p.circle(6, 12, 2.5F);
+        p.circle(18, 18.5F, 2.5F);
+        p.line(8.2F, 10.8F, 15.8F, 6.7F);
+        p.line(8.2F, 13.2F, 15.8F, 17.3F);
+        break;
+    case Icon::Flag:
+        p.line(5, 21, 5, 4);
+        p.lines({{5, 4}, {19, 4}, {16, 8.5F}, {19, 13}, {5, 13}});
+        break;
+    case Icon::Users:
+        p.circle(9, 8, 3.5F);
+        p.arc(9, 20.5F, 6.5F, 180, 180);
+        p.arc(16.5F, 8, 3, 300, 210);
+        p.arc(17, 20.5F, 5, 220, 140);
+        break;
     case Icon::Sparkle:
     {
         // Four-pointed star with pinched sides.

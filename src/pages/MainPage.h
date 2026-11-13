@@ -15,6 +15,7 @@
 #include "services/InstallationCoordinator.h"
 #include "services/LauncherUpdateService.h"
 #include "services/MicrosoftAuthService.h"
+#include "services/MilestoneStore.h"
 #include "services/ModInventory.h"
 #include "services/NewsFeed.h"
 #include "services/PlaytimeApi.h"
@@ -171,6 +172,12 @@ private:
     void dismissSpotlight();
     void markNewsRead();
 
+    // Play-time levels.
+    std::optional<std::uint64_t> serverSecondsForAccount() const;
+    void checkMilestone();
+    void dismissCelebration();
+    float celebrationTarget() const;
+
     // Screenshots.
     ScreenshotsModel screenshotsModel(bool preview) const;
     void refreshScreenshots();
@@ -270,6 +277,13 @@ private:
     std::wstring newsError_;
     NewsReadState newsRead_;
 
+    // Play-time level celebration.
+    MilestoneStore milestones_;
+    int celebration_ = 0;
+    std::uint64_t celebrationSeconds_ = 0;
+    std::wstring celebrationName_;
+    float celebrationReveal_ = 0;
+
     // Screenshots.
     ScreenshotsView screenshotsView_;
     std::vector<ScreenshotEntry> screenshots_;
@@ -318,6 +332,7 @@ private:
     // Hours of the preview podium (previews only), chosen to show different levels.
     std::array<std::uint64_t, 3> previewRankingHours_{312, 167, 96};
     int previewExtraPlayers_ = 0;
+    int previewTier_ = 0;
     float previewRankingScroll_ = 0;
     std::wstring serverTotalName_;
 

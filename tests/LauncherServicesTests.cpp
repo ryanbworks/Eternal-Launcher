@@ -1,4 +1,5 @@
 #include "components/HomeView.h"
+#include "services/MilestoneStore.h"
 #include "services/ModInventory.h"
 #include "services/NewsFeed.h"
 #include "services/PlaytimeApi.h"
@@ -148,6 +149,25 @@ namespace {
         check(RankTier::level(25*3600)==2 && RankTier::level(75*3600)==3 && RankTier::level(150*3600)==4 && RankTier::level(300*3600)==5,
             "each milestone raises the level");
         check(RankTier::level(5000ULL*3600)==RankTier::Levels,"the level is capped");
+        check(std::wstring(RankTier::name(3))==L"Ouro" && std::wstring(RankTier::name(9))==L"Netherite","levels have names");
+        check(RankTier::startHours(1)==0 && RankTier::startHours(4)==150,"where each level starts");
+        check(std::abs(RankTier::progress(50*3600)-.5F)<.01F && RankTier::progress(400*3600)==1,"progress toward the next level");
+    }
+
+    void milestones(const std::filesystem::path& root) {
+        const auto directory=root/L"milestones";
+        MilestoneStore store;
+        store.load(directory);
+        check(store.celebrated(L"Steve")==-1,"an unknown player has no celebrated level");
+        store.setCelebrated(L"Steve",3);
+        store.setCelebrated(L"Aurora_",1);
+        check(store.save(),"milestones save");
+        MilestoneStore reloaded;
+        reloaded.load(directory);
+        check(reloaded.celebrated(L"steve")==3 && reloaded.celebrated(L"AURORA_")==1,"celebrated levels survive, case-insensitive");
+        write(directory/L"milestones.txt","Steve\t4\nbroken line\n\t2\nLuna\tx\n");
+        reloaded.load(directory);
+        check(reloaded.celebrated(L"Steve")==4 && reloaded.celebrated(L"Luna")==-1,"malformed lines are ignored");
     }
 
     void mods(const std::filesystem::path& root) {
@@ -240,6 +260,7 @@ int main()
     news();
     newsReadState(root);
     rankTiers();
+    milestones(root);
     screenshots(root);
     mods(root);
     skins();

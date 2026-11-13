@@ -54,6 +54,9 @@ namespace Layout
     inline const Rect Spotlight{120, 86, 440, 148};
     inline const Rect SpotlightRead{140, 186, 132, 34};
     inline const Rect SpotlightDismiss{280, 186, 96, 34};
+    // A play-time level reached: a card centered on the landscape.
+    inline const Rect Celebration{266, 88, 460, 316};
+    inline const Rect CelebrationButton{416, 344, 160, 42};
 
     // Everything left of the player card: hero, tiles, news and ranking.
     inline const Rect LeftColumn{100, 68, 792, 708};
