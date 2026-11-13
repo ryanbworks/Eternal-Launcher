@@ -1,0 +1,79 @@
+# Original Minecraft accounts whose skins fill the Populares catalog of Explorar.
+# Load or refresh with: gallery_api.py feature --file featured_skins.txt
+# Names without an account or a skin of their own are skipped.
+
+# Mojang
+Notch
+jeb_
+Dinnerbone
+Grumm
+
+# Dream SMP and friends
+Technoblade
+Dream
+GeorgeNotFound
+Sapnap
+TommyInnit
+Tubbo
+Ph1LzA
+Quackity
+Ranboo
+WilburSoot
+Fundy
+Nihachu
+Eret
+Punz
+Purpled
+Hbomb94
+jschlatt
+Skeppy
+BadBoyHalo
+Antfrost
+Awesamdude
+ConnorEatsPants
+Karl
+Foolish_Gamers
+
+# Hermitcraft
+Grian
+MumboJumbo
+xisumavoid
+Etho
+iskall85
+Hypnotizd
+ImpulseSV
+Docm77
+TangoTek
+Zedaph
+Keralis
+BdoubleO100
+falsesymmetry
+Cubfan135
+Stressmonster101
+ZombieCleo
+rendog
+GoodTimeWithScar
+VintageBeef
+Welsknight
+joehillssays
+PearlescentMoon
+Smallishbeans
+
+# YouTube classics
+CaptainSparklez
+Antvenom
+Vikkstar123
+Stampylongnose
+LDShadowLady
+Smajor1995
+PrestonPlayz
+Sky
+Illumina
+Fruitberries
+Feinberg
+Tapl
+Couriway
+
+# Brasil
+Cellbit
+Felps

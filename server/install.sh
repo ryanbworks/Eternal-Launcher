@@ -53,6 +53,7 @@ install -m 0644 "$project_root/server/playtime_api.py" /usr/local/lib/eternal-la
 install -m 0644 "$project_root/server/eternal-playtime.service" /etc/systemd/system/eternal-playtime.service
 install -m 0644 "$project_root/server/gallery_api.py" /usr/local/lib/eternal-launcher/gallery_api.py
 install -m 0644 "$project_root/server/eternal-gallery.service" /etc/systemd/system/eternal-gallery.service
+install -m 0644 "$project_root/server/featured_skins.txt" /usr/local/lib/eternal-launcher/featured_skins.txt
 install -m 0644 "$project_root/infrastructure/nginx/eternal-launcher.conf" /etc/nginx/sites-available/eternal-launcher
 # Normalize files copied from Windows checkouts.
 sed -i 's/\r$//' /usr/local/lib/eternal-launcher/refresh_manifest.py \

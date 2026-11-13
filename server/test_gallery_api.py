@@ -197,11 +197,77 @@ class SkinStoreTests(unittest.TestCase):
         self.store.remove(other["id"])
         self.assertEqual([], self.store.all_skins())
 
+    def test_the_featured_catalog_is_listed_apart_and_never_rotates(self):
+        self.share("Steve")
+        self.store.add_featured("Technoblade", png(), False)
+        self.store.add_featured("Dream", png(64, 32), True)
+        listing = self.store.list_skins()
+        self.assertEqual(["Steve"], [skin["name"] for skin in listing["skins"]])
+        self.assertEqual([("Dream", True), ("Technoblade", False)], [(s["name"], s["slim"]) for s in listing["featured"]])
+        # Adding a name again replaces its skin.
+        self.store.add_featured("technoblade", png(), True)
+        self.assertEqual(2, len(self.store.list_skins()["featured"]))
+        # Shared skins rotate out; the catalog stays.
+        with mock.patch.object(gallery_api, "MAX_SKINS", 2):
+            for index in range(4):
+                self.share(f"Player{index}", f"10.0.0.{index}")
+        self.assertEqual(2, len(self.store.list_skins()["skins"]))
+        self.assertEqual(2, len(self.store.list_skins()["featured"]))
+        # Purging a player keeps the catalog; unfeature takes it out.
+        self.store.purge_player("Dream")
+        self.assertEqual(2, len(self.store.list_skins()["featured"]))
+        self.assertEqual(1, self.store.remove_featured("dream"))
+        self.assertEqual(["technoblade"], [s["name"] for s in self.store.list_skins()["featured"]])
+        self.assert_status(415, self.store.add_featured, "Notch", b"nope", False)
+
+    def test_a_database_from_before_the_catalog_gains_its_column(self):
+        import sqlite3
+        database = self.root / "old.db"
+        db = sqlite3.connect(database)
+        db.executescript(gallery_api.SCHEMA)
+        db.execute("INSERT INTO skins(id, name, player_key, client_ip, created, title, slim, token_hash) "
+                   "VALUES('0123456789abcdef', 'Steve', 'steve', '1.1.1.1', 1, 'x', 0, 'h')")
+        db.commit()
+        db.close()
+        old = GalleryStore(str(database), self.root / "old-photos", clock=lambda: self.now)
+        self.assertEqual(["Steve"], [skin["name"] for skin in old.list_skins()["skins"]])
+
     def test_purge_also_removes_skins(self):
         self.share("Steve")
         self.share("Aurora_")
         self.assertEqual(1, self.store.purge_player("steve"))
         self.assertEqual(["Aurora_"], [skin["name"] for skin in self.store.list_skins()["skins"]])
+
+
+class FetchOriginalTests(unittest.TestCase):
+    def fake(self, textures, missing=False):
+        import base64
+        import json
+        import urllib.error
+        value = base64.b64encode(json.dumps({"textures": textures}).encode()).decode()
+
+        def opener(url):
+            if url.startswith(gallery_api.MOJANG_PROFILE):
+                if missing:
+                    raise urllib.error.HTTPError(url, 404, "not found", {}, None)
+                return json.dumps({"id": "069a79f444e94726a5befca90e38aaf5", "name": "Notch"}).encode()
+            if url.startswith(gallery_api.MOJANG_SESSION):
+                return json.dumps({"properties": [{"name": "textures", "value": value}]}).encode()
+            self.assertTrue(url.startswith("https://textures.minecraft.net/texture/"))
+            return png()
+
+        return opener
+
+    def test_reads_the_skin_and_model_with_the_accounts_spelling(self):
+        found = gallery_api.fetch_original("notch", self.fake(
+            {"SKIN": {"url": "http://textures.minecraft.net/texture/abc123", "metadata": {"model": "slim"}}}))
+        self.assertEqual(("Notch", png(), True), found)
+
+    def test_refuses_default_skins_other_hosts_and_missing_accounts(self):
+        self.assertIsNone(gallery_api.fetch_original("notch", self.fake({})))
+        self.assertIsNone(gallery_api.fetch_original("notch", self.fake({"SKIN": {"url": "http://evil.example/texture/abc"}})))
+        self.assertIsNone(gallery_api.fetch_original("nobody", self.fake({}, missing=True)))
+        self.assertIsNone(gallery_api.fetch_original("../x", self.fake({})))
 
 
 class HttpTests(unittest.TestCase):
@@ -236,6 +302,7 @@ class HttpTests(unittest.TestCase):
         shared = json.loads(body)
         status, _, body = self.call("GET", "/api/gallery/skins")
         self.assertEqual([("Steve", "Minha skin", True)], [(s["name"], s["title"], s["slim"]) for s in json.loads(body)["skins"]])
+        self.assertEqual([], json.loads(body)["featured"])
         status, kind, body = self.call("GET", f"/api/gallery/skins/{shared['id']}.png")
         self.assertEqual((200, "image/png", png()), (status, kind, body))
         self.assertEqual(200, self.call("POST", f"/api/gallery/skins/{shared['id']}/report", b"")[0])

@@ -105,6 +105,16 @@ Cloudflare WAF like `/api/playtime/*`. The rules that keep it small and civil:
   textures of 64 × 64 or 64 × 32 up to 64 KB, 10 per player and 30 per address a day,
   the newest 2000 kept. The commands below work with skin ids too; `list` shows the
   skins after the pictures and `purge` removes both.
+- Explorar also shows a Populares catalog: skins of well-known original accounts that
+  the admin loads from Mojang. They never rotate out and only the admin removes them.
+  Mojang limits how fast it answers; run `feature` again for the names it skipped.
+
+```sh
+cd /usr/local/lib/eternal-launcher
+runuser -u eternal-gallery -- env ETERNAL_GALLERY_DIR=/var/lib/eternal-gallery python3 gallery_api.py feature --file featured_skins.txt
+runuser -u eternal-gallery -- env ETERNAL_GALLERY_DIR=/var/lib/eternal-gallery python3 gallery_api.py feature Notch Grian
+runuser -u eternal-gallery -- env ETERNAL_GALLERY_DIR=/var/lib/eternal-gallery python3 gallery_api.py unfeature Notch
+```
 
 Moderation:
 

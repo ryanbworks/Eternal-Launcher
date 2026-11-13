@@ -13,6 +13,7 @@ Listens on localhost only; NGINX publishes it under /api/gallery/.
 """
 
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -22,6 +23,8 @@ import sqlite3
 import struct
 import sys
 import time
+import urllib.error
+import urllib.request
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -89,6 +92,47 @@ SKINS_PER_PLAYER_PER_DAY = 10
 SKINS_PER_IP_PER_DAY = 30
 MAX_SKINS = 2000
 SKIN_TITLE = re.compile(r"[\w ()'\-.,!]{1,32}")
+# Featured skins: the catalog an admin fills from well-known original accounts, so
+# Explorar never opens empty. They never rotate out and are listed apart.
+MAX_FEATURED = 300
+MOJANG_PROFILE = "https://api.mojang.com/users/profiles/minecraft/"
+MOJANG_SESSION = "https://sessionserver.mojang.com/session/minecraft/profile/"
+MOJANG_TEXTURES = re.compile(r"https?://textures\.minecraft\.net/texture/([0-9a-f]{1,128})")
+
+
+def fetch_original(name, opener=None):
+    """(name as the account writes it, PNG, slim) of an original account's custom skin.
+
+    None when the name has no account, uses a default skin, or Mojang did not answer.
+    Textures only come from textures.minecraft.net.
+    """
+    if not isinstance(name, str) or not NICKNAME.fullmatch(name):
+        return None
+
+    def default_opener(url):
+        request = urllib.request.Request(url, headers={"User-Agent": "EternalGallery/1"})
+        with urllib.request.urlopen(request, timeout=15) as response:
+            return response.read(MAX_SKIN_BYTES + 1)
+
+    read = opener or default_opener
+    try:
+        profile = json.loads(read(MOJANG_PROFILE + name) or b"{}")
+        uuid, canonical = profile.get("id"), profile.get("name", name)
+        if not isinstance(uuid, str) or not re.fullmatch(r"[0-9a-f]{32}", uuid) or not NICKNAME.fullmatch(str(canonical)):
+            return None
+        session = json.loads(read(MOJANG_SESSION + uuid))
+        for prop in session.get("properties", []):
+            if prop.get("name") != "textures":
+                continue
+            skin = json.loads(base64.b64decode(prop["value"])).get("textures", {}).get("SKIN")
+            match = MOJANG_TEXTURES.fullmatch(skin.get("url", "")) if isinstance(skin, dict) else None
+            if not match:
+                return None
+            png = read("https://textures.minecraft.net/texture/" + match.group(1))
+            return canonical, png, (skin.get("metadata") or {}).get("model") == "slim"
+    except (urllib.error.URLError, OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+    return None
 
 
 def skin_size(data):
@@ -178,6 +222,9 @@ class GalleryStore:
             for statement in SCHEMA.split(";"):
                 if statement.strip():
                     db.execute(statement)
+            # Databases created before the catalog get its column.
+            if "featured" not in [row["name"] for row in db.execute("PRAGMA table_info(skins)")]:
+                db.execute("ALTER TABLE skins ADD COLUMN featured INTEGER NOT NULL DEFAULT 0")
 
     def _now(self):
         return int(self.clock())
@@ -336,8 +383,8 @@ class GalleryStore:
         try:
             with self._transaction() as db:
                 day_ago = now - 86400
-                mine = db.execute("SELECT COUNT(*) AS n FROM skins WHERE player_key = ? AND created > ?", (key, day_ago)).fetchone()["n"]
-                from_ip = db.execute("SELECT COUNT(*) AS n FROM skins WHERE client_ip = ? AND created > ?", (client_ip, day_ago)).fetchone()["n"]
+                mine = db.execute("SELECT COUNT(*) AS n FROM skins WHERE featured = 0 AND player_key = ? AND created > ?", (key, day_ago)).fetchone()["n"]
+                from_ip = db.execute("SELECT COUNT(*) AS n FROM skins WHERE featured = 0 AND client_ip = ? AND created > ?", (client_ip, day_ago)).fetchone()["n"]
                 if mine >= SKINS_PER_PLAYER_PER_DAY or from_ip >= SKINS_PER_IP_PER_DAY:
                     raise ApiError(429, "daily limit reached")
                 partial = path.with_name(path.name + ".part")
@@ -347,9 +394,9 @@ class GalleryStore:
                     "INSERT INTO skins(id, name, player_key, client_ip, created, title, slim, token_hash, hidden) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (skin_id, nickname, key, client_ip, now, title.strip(), int(model == "slim"), _token_hash(token), int(self.review)),
                 )
-                overflow = db.execute("SELECT COUNT(*) AS n FROM skins").fetchone()["n"] - MAX_SKINS
+                overflow = db.execute("SELECT COUNT(*) AS n FROM skins WHERE featured = 0").fetchone()["n"] - MAX_SKINS
                 if overflow > 0:
-                    removed = [row["id"] for row in db.execute("SELECT id FROM skins ORDER BY created ASC, id ASC LIMIT ?", (overflow,))]
+                    removed = [row["id"] for row in db.execute("SELECT id FROM skins WHERE featured = 0 ORDER BY created ASC, id ASC LIMIT ?", (overflow,))]
                     db.executemany("DELETE FROM skins WHERE id = ?", [(old,) for old in removed])
                     db.executemany("DELETE FROM skin_reports WHERE skin_id = ?", [(old,) for old in removed])
         except BaseException:
@@ -360,15 +407,62 @@ class GalleryStore:
         return {"id": skin_id, "deleteToken": token, "pending": self.review}
 
     def list_skins(self, limit=120):
+        """The newest shared skins, and the whole featured catalog apart."""
         limit = max(1, min(limit, MAX_LIST))
         db = self._connect()
         try:
-            rows = db.execute(
-                "SELECT id, name, title, slim, created FROM skins WHERE hidden = 0 ORDER BY created DESC, id DESC LIMIT ?", (limit,)
+            shared = db.execute(
+                "SELECT id, name, title, slim, created FROM skins WHERE hidden = 0 AND featured = 0 ORDER BY created DESC, id DESC LIMIT ?",
+                (limit,),
             ).fetchall()
-            return {"skins": [{**dict(row), "slim": bool(row["slim"])} for row in rows]}
+            featured = db.execute(
+                "SELECT id, name, title, slim, created FROM skins WHERE hidden = 0 AND featured = 1 ORDER BY title COLLATE NOCASE LIMIT ?",
+                (MAX_FEATURED,),
+            ).fetchall()
+            as_json = lambda rows: [{**dict(row), "slim": bool(row["slim"])} for row in rows]
+            return {"skins": as_json(shared), "featured": as_json(featured)}
         finally:
             db.close()
+
+    def add_featured(self, nickname, png, slim):
+        """Adds (or replaces) the catalog skin of an original account."""
+        key = _player_key(nickname)
+        if len(png) > MAX_SKIN_BYTES or skin_size(png) not in ((64, 64), (64, 32)):
+            raise ApiError(415, "skins must be 64x64 PNG")
+        skin_id = secrets.token_hex(8)
+        path = self._skin_file(skin_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        partial = path.with_name(path.name + ".part")
+        partial.write_bytes(png)
+        os.replace(partial, path)
+        try:
+            with self._transaction() as db:
+                old = [row["id"] for row in db.execute("SELECT id FROM skins WHERE featured = 1 AND player_key = ?", (key,))]
+                db.executemany("DELETE FROM skins WHERE id = ?", [(skin,) for skin in old])
+                if db.execute("SELECT COUNT(*) AS n FROM skins WHERE featured = 1").fetchone()["n"] >= MAX_FEATURED:
+                    raise ApiError(409, "the catalog is full")
+                # Nobody holds a token for a catalog skin; only the admin commands remove it.
+                db.execute(
+                    "INSERT INTO skins(id, name, player_key, client_ip, created, title, slim, token_hash, hidden, featured) "
+                    "VALUES(?, ?, ?, 'catalog', ?, ?, ?, ?, 0, 1)",
+                    (skin_id, nickname, key, self._now(), nickname, int(bool(slim)), _token_hash(secrets.token_urlsafe(24))),
+                )
+        except BaseException:
+            path.unlink(missing_ok=True)
+            raise
+        for skin in old:
+            self._skin_file(skin).unlink(missing_ok=True)
+        return skin_id
+
+    def remove_featured(self, nickname):
+        key = _player_key(nickname)
+        with self._transaction() as db:
+            ids = [row["id"] for row in db.execute("SELECT id FROM skins WHERE featured = 1 AND player_key = ?", (key,))]
+            db.executemany("DELETE FROM skins WHERE id = ?", [(skin,) for skin in ids])
+            db.executemany("DELETE FROM skin_reports WHERE skin_id = ?", [(skin,) for skin in ids])
+        for skin in ids:
+            self._skin_file(skin).unlink(missing_ok=True)
+        return len(ids)
 
     def skin_png(self, skin_id):
         skin_id = _photo_id(skin_id)
@@ -430,7 +524,8 @@ class GalleryStore:
     def all_skins(self):
         db = self._connect()
         try:
-            return [dict(row) for row in db.execute("SELECT id, name, title, slim, created, hidden, reports FROM skins ORDER BY created DESC")]
+            return [dict(row) for row in db.execute(
+                "SELECT id, name, title, slim, created, hidden, reports, featured FROM skins ORDER BY featured, created DESC")]
         finally:
             db.close()
 
@@ -469,8 +564,8 @@ class GalleryStore:
             ids = [row["id"] for row in db.execute("SELECT id FROM photos WHERE player_key = ?", (key,))]
             db.execute("DELETE FROM photos WHERE player_key = ?", (key,))
             db.executemany("DELETE FROM reports WHERE photo_id = ?", [(photo,) for photo in ids])
-            skins = [row["id"] for row in db.execute("SELECT id FROM skins WHERE player_key = ?", (key,))]
-            db.execute("DELETE FROM skins WHERE player_key = ?", (key,))
+            skins = [row["id"] for row in db.execute("SELECT id FROM skins WHERE featured = 0 AND player_key = ?", (key,))]
+            db.execute("DELETE FROM skins WHERE featured = 0 AND player_key = ?", (key,))
             db.executemany("DELETE FROM skin_reports WHERE skin_id = ?", [(skin,) for skin in skins])
         for photo in ids:
             self._remove_files(photo)
@@ -619,7 +714,11 @@ def main():
                                  ("show", "show a hidden or pending picture and clear its reports"),
                                  ("delete", "delete a picture and its files")):
         commands.add_parser(command, help=description).add_argument("id")
-    commands.add_parser("purge", help="delete every picture of a player").add_argument("nickname")
+    commands.add_parser("purge", help="delete every picture and shared skin of a player").add_argument("nickname")
+    feature = commands.add_parser("feature", help="add the skins of original accounts to the Populares catalog")
+    feature.add_argument("nicknames", nargs="*")
+    feature.add_argument("--file", help="one nickname per line, # starts a comment")
+    commands.add_parser("unfeature", help="take a nickname out of the catalog").add_argument("nickname")
     arguments = parser.parse_args()
 
     store = open_store()
@@ -641,7 +740,8 @@ def main():
                 state = "oculta" if skin["hidden"] else "visível"
                 created = time.strftime("%Y-%m-%d %H:%M", time.localtime(skin["created"]))
                 model = "fino" if skin["slim"] else "clássico"
-                print(f"{skin['id']}  {skin['name']:<16}  {created}  {skin['title']:<24}  {model:<8}  "
+                kind = "popular" if skin["featured"] else "grupo"
+                print(f"{skin['id']}  {skin['name']:<16}  {created}  {skin['title']:<24}  {model:<8}  {kind:<7}  "
                       f"{state:<8} denúncias: {skin['reports']}")
         elif arguments.command == "hide":
             store.set_hidden(arguments.id, True)
@@ -650,7 +750,33 @@ def main():
         elif arguments.command == "delete":
             store.remove(arguments.id)
         elif arguments.command == "purge":
-            print(f"{store.purge_player(arguments.nickname)} capturas removidas")
+            print(f"{store.purge_player(arguments.nickname)} capturas e skins removidas")
+        elif arguments.command == "feature":
+            names = list(arguments.nicknames)
+            if arguments.file:
+                for line in Path(arguments.file).read_text(encoding="utf-8").splitlines():
+                    line = line.split("#", 1)[0].strip()
+                    if line:
+                        names.append(line)
+            added = 0
+            for index, name in enumerate(names):
+                if index:
+                    time.sleep(1.2)  # Mojang limits how fast profiles can be read
+                found = fetch_original(name)
+                if found is None:
+                    print(f"{name}: sem skin própria, conta inexistente ou Mojang sem resposta")
+                    continue
+                canonical, png, slim = found
+                try:
+                    store.add_featured(canonical, png, slim)
+                except ApiError as error:
+                    print(f"{name}: {error.message}")
+                    continue
+                added += 1
+                print(f"{canonical}: ok ({'fino' if slim else 'clássico'})")
+            print(f"{added} de {len(names)} skins no catálogo")
+        elif arguments.command == "unfeature":
+            print(f"{store.remove_featured(arguments.nickname)} skin(s) tirada(s) do catálogo")
     except ApiError as error:
         print(error.message, file=sys.stderr)
         return 1
