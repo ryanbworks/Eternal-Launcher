@@ -59,6 +59,12 @@ Components only draw the data they receive. They never touch the network or disk
 - `ModpackChangelog`: compares the server's mod list with the one the player last
   acknowledged (`modpack-snapshot.txt`) and names what came in, left or was updated.
 - `MilestoneStore`: the highest play-time level celebrated per nickname (`milestones.txt`).
+- `EternalAccount` / `EternalSessionStore`: the Conta Eternal on the group's Drasl server
+  (Yggdrasil sign-in, validate/refresh, skin upload and reset, the pinned authlib-injector),
+  with the access token stored encrypted by DPAPI in `account.dat`. See
+  [DRASL_MIGRATION.md](DRASL_MIGRATION.md).
+- `SkinRenderer`: decodes skin textures and draws the flat front and back of a player
+  for the Skins page.
 - `ModInventory`: separates server mods from the player's own and enables, disables or
   recycles player mods.
 - `PlaytimeStore` / `PlaySession`: total and last play time in `playtime.json`.
