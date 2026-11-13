@@ -298,12 +298,23 @@ void HomeView::drawLogin(Gdiplus::Graphics& g, const HomeModel& model, const Con
     drawText(g, kicker, {emblem.GetRight() + 14, p.Y + 26, 300, 16}, 11, Gdiplus::FontStyleBold, Theme::AccentLight);
     drawDisplayText(g, title, {emblem.GetRight() + 14, p.Y + 42, 320, 30}, 21, Theme::TextPrimary, Gdiplus::StringAlignmentNear,
         Gdiplus::StringAlignmentCenter);
-    const std::wstring notice = !model.loginNotice.empty() ? model.loginNotice
-        : mode == 1 ? L"Crie a sua senha. Ela vale para o launcher e para o site."
-        : mode == 2 ? L"Seu nick no jogo e uma senha com pelo menos 8 caracteres."
-        : L"Primeiro acesso? Digite só o seu nick e clique em Entrar.";
-    drawTextLine(g, notice, {p.X + 28, p.Y + 80, p.Width - 56, 20}, 12.5F, Gdiplus::FontStyleRegular,
-        model.loginNotice.empty() ? Theme::TextSecondary : Theme::Warning);
+    if (mode == 0 && model.loginNotice.empty()) {
+        // The first-access hint: the main thing a returning player needs to know.
+        const Gdiplus::RectF hint{p.X + 28, p.Y + 78, p.Width - 56, 66};
+        fillRoundedRectangle(g, hint, 12, Theme::AccentTint);
+        drawRoundedRectangle(g, {hint.X + .5F, hint.Y + .5F, hint.Width - 1, hint.Height - 1}, 12, Theme::AccentOutline);
+        Icons::draw(g, Icons::Icon::Key, {hint.X + 14, hint.Y + 14, 18, 18}, Theme::AccentLight, 1.8F);
+        drawText(g, L"Primeiro acesso?", {hint.X + 42, hint.Y + 10, hint.Width - 56, 20}, 13, Gdiplus::FontStyleBold, Theme::TextPrimary,
+            Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+        drawText(g, L"Digite só o seu nick, deixe a senha em branco e clique em Entrar. Você cria a senha em seguida.",
+            {hint.X + 42, hint.Y + 30, hint.Width - 56, 34}, 12, Gdiplus::FontStyleRegular, Theme::TextSecondary);
+    } else {
+        const std::wstring notice = !model.loginNotice.empty() ? model.loginNotice
+            : mode == 1 ? L"Crie a sua senha. Ela vale para o launcher e para o site."
+            : L"Seu nick no jogo e uma senha com pelo menos 8 caracteres.";
+        drawTextLine(g, notice, {p.X + 28, p.Y + 80, p.Width - 56, 20}, 12.5F, Gdiplus::FontStyleRegular,
+            model.loginNotice.empty() ? Theme::TextSecondary : Theme::Warning);
+    }
     Buttons::drawIcon(g, Layout::LoginClose, Icons::Icon::Close, visuals(LoginCloseButtonId), false, 16);
 
     // Fields: rounded wells holding the native EDITs; the hint text lives in the EDIT.
@@ -929,7 +940,9 @@ void HomeView::drawPlayerCard(Gdiplus::Graphics& g, const PlayerCardModel& m, co
     } else {
         drawDisplayText(g, L"Entrar para jogar", {Layout::NicknameField.X, Layout::NicknameField.Y + 2, Layout::NicknameField.Width, 36}, 17,
             Theme::TextSecondary, Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
-        drawText(g, L"Clique em Jogar para entrar", Layout::NicknameStatus, 12, Gdiplus::FontStyleRegular, Theme::TextMuted);
+        Icons::draw(g, Icons::Icon::Key, {Layout::NicknameStatus.X, Layout::NicknameStatus.Y + 2, 13, 13}, Theme::AccentLight, 1.7F);
+        drawText(g, L"1º acesso: só o nick, sem senha", {Layout::NicknameStatus.X + 18, Layout::NicknameStatus.Y, Layout::NicknameStatus.Width - 18, 18},
+            12, Gdiplus::FontStyleRegular, Theme::AccentLight);
     }
 
     drawText(g, L"Como entrar", Layout::ModeLabel, 12.5F, Gdiplus::FontStyleBold, Theme::TextSecondary);

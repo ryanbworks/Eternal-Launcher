@@ -67,7 +67,8 @@ namespace Layout
     // Fields: 0 user, 1 password, 2 confirmation. Returns the field's row, or -1 if hidden.
     inline int loginRow(int mode, int field)
     {
-        static constexpr int Rows[3][3] = {{0, 1, -1}, {-1, 0, 1}, {0, 1, 2}};
+        // Signing in leaves row 0 to the first-access hint.
+        static constexpr int Rows[3][3] = {{1, 2, -1}, {-1, 0, 1}, {0, 1, 2}};
         return mode >= 0 && mode < 3 && field >= 0 && field < 3 ? Rows[mode][field] : -1;
     }
     inline Rect loginField(int row) { return {294, 196 + static_cast<float>(row) * 50, 404, 40}; }

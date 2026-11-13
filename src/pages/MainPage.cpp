@@ -3329,6 +3329,8 @@ void MainPage::openLogin(bool playAfter, std::wstring notice)
     redraw();
     const HWND target = loginUser_ && GetWindowTextLengthW(loginUser_) == 0 ? loginUser_ : loginPassword_;
     if (target) SetFocus(target);
+    // The fields sit on mode-dependent rows.
+    layoutControls();
 }
 
 void MainPage::closeLogin()
