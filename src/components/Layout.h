@@ -63,10 +63,16 @@ namespace Layout
     // Conta Eternal sign-in, centered on the landscape.
     inline const Rect Login{266, 84, 460, 324};
     inline const Rect LoginClose{670, 100, 40, 40};
-    inline const Rect LoginUserField{294, 216, 404, 38};
-    inline const Rect LoginPasswordField{294, 282, 404, 38};
-    inline const Rect LoginSubmit{294, 352, 196, 42};
-    inline const Rect LoginRegister{502, 352, 196, 42};
+    // Modes: 0 sign in, 1 first access (choose a password), 2 create an account.
+    // Fields: 0 user, 1 password, 2 confirmation. Returns the field's row, or -1 if hidden.
+    inline int loginRow(int mode, int field)
+    {
+        static constexpr int Rows[3][3] = {{0, 1, -1}, {-1, 0, 1}, {0, 1, 2}};
+        return mode >= 0 && mode < 3 && field >= 0 && field < 3 ? Rows[mode][field] : -1;
+    }
+    inline Rect loginField(int row) { return {294, 196 + static_cast<float>(row) * 50, 404, 40}; }
+    inline const Rect LoginSubmit{294, 362, 196, 40};
+    inline const Rect LoginRegister{502, 362, 196, 40};
     inline Rect levelColumn(int index) { return {152 + static_cast<float>(index) * 140, 184, 128, 200}; }
     // Modpack changelog: takes the landscape's slot until it is acknowledged.
     inline const Rect ModpackChangesMods{636, 96, 112, 38};

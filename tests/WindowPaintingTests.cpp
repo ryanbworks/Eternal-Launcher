@@ -215,8 +215,27 @@ public:
         SendMessageW(page.window_,WM_COMMAND,MAKEWPARAM(PlayButtonId,BN_CLICKED),reinterpret_cast<LPARAM>(control(page,PlayButtonId)));
         check(page.loginOpen_ && page.playAfterLogin_ && shown(page.loginUser_) && shown(page.loginPassword_) &&
               shown(control(page,LoginSubmitButtonId)) && !shown(control(page,SpotlightReadButtonId)),"Play while signed out opens the sign-in panel");
+        SetWindowTextW(page.loginUser_,L"");
         SendMessageW(control(page,LoginSubmitButtonId),BM_CLICK,0,0);
-        check(!page.loginBusy_ && !page.loginError_.empty(),"empty fields are caught before any request");
+        check(!page.loginBusy_ && !page.loginError_.empty(),"an empty nickname is caught before any request");
+        // Typed text survives every repaint (the bug: the label sync blanked text fields).
+        SetWindowTextW(page.loginUser_,L"Steve");
+        page.redraw();page.syncControls();
+        SendMessageW(control(page,QuickFolderButtonId),WM_MOUSEMOVE,0,MAKELPARAM(4,4));page.redraw();
+        std::array<wchar_t,32> typed{};GetWindowTextW(page.loginUser_,typed.data(),32);
+        check(std::wstring(typed.data())==L"Steve","the typed nickname stays in the field");
+        check(!shown(page.loginConfirm_),"signing in asks for a nickname and a password only");
+        SendMessageW(control(page,LoginRegisterButtonId),BM_CLICK,0,0);
+        check(page.loginMode_==2 && shown(page.loginUser_) && shown(page.loginPassword_) && shown(page.loginConfirm_),
+            "creating an account asks for a nickname, a password and its confirmation");
+        SetWindowTextW(page.loginPassword_,L"12345678");SetWindowTextW(page.loginConfirm_,L"87654321");
+        SendMessageW(control(page,LoginSubmitButtonId),BM_CLICK,0,0);
+        check(!page.loginBusy_ && page.loginError_==L"As duas senhas não são iguais.","mismatched passwords are caught locally");
+        SendMessageW(control(page,LoginRegisterButtonId),BM_CLICK,0,0);
+        check(page.loginMode_==0 && !shown(page.loginConfirm_),"back to signing in");
+        page.loginFirstName_=L"Steve";page.setLoginMode(1);
+        check(!shown(page.loginUser_) && shown(page.loginPassword_) && shown(page.loginConfirm_),"first access only asks for the new password");
+        page.setLoginMode(0);SetWindowTextW(page.loginUser_,L"");
         check(page.handleKeyboard(escape) && !page.loginOpen_ && !shown(page.loginUser_),"Escape closes the sign-in panel");
         SendMessageW(control(page,OriginalButtonId),BM_CLICK,0,0);
         check(page.originalMode_ && !shown(page.nicknameInput_) && !shown(control(page,AccountSignOutButtonId)),

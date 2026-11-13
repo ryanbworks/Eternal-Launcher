@@ -307,6 +307,66 @@ bool EternalAccount::resetSkin(std::wstring_view baseUrl, const EternalSession& 
     return false;
 }
 
+std::wstring EternalAccount::translateError(std::string_view message)
+{
+    const auto has = [&message](std::string_view part) { return message.find(part) != std::string_view::npos; };
+    if (has("username is taken") || has("player name is taken")) return L"Esse nick já tem conta. Se é seu, use Entrar.";
+    if (has("Invalid password") && (has("longer") || has("short"))) return L"A senha precisa ter pelo menos 8 caracteres.";
+    if (has("Invalid password")) return L"Essa senha não pode ser usada. Tente outra.";
+    if (has("Invalid username") || has("Invalid player name")) return L"Use de 3 a 16 letras, números ou _ no nick.";
+    if (has("Invalid credentials")) return L"Usuário ou senha incorretos.";
+    if (has("registration") || has("not allowed")) return L"O cadastro está fechado no momento.";
+    return L"O servidor de contas recusou o pedido. Tente de novo.";
+}
+
+EternalAccount::FirstAccess EternalAccount::checkFirstAccess(std::wstring_view fileServerUrl, std::wstring_view name, std::stop_token stop)
+{
+    FirstAccess result;
+    const auto response = HttpDownloadClient{}.send(L"GET", trimmed(std::wstring(fileServerUrl)) + L"/api/accounts/first-access/" + std::wstring(name),
+        {}, nullptr, {}, stop);
+    if (!response.success) {
+        result.errorMessage = response.statusCode == 0 ? L"Sem conexão com o servidor. Confira sua internet." : L"Não foi possível conferir o nick agora.";
+        return result;
+    }
+    const auto document = JsonValue::parse(response.content);
+    const auto* pending = document ? document->find("firstAccess") : nullptr;
+    const auto* exact = document ? document->find("name") : nullptr;
+    result.known = pending != nullptr;
+    result.pending = pending && pending->boolValue(false);
+    if (exact && exact->stringValue()) result.name = wide(*exact->stringValue());
+    return result;
+}
+
+bool EternalAccount::claimFirstAccess(std::wstring_view fileServerUrl, std::wstring_view name, std::wstring_view password, std::wstring& error,
+                                      std::stop_token stop)
+{
+    const std::string body = "{\"name\":" + json(utf8(name)) + ",\"password\":" + json(utf8(password)) + "}";
+    const auto response = HttpDownloadClient{}.send(L"POST", trimmed(std::wstring(fileServerUrl)) + L"/api/accounts/first-access", {}, &body,
+        L"application/json", stop);
+    if (response.success) return true;
+    error = response.statusCode == 409 ? L"Esse nick já criou a senha. Use Entrar com a sua senha."
+        : response.statusCode == 400 ? L"Escolha uma senha nova com pelo menos 8 caracteres."
+        : response.statusCode == 429 ? L"Muitas tentativas. Espere um minuto e tente de novo."
+        : response.statusCode == 0 ? L"Sem conexão com o servidor. Confira sua internet."
+        : L"Não foi possível criar a senha agora. Tente de novo.";
+    return false;
+}
+
+bool EternalAccount::registerAccount(std::wstring_view baseUrl, std::wstring_view name, std::wstring_view password, std::wstring& error,
+                                     std::stop_token stop)
+{
+    const std::string body = "{\"username\":" + json(utf8(name)) + ",\"password\":" + json(utf8(password)) + ",\"playerName\":" + json(utf8(name)) + "}";
+    const auto response = HttpDownloadClient{}.send(L"POST", trimmed(std::wstring(baseUrl)) + L"/drasl/api/v3/users", {}, &body,
+        L"application/json", stop);
+    if (response.success) return true;
+    if (response.statusCode == 0) { error = L"Sem conexão com o servidor de contas. Confira sua internet."; return false; }
+    if (response.statusCode == 429) { error = L"Muitas tentativas. Espere um minuto e tente de novo."; return false; }
+    const auto document = JsonValue::parse(response.content);
+    const auto* message = document ? document->find("message") : nullptr;
+    error = translateError(message && message->stringValue() ? *message->stringValue() : std::string{});
+    return false;
+}
+
 std::filesystem::path EternalAccount::ensureAuthlibInjector(const std::filesystem::path& dataDirectory, std::wstring& error, std::stop_token stop)
 {
     const auto directory = dataDirectory / L"runtime" / L"authlib-injector";

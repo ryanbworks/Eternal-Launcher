@@ -54,6 +54,18 @@ namespace EternalAccount
     bool uploadSkin(std::wstring_view baseUrl, const EternalSession& session, const std::string& png, bool slim, std::wstring& error);
     bool resetSkin(std::wstring_view baseUrl, const EternalSession& session, std::wstring& error);
 
+    // First access to an account the migration reserved: the player types only the
+    // nickname and chooses a password (server/drasl/first_access.py on the file server).
+    struct FirstAccess { bool known = false; bool pending = false; std::wstring name; std::wstring errorMessage; };
+    FirstAccess checkFirstAccess(std::wstring_view fileServerUrl, std::wstring_view name, std::stop_token stop = {});
+    bool claimFirstAccess(std::wstring_view fileServerUrl, std::wstring_view name, std::wstring_view password, std::wstring& error,
+                          std::stop_token stop = {});
+    // A new account with a player of the same name (open registration on Drasl).
+    bool registerAccount(std::wstring_view baseUrl, std::wstring_view name, std::wstring_view password, std::wstring& error,
+                         std::stop_token stop = {});
+    // Drasl's English error messages in a player's words.
+    std::wstring translateError(std::string_view message);
+
     // The pinned authlib-injector jar in the data folder, downloaded and checked
     // against its SHA-256 when missing. Empty with `error` set on failure.
     std::filesystem::path ensureAuthlibInjector(const std::filesystem::path& dataDirectory, std::wstring& error, std::stop_token stop = {});

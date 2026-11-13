@@ -1,0 +1,22 @@
+[Unit]
+Description=Primeiro acesso das contas Eternal reservadas
+After=network-online.target drasl.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=eternal-first-access
+Group=eternal-first-access
+StateDirectory=eternal-first-access
+StateDirectoryMode=0700
+Environment=ETERNAL_FIRST_ACCESS_FILE=/var/lib/eternal-first-access/pending.txt
+ExecStart=/usr/bin/python3 /usr/local/lib/eternal/first_access.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -56,6 +56,7 @@ namespace
         {NavHelpId, true, true, L"Ajuda"},
         {LoginUserInputId, false, true, nullptr},
         {LoginPasswordInputId, false, true, nullptr},
+        {LoginConfirmInputId, false, true, nullptr},
         {LoginSubmitButtonId, false, true, L"Entrar na Conta Eternal"},
         {LoginRegisterButtonId, false, true, L"Criar conta no site"},
         {LoginCloseButtonId, false, true, L"Fechar"},
@@ -236,6 +237,8 @@ MainPage::~MainPage()
         delete reinterpret_cast<EternalAuthResult*>(pending.lParam);
     for (MSG pending{}; PeekMessageW(&pending, nullptr, EternalReadyMessage, EternalReadyMessage, PM_REMOVE);)
         delete reinterpret_cast<EternalReady*>(pending.lParam);
+    for (MSG pending{}; PeekMessageW(&pending, nullptr, EternalFirstAccessMessage, EternalFirstAccessMessage, PM_REMOVE);)
+        delete reinterpret_cast<EternalAccount::FirstAccess*>(pending.lParam);
     if (loginFont_) DeleteObject(loginFont_);
     screenshotThread_.request_stop();
     galleryThread_.request_stop();
@@ -494,10 +497,10 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             if (notification == EN_CHANGE || notification == EN_SETFOCUS || notification == EN_KILLFOCUS) redraw();
             return 0;
         }
-        if (id == LoginUserInputId || id == LoginPasswordInputId) {
+        if (id == LoginUserInputId || id == LoginPasswordInputId || id == LoginConfirmInputId) {
             if (notification == EN_CHANGE && !loginError_.empty()) { loginError_.clear(); redraw(); }
             if (notification == EN_SETFOCUS || notification == EN_KILLFOCUS) {
-                markContent(id == LoginUserInputId ? Layout::LoginUserField : Layout::LoginPasswordField, 4);
+                markContent(controlBounds(id), 4);
                 redraw(true);
             }
             return 0;
@@ -601,6 +604,22 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         redraw();
         return 0;
     }
+    case EternalFirstAccessMessage:
+    {
+        std::unique_ptr<EternalAccount::FirstAccess> result(reinterpret_cast<EternalAccount::FirstAccess*>(lParam));
+        if (eternalThread_.joinable()) eternalThread_.join();
+        loginBusy_ = false;
+        if (!result || !loginOpen_) { redraw(); return 0; }
+        if (result->pending) {
+            loginFirstName_ = result->name;
+            setLoginMode(1);
+        } else {
+            loginError_ = !result->errorMessage.empty() ? result->errorMessage : L"Digite sua senha. Ainda não tem conta? Use Criar conta.";
+            if (loginPassword_) SetFocus(loginPassword_);
+            redraw();
+        }
+        return 0;
+    }
     case EternalAuthMessage:
     {
         std::unique_ptr<EternalAuthResult> result(reinterpret_cast<EternalAuthResult*>(lParam));
@@ -609,7 +628,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         if (!result) return 0;
         if (!result->success) {
             loginError_ = result->errorMessage;
-            if (loginPassword_) { SetWindowTextW(loginPassword_, L""); SetFocus(loginPassword_); }
+            if (loginMode_ == 0 && loginPassword_) { SetWindowTextW(loginPassword_, L""); SetFocus(loginPassword_); }
             redraw();
             return 0;
         }
@@ -1107,6 +1126,8 @@ HomeModel MainPage::homeModel(bool preview) const
     model.loginBusy = loginBusy_;
     model.loginError = loginError_;
     model.loginNotice = loginNotice_;
+    model.loginMode = loginMode_;
+    model.loginName = loginFirstName_;
     if (preview && loginOpen_) model.previewLoginUser = previewLoginUser_;
     const auto now = wallClock();
     const auto record = playSession_.active() ? playSession_.snapshot(PlaySession::Clock::now(), now) : playtime_;
@@ -1588,15 +1609,16 @@ void MainPage::createControls()
             controls_.push_back({NicknameInputId, nicknameInput_, false});
             continue;
         }
-        if (spec.id == LoginUserInputId || spec.id == LoginPasswordInputId) {
-            const bool password = spec.id == LoginPasswordInputId;
+        if (spec.id == LoginUserInputId || spec.id == LoginPasswordInputId || spec.id == LoginConfirmInputId) {
+            const bool password = spec.id != LoginUserInputId;
             const auto edit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL | (password ? ES_PASSWORD : 0),
                 0, 0, 0, 0, window_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(spec.id)), instance_, nullptr);
             if (!edit) continue;
-            SendMessageW(edit, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(password ? L"Sua senha" : L"Seu usuário"));
-            SendMessageW(edit, EM_SETLIMITTEXT, password ? 128 : 32, 0);
+            SendMessageW(edit, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(
+                spec.id == LoginUserInputId ? L"Seu nick" : spec.id == LoginPasswordInputId ? L"Sua senha" : L"Repita a senha"));
+            SendMessageW(edit, EM_SETLIMITTEXT, password ? 128 : 16, 0);
             SetWindowTheme(edit, L"DarkMode_Explorer", nullptr);
-            (password ? loginPassword_ : loginUser_) = edit;
+            (spec.id == LoginUserInputId ? loginUser_ : spec.id == LoginPasswordInputId ? loginPassword_ : loginConfirm_) = edit;
             controls_.push_back({spec.id, edit, false});
             continue;
         }
@@ -1732,8 +1754,13 @@ Gdiplus::RectF MainPage::controlBounds(int id) const
     case QuickLogsButtonId: return Layout::quickAction(2);
     case SpotlightReadButtonId: return Layout::SpotlightRead;
     case CelebrationButtonId: return Layout::CelebrationButton;
-    case LoginUserInputId: return Layout::LoginUserField;
-    case LoginPasswordInputId: return Layout::LoginPasswordField;
+    case LoginUserInputId:
+    case LoginPasswordInputId:
+    case LoginConfirmInputId:
+    {
+        const int row = Layout::loginRow(loginMode_, id == LoginUserInputId ? 0 : id == LoginPasswordInputId ? 1 : 2);
+        return row < 0 ? Gdiplus::RectF{} : Layout::loginField(row);
+    }
     case LoginSubmitButtonId: return Layout::LoginSubmit;
     case LoginRegisterButtonId: return Layout::LoginRegister;
     case LoginCloseButtonId: return Layout::LoginClose;
@@ -1808,6 +1835,9 @@ bool MainPage::controlVisible(int id) const
         return page_ == LauncherPage::Skins && skinSelected_ > 0 && static_cast<std::size_t>(skinSelected_) <= skinLibrary_.size();
     case LoginUserInputId:
     case LoginPasswordInputId:
+    case LoginConfirmInputId:
+        return home && !installation_.visible && loginOpen_ &&
+            Layout::loginRow(loginMode_, id == LoginUserInputId ? 0 : id == LoginPasswordInputId ? 1 : 2) >= 0;
     case LoginSubmitButtonId:
     case LoginRegisterButtonId:
     case LoginCloseButtonId:
@@ -1918,7 +1948,9 @@ bool MainPage::controlEnabled(int id) const
         return !gameRunning() && !installation_.running;
     case LoginUserInputId:
     case LoginPasswordInputId:
+    case LoginConfirmInputId:
     case LoginSubmitButtonId:
+    case LoginRegisterButtonId:
         return !loginBusy_;
     case AccountSignOutButtonId:
         return !gameRunning() && !installation_.running && !eternalPreparing_;
@@ -2021,7 +2053,8 @@ void MainPage::layoutControls()
             // The single-line EDIT draws its text at the top; size it to one line of the display face.
             const float line = 30;
             bounds = {bounds.X, bounds.Y + (bounds.Height - line) / 2, bounds.Width, line};
-        } else if (control.id == LoginUserInputId || control.id == LoginPasswordInputId) {
+        } else if ((control.id == LoginUserInputId || control.id == LoginPasswordInputId || control.id == LoginConfirmInputId) &&
+                   bounds.Width > 0) {
             // Inside the drawn well, after its icon, one line tall.
             const float line = 20;
             bounds = {bounds.X + 40, bounds.Y + (bounds.Height - line) / 2, bounds.Width - 54, line};
@@ -2046,7 +2079,7 @@ void MainPage::layoutControls()
         const HFONT font = CreateFontW(-static_cast<int>(std::round(15 * s)), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, Theme::FontFamily);
         if (font) {
-            for (const HWND edit : {loginUser_, loginPassword_}) if (edit) SendMessageW(edit, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+            for (const HWND edit : {loginUser_, loginPassword_, loginConfirm_}) if (edit) SendMessageW(edit, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
             if (loginFont_) DeleteObject(loginFont_);
             loginFont_ = font;
         }
@@ -2067,7 +2100,9 @@ void MainPage::syncControls()
         const bool enabled = controlEnabled(control.id);
         if ((IsWindowEnabled(control.window) != FALSE) != enabled) EnableWindow(control.window, enabled);
         if (!enabled || !visible) control.hovered = false;
-        if (control.id == NicknameInputId) continue;
+        // Text fields keep what the player typed; only buttons take their label from here.
+        if (control.id == NicknameInputId || control.id == LoginUserInputId || control.id == LoginPasswordInputId ||
+            control.id == LoginConfirmInputId) continue;
         const auto label = controlLabel(control.id);
         std::array<wchar_t, 256> current{};
         GetWindowTextW(control.window, current.data(), static_cast<int>(current.size()));
@@ -2141,10 +2176,22 @@ bool MainPage::handleKeyboard(MSG& message)
             }
         }
         if (message.wParam == VK_ESCAPE && page_ == LauncherPage::Home && loginOpen_) { closeLogin(); return true; }
-        if (message.wParam == VK_RETURN && loginOpen_ && (GetFocus() == loginUser_ || GetFocus() == loginPassword_)) {
-            if (GetFocus() == loginUser_ && GetWindowTextLengthW(loginPassword_) == 0) SetFocus(loginPassword_);
-            else submitLogin();
-            return true;
+        if (message.wParam == VK_RETURN && loginOpen_) {
+            // Enter walks the visible fields in order and submits from the last one.
+            // In "Entrar", Enter on the nickname submits right away: an empty password is how
+            // a first access starts.
+            const HWND focus = GetFocus();
+            for (int field = 0; field < 3; ++field) {
+                if (loginField(field) != focus || Layout::loginRow(loginMode_, field) < 0) continue;
+                if (loginMode_ != 0)
+                    for (int next = field + 1; next < 3; ++next)
+                        if (Layout::loginRow(loginMode_, next) >= 0 && GetWindowTextLengthW(loginField(next)) == 0) {
+                            SetFocus(loginField(next));
+                            return true;
+                        }
+                submitLogin();
+                return true;
+            }
         }
         if (message.wParam == VK_ESCAPE && page_ == LauncherPage::Home && levelsOpen_) { showLevels(false); return true; }
         if (message.wParam == VK_ESCAPE && page_ != LauncherPage::Home) { showPage(LauncherPage::Home); return true; }
@@ -2332,7 +2379,8 @@ void MainPage::handleCommand(int id, int)
     case LoginSubmitButtonId: submitLogin(); break;
     case LoginCloseButtonId: closeLogin(); break;
     case LoginRegisterButtonId:
-        ShellExecuteW(window_, L"open", EternalAccount::registrationUrl(accountsBaseUrl_).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        // "Criar conta" from sign-in; "Voltar" / "Já tenho conta" from the other two.
+        setLoginMode(loginMode_ == 0 ? 2 : 0);
         break;
     case AccountSignOutButtonId: signOutEternal(); break;
     case LevelsButtonId: showLevels(!levelsOpen_); break;
@@ -3290,33 +3338,90 @@ void MainPage::closeLogin()
     loginBusy_ = false;
     loginError_.clear();
     loginNotice_.clear();
-    if (loginPassword_) SetWindowTextW(loginPassword_, L"");
+    for (const HWND field : {loginPassword_, loginConfirm_}) if (field) SetWindowTextW(field, L"");
+    if (loginMode_ != 0) { loginMode_ = 0; layoutControls(); }
     redraw();
     if (const auto* play = findControl(PlayButtonId); play && play->window) SetFocus(play->window);
 }
 
+HWND MainPage::loginField(int field) const
+{
+    return field == 0 ? loginUser_ : field == 1 ? loginPassword_ : loginConfirm_;
+}
+
+void MainPage::setLoginMode(int mode)
+{
+    loginMode_ = mode;
+    loginError_.clear();
+    loginNotice_.clear();
+    for (const HWND field : {loginPassword_, loginConfirm_}) if (field) SetWindowTextW(field, L"");
+    if (loginPassword_)
+        SendMessageW(loginPassword_, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(mode == 0 ? L"Sua senha" : L"Crie uma senha (mínimo 8)"));
+    // The fields move between rows, so the native controls follow.
+    layoutControls();
+    redraw();
+    const HWND target = mode == 1 ? loginPassword_ : loginUser_ && GetWindowTextLengthW(loginUser_) == 0 ? loginUser_ : loginPassword_;
+    if (target) SetFocus(target);
+}
+
 void MainPage::submitLogin()
 {
-    if (loginBusy_ || !loginUser_ || !loginPassword_) return;
+    if (loginBusy_ || !loginUser_ || !loginPassword_ || !loginConfirm_) return;
     std::array<wchar_t, 64> user{};
     GetWindowTextW(loginUser_, user.data(), static_cast<int>(user.size()));
-    // The password lives only in this buffer and the request, and is wiped right after.
-    std::array<wchar_t, 160> password{};
+    // Passwords live only in these buffers and the request, and are wiped right after.
+    std::array<wchar_t, 160> password{}, confirmation{};
     GetWindowTextW(loginPassword_, password.data(), static_cast<int>(password.size()));
-    std::wstring username = user.data();
+    GetWindowTextW(loginConfirm_, confirmation.data(), static_cast<int>(confirmation.size()));
+    const auto wipe = [&] {
+        SecureZeroMemory(password.data(), password.size() * sizeof(wchar_t));
+        SecureZeroMemory(confirmation.data(), confirmation.size() * sizeof(wchar_t));
+    };
+    std::wstring username = loginMode_ == 1 ? loginFirstName_ : std::wstring(user.data());
     while (!username.empty() && username.back() == L' ') username.pop_back();
     while (!username.empty() && username.front() == L' ') username.erase(username.begin());
-    if (username.empty()) { loginError_ = L"Digite seu usuário."; SetFocus(loginUser_); redraw(); return; }
-    if (password[0] == 0) { loginError_ = L"Digite sua senha."; SetFocus(loginPassword_); redraw(); return; }
+    const auto fail = [&](std::wstring message, HWND focus) { wipe(); loginError_ = std::move(message); SetFocus(focus); redraw(); };
+    if (username.empty()) { fail(L"Digite seu nick.", loginUser_); return; }
+    const std::size_t length = wcslen(password.data());
+
+    if (loginMode_ == 0 && length == 0) {
+        // Only the nickname: maybe a reserved account waiting for its first password.
+        wipe();
+        loginBusy_ = true;
+        loginError_.clear();
+        if (eternalThread_.joinable()) eternalThread_.join();
+        eternalThread_ = std::jthread([window = window_, url = std::wstring(LauncherConfig::FileServerBaseUrl), username](std::stop_token stop) {
+            auto* result = new EternalAccount::FirstAccess(EternalAccount::checkFirstAccess(url, username, stop));
+            if (result->name.empty()) result->name = username;
+            if (!PostMessageW(window, EternalFirstAccessMessage, 0, reinterpret_cast<LPARAM>(result))) delete result;
+        });
+        redraw();
+        return;
+    }
+    if (loginMode_ != 0) {
+        if (!NicknameStore::isValid(username)) { fail(L"Use de 3 a 16 letras, números ou _ no nick.", loginUser_); return; }
+        if (length < 8) { fail(L"A senha precisa ter pelo menos 8 caracteres.", loginPassword_); return; }
+        if (wcscmp(password.data(), confirmation.data()) != 0) {
+            SetWindowTextW(loginConfirm_, L"");
+            fail(L"As duas senhas não são iguais.", loginConfirm_);
+            return;
+        }
+    }
     loginBusy_ = true;
     loginError_.clear();
     if (eternalThread_.joinable()) eternalThread_.join();
     std::wstring secret(password.data());
-    SecureZeroMemory(password.data(), password.size() * sizeof(wchar_t));
+    wipe();
     const auto clientToken = eternalSession_.clientToken.empty() ? EternalAccount::newClientToken() : eternalSession_.clientToken;
-    eternalThread_ = std::jthread([window = window_, url = accountsBaseUrl_, username, secret = std::move(secret), clientToken]
-                                  (std::stop_token stop) mutable {
-        auto* result = new EternalAuthResult(EternalAccount::authenticate(url, username, secret, clientToken, stop));
+    // First access sets the password, a new account is created, then all three sign in.
+    eternalThread_ = std::jthread([window = window_, url = accountsBaseUrl_, files = std::wstring(LauncherConfig::FileServerBaseUrl),
+                                      mode = loginMode_, username, secret = std::move(secret), clientToken](std::stop_token stop) mutable {
+        auto* result = new EternalAuthResult;
+        std::wstring error;
+        const bool ready = mode == 1 ? EternalAccount::claimFirstAccess(files, username, secret, error, stop)
+                         : mode == 2 ? EternalAccount::registerAccount(url, username, secret, error, stop) : true;
+        if (ready) *result = EternalAccount::authenticate(url, username, secret, clientToken, stop);
+        else result->errorMessage = error;
         SecureZeroMemory(secret.data(), secret.size() * sizeof(wchar_t));
         if (!PostMessageW(window, EternalAuthMessage, 0, reinterpret_cast<LPARAM>(result))) delete result;
     });
@@ -4320,6 +4425,11 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
     if (!save(L"login.png", 1)) return false;
     loginError_ = L"Usuário ou senha incorretos.";
     if (!save(L"login-error.png", 1)) return false;
+    loginError_.clear(); loginMode_ = 1; loginFirstName_ = L"Nippw";
+    if (!save(L"login-first-access.png", 1)) return false;
+    loginMode_ = 2; loginError_ = L"Esse nick já tem conta. Se é seu, use Entrar.";
+    if (!save(L"login-register.png", 1)) return false;
+    loginMode_ = 0; loginError_.clear();
     // Skins page with generated skins.
     {
         const auto makeSkin = [](int seed, bool slim) {

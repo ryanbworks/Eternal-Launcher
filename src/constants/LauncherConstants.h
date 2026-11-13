@@ -59,6 +59,7 @@ namespace LauncherConstants
     inline constexpr int LoginRegisterButtonId = 1304;
     inline constexpr int LoginCloseButtonId = 1305;
     inline constexpr int AccountSignOutButtonId = 1306;
+    inline constexpr int LoginConfirmInputId = 1307;
     // Skins page.
     inline constexpr int SkinCardFirstId = 1311;
     inline constexpr int SkinCardCount = 12;
@@ -148,4 +149,6 @@ namespace LauncherConstants
     inline constexpr UINT EternalReadyMessage = WM_APP + 20;
     // lParam: SkinEvent* (current skin fetched, upload or reset finished).
     inline constexpr UINT SkinEventMessage = WM_APP + 21;
+    // lParam: EternalFirstAccess* (is this nickname a reserved account awaiting a password).
+    inline constexpr UINT EternalFirstAccessMessage = WM_APP + 22;
 }

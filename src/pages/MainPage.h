@@ -179,6 +179,8 @@ private:
     void openLogin(bool playAfter, std::wstring notice = {});
     void closeLogin();
     void submitLogin();
+    void setLoginMode(int mode);
+    HWND loginField(int field) const;
     void prepareEternalPlay();
     void signOutEternal();
     float loginTarget() const;
@@ -344,6 +346,9 @@ private:
     std::wstring accountsBaseUrl_;
     HWND loginUser_ = nullptr;
     HWND loginPassword_ = nullptr;
+    HWND loginConfirm_ = nullptr;
+    int loginMode_ = 0;            // Layout::loginRow modes: sign in, first access, create
+    std::wstring loginFirstName_;  // the reserved nickname during a first access
     HFONT loginFont_ = nullptr;
     bool loginOpen_ = false;
     float loginReveal_ = 0;

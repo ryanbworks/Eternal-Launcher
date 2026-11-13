@@ -292,40 +292,48 @@ void HomeView::drawLogin(Gdiplus::Graphics& g, const HomeModel& model, const Con
     const Gdiplus::RectF emblem{p.X + 28, p.Y + 26, 44, 44};
     fillRoundedRectangle(g, emblem, 14, Theme::AccentTint);
     Icons::draw(g, Icons::Icon::User, {emblem.X + 11, emblem.Y + 11, 22, 22}, Theme::AccentLight, 1.8F);
-    drawText(g, L"CONTA ETERNAL", {emblem.GetRight() + 14, p.Y + 26, 300, 16}, 11, Gdiplus::FontStyleBold, Theme::AccentLight);
-    drawDisplayText(g, L"Entre para jogar", {emblem.GetRight() + 14, p.Y + 42, 300, 30}, 21, Theme::TextPrimary,
-        Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
-    const std::wstring notice = !model.loginNotice.empty() ? model.loginNotice : L"Sua conta do grupo. A senha nunca fica salva aqui.";
-    drawTextLine(g, notice, {p.X + 28, p.Y + 84, p.Width - 56, 20}, 12.5F, Gdiplus::FontStyleRegular,
+    const int mode = model.loginMode;
+    const wchar_t* kicker = mode == 1 ? L"PRIMEIRO ACESSO" : mode == 2 ? L"NOVA CONTA" : L"CONTA ETERNAL";
+    const std::wstring title = mode == 1 ? L"Olá, " + model.loginName + L"!" : mode == 2 ? L"Criar sua conta" : L"Entre para jogar";
+    drawText(g, kicker, {emblem.GetRight() + 14, p.Y + 26, 300, 16}, 11, Gdiplus::FontStyleBold, Theme::AccentLight);
+    drawDisplayText(g, title, {emblem.GetRight() + 14, p.Y + 42, 320, 30}, 21, Theme::TextPrimary, Gdiplus::StringAlignmentNear,
+        Gdiplus::StringAlignmentCenter);
+    const std::wstring notice = !model.loginNotice.empty() ? model.loginNotice
+        : mode == 1 ? L"Crie a sua senha. Ela vale para o launcher e para o site."
+        : mode == 2 ? L"Seu nick no jogo e uma senha com pelo menos 8 caracteres."
+        : L"Primeiro acesso? Digite só o seu nick e clique em Entrar.";
+    drawTextLine(g, notice, {p.X + 28, p.Y + 80, p.Width - 56, 20}, 12.5F, Gdiplus::FontStyleRegular,
         model.loginNotice.empty() ? Theme::TextSecondary : Theme::Warning);
     Buttons::drawIcon(g, Layout::LoginClose, Icons::Icon::Close, visuals(LoginCloseButtonId), false, 16);
 
-    // Fields: a label above a rounded well that holds the native EDIT.
-    const struct { const wchar_t* label; const Gdiplus::RectF* field; int id; Icons::Icon icon; } fields[] = {
-        {L"Usuário", &Layout::LoginUserField, LoginUserInputId, Icons::Icon::User},
-        {L"Senha", &Layout::LoginPasswordField, LoginPasswordInputId, Icons::Icon::Key}};
+    // Fields: rounded wells holding the native EDITs; the hint text lives in the EDIT.
+    const struct { int field; int id; Icons::Icon icon; } fields[] = {
+        {0, LoginUserInputId, Icons::Icon::User}, {1, LoginPasswordInputId, Icons::Icon::Key}, {2, LoginConfirmInputId, Icons::Icon::Check}};
+    float lastBottom = 0;
     for (const auto& field : fields) {
-        const auto& f = *field.field;
+        const int row = Layout::loginRow(mode, field.field);
+        if (row < 0) continue;
+        const auto f = Layout::loginField(row);
+        lastBottom = f.GetBottom();
         const auto v = visuals(field.id);
-        drawText(g, field.label, {f.X, f.Y - 22, 200, 18}, 12, Gdiplus::FontStyleBold, Theme::TextSecondary);
         fillRoundedRectangle(g, f, 12, Theme::SurfaceElevated);
         drawRoundedRectangle(g, {f.X + .5F, f.Y + .5F, f.Width - 1, f.Height - 1}, 12, v.focused ? Theme::Accent : Theme::OutlineSubtle,
             v.focused ? 1.6F : 1.0F);
         Icons::draw(g, field.icon, {f.X + 13, f.Y + 12, 16, 16}, v.focused ? Theme::AccentLight : Theme::TextMuted, 1.7F);
+        if (field.field == 0 && !model.previewLoginUser.empty())
+            drawTextLine(g, model.previewLoginUser, {f.X + 40, f.Y, 300, f.Height}, 14, Gdiplus::FontStyleRegular, Theme::TextPrimary);
     }
-    if (!model.previewLoginUser.empty())
-        drawTextLine(g, model.previewLoginUser, {Layout::LoginUserField.X + 40, Layout::LoginUserField.Y, 300, Layout::LoginUserField.Height},
-            14, Gdiplus::FontStyleRegular, Theme::TextPrimary);
     if (!model.loginError.empty()) {
-        Icons::draw(g, Icons::Icon::Help, {p.X + 28, Layout::LoginPasswordField.GetBottom() + 9, 14, 14}, Theme::Danger, 1.6F);
-        drawTextLine(g, model.loginError, {p.X + 48, Layout::LoginPasswordField.GetBottom() + 6, p.Width - 76, 20}, 12.5F,
-            Gdiplus::FontStyleRegular, Theme::Danger);
+        Icons::draw(g, Icons::Icon::Help, {p.X + 28, lastBottom + 9, 14, 14}, Theme::Danger, 1.6F);
+        drawTextLine(g, model.loginError, {p.X + 48, lastBottom + 6, p.Width - 76, 20}, 12.5F, Gdiplus::FontStyleRegular, Theme::Danger);
     }
     auto submit = visuals(LoginSubmitButtonId);
     if (model.loginBusy) submit.enabled = false;
-    Buttons::draw(g, Layout::LoginSubmit, model.loginBusy ? L"Entrando..." : L"Entrar", submit, Buttons::Style::Primary,
-        model.loginBusy ? std::nullopt : std::optional<Icons::Icon>(Icons::Icon::Play), false, 14);
-    Buttons::draw(g, Layout::LoginRegister, L"Criar conta", visuals(LoginRegisterButtonId), Buttons::Style::Ghost, Icons::Icon::External, false, 13);
+    const wchar_t* action = model.loginBusy ? L"Aguarde..." : mode == 1 ? L"Salvar e entrar" : mode == 2 ? L"Criar conta" : L"Entrar";
+    Buttons::draw(g, Layout::LoginSubmit, action, submit, Buttons::Style::Primary,
+        model.loginBusy ? std::nullopt : std::optional<Icons::Icon>(mode == 0 ? Icons::Icon::Play : Icons::Icon::Check), false, 14);
+    Buttons::draw(g, Layout::LoginRegister, mode == 0 ? L"Criar conta" : mode == 1 ? L"Voltar" : L"Já tenho conta",
+        visuals(LoginRegisterButtonId), Buttons::Style::Ghost, mode == 0 ? Icons::Icon::Plus : Icons::Icon::ChevronLeft, false, 13);
 }
 
 void HomeView::drawLevels(Gdiplus::Graphics& g, const HomeModel& model, const ControlVisuals& visuals) const

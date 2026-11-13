@@ -45,9 +45,21 @@ chmod 0644 /etc/drasl/config.toml
 install -m 0644 "$here/drasl.service" /etc/systemd/system/drasl.service
 sed -i 's/\r$//' /etc/drasl/config.toml /etc/systemd/system/drasl.service
 
+# First access from the launcher for the accounts reserved by drasl_migrate.py.
+id eternal-first-access >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin eternal-first-access
+install -d -m 0755 /usr/local/lib/eternal
+install -m 0644 "$here/first_access.py" /usr/local/lib/eternal/first_access.py
+install -m 0644 "$here/eternal-first-access.service" /etc/systemd/system/eternal-first-access.service
+sed -i 's/\r$//' /usr/local/lib/eternal/first_access.py /etc/systemd/system/eternal-first-access.service
+install -d -m 0700 -o eternal-first-access -g eternal-first-access /var/lib/eternal-first-access
+pending=/var/lib/eternal-first-access/pending.txt
+if [ ! -f "$pending" ] && [ -f /root/eternal-temporary-passwords.txt ]; then
+    install -m 0600 -o eternal-first-access -g eternal-first-access /root/eternal-temporary-passwords.txt "$pending"
+fi
+
 systemctl daemon-reload
-systemctl enable --now drasl >/dev/null
-systemctl restart drasl
+systemctl enable --now drasl eternal-first-access >/dev/null
+systemctl restart drasl eternal-first-access
 for _ in $(seq 1 20); do curl -fsS http://127.0.0.1:25585/authlib-injector >/dev/null 2>&1 && break; sleep 1; done
 curl -fsS http://127.0.0.1:25585/authlib-injector | jq -c '.meta | {serverName, implementationName, implementationVersion}'
 echo "Drasl $version installed for $base_url"

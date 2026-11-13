@@ -139,6 +139,8 @@ struct HomeModel
     bool loginBusy = false;
     std::wstring loginError;
     std::wstring loginNotice;  // why it opened ("Sua sessão expirou...")
+    int loginMode = 0;          // see Layout::loginRow
+    std::wstring loginName;     // first access: the reserved nickname
     // Previews only: what the native fields would show.
     std::wstring previewLoginUser;
 };

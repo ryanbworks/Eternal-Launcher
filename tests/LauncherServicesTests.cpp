@@ -328,6 +328,35 @@ namespace {
         std::cout << "conta eternal integration: ran against ETERNAL_ACCOUNTS_TEST_URL\n";
     }
 
+    // Registration and first access against the real services, when asked to:
+    // ETERNAL_ACCOUNTS_TEST_URL, ETERNAL_FILES_TEST_URL, ETERNAL_REGISTER_TEST_NAME and
+    // ETERNAL_FIRST_ACCESS_TEST_NAME (a disposable account already in the pending list).
+    void eternalOnboarding() {
+        std::array<wchar_t,256> accounts{},files{},newName{},firstName{};
+        if(!GetEnvironmentVariableW(L"ETERNAL_ACCOUNTS_TEST_URL",accounts.data(),256) || !GetEnvironmentVariableW(L"ETERNAL_FILES_TEST_URL",files.data(),256) ||
+           !GetEnvironmentVariableW(L"ETERNAL_REGISTER_TEST_NAME",newName.data(),256) || !GetEnvironmentVariableW(L"ETERNAL_FIRST_ACCESS_TEST_NAME",firstName.data(),256)) return;
+        std::wstring error;
+        check(EternalAccount::registerAccount(accounts.data(),newName.data(),L"senha-de-teste-123",error),"a new account is created from the launcher");
+        check(!EternalAccount::registerAccount(accounts.data(),newName.data(),L"outra-senha-123",error) && error==L"Esse nick já tem conta. Se é seu, use Entrar.",
+            "a taken nickname is refused in Portuguese");
+        check(!EternalAccount::registerAccount(accounts.data(),L"Outro_Nome",L"curta",error) && error.find(L"8")!=std::wstring::npos,"short passwords are refused");
+        const auto registered=EternalAccount::authenticate(accounts.data(),newName.data(),L"senha-de-teste-123",EternalAccount::newClientToken());
+        check(registered.success && registered.session.name==newName.data(),"the new account signs in");
+
+        const auto stranger=EternalAccount::checkFirstAccess(files.data(),newName.data());
+        check(stranger.known && !stranger.pending,"an account with its own password is not a first access");
+        const auto pending=EternalAccount::checkFirstAccess(files.data(),firstName.data());
+        check(pending.known && pending.pending,"a reserved account is a first access by nickname only");
+        check(!EternalAccount::claimFirstAccess(files.data(),firstName.data(),L"curta",error),"first access needs 8 characters");
+        check(EternalAccount::claimFirstAccess(files.data(),firstName.data(),L"minha-senha-nova",error),"first access sets the player's password");
+        const auto claimed=EternalAccount::authenticate(accounts.data(),firstName.data(),L"minha-senha-nova",EternalAccount::newClientToken());
+        check(claimed.success,"the player signs in with the new password");
+        check(!EternalAccount::checkFirstAccess(files.data(),firstName.data()).pending,"after that the nickname is no longer a first access");
+        check(!EternalAccount::claimFirstAccess(files.data(),firstName.data(),L"roubando-a-conta",error) && error.find(L"Entrar")!=std::wstring::npos,
+            "nobody can claim it a second time");
+        std::cout << "conta eternal onboarding: ran against the real services\n";
+    }
+
     void skinRenderer() {
         Gdiplus::GdiplusStartupInput input;ULONG_PTR token=0;
         if(Gdiplus::GdiplusStartup(&token,&input,nullptr)!=Gdiplus::Ok) {check(false,"GDI+ starts");return;}
@@ -497,6 +526,7 @@ int main()
     screenshots(root);
     gallery(root);
     eternalAccount(root);
+    eternalOnboarding();
     skinRenderer();
     mods(root);
     skins();

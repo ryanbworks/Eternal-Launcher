@@ -57,14 +57,19 @@ vêm do `usercache.json`, do `usernamecache.json` e do FTB Teams (`world/ftbteam
 ### 2. Drasl
 - [x] CT 109 criado, Drasl compilado do código (tag v4.0.2) e instalado com
   `server/drasl/install.sh`, hoje com o endereço da rede local.
-- [ ] **Você:** Cloudflare Zero Trust → Networks → Tunnels → túnel do Proxmox → Public
-  Hostname: `accountseternal.aplot.cloud` → `HTTP` → `10.0.0.17:25585`.
-- [ ] Trocar para o domínio (no CT 109):
-  `DRASL_DOMAIN=accountseternal.aplot.cloud bash /opt/eternal-drasl/install.sh`
+- [x] Public Hostname `accountseternal.aplot.cloud` → `10.0.0.17:25585` no Cloudflare.
+- [x] Drasl trocado para o domínio (`DRASL_DOMAIN=accountseternal.aplot.cloud bash /opt/eternal-drasl/install.sh`).
 
-### 3. Contas reservadas
+### 3. Contas reservadas e primeiro acesso
 - [x] 19 contas criadas com o UUID dono dos dados; `verify` confirmou todas.
-- [ ] Entregar as senhas temporárias no privado. Cada um troca no site (Conta → senha).
+- [x] Primeiro acesso no launcher: o jogador digita só o nick e cria a senha. O serviço
+  `eternal-first-access` (CT 109, `:25586`, publicado em `eternalfast…/api/accounts/`)
+  guarda as senhas temporárias em `/var/lib/eternal-first-access/pending.txt` e só aceita
+  o nick enquanto a senha temporária ainda funciona; depois disso o nick sai da lista.
+  Qualquer pessoa que souber um nick reservado ainda sem senha pode fazer esse primeiro
+  acesso (escolha consciente: são poucas pessoas). Para encerrar o primeiro acesso de
+  alguém, apague a linha dele do `pending.txt`.
+- [x] Cadastro de contas novas também pelo launcher (Criar conta), sem navegador.
 - Dois arquivos de dados sem nome conhecido (`2732e5cd…`, `e45ecbdc…`, usados só em
   24/10) ficam no mundo como estão.
 
