@@ -88,7 +88,9 @@ void HomeView::drawAvatar(Gdiplus::Graphics& g, const Gdiplus::RectF& b, const G
 void HomeView::draw(Gdiplus::Graphics& g, const HomeModel& model, const HeroComponent& hero,
                     const ControlVisuals& visuals, bool drawHero) const
 {
-    if (drawHero) {
+    if (drawHero && model.modpackChanges) {
+        drawModpackChanges(g, model, visuals);
+    } else if (drawHero) {
         hero.draw(g, Layout::Hero, model.reveal, model.energy, model.phase, model.drift, model.chips);
         if (model.celebration > 0 && model.celebrationReveal > .01F) drawCelebration(g, model, visuals);
         else if (model.spotlight && model.spotlightReveal > .01F) drawSpotlight(g, model, visuals);
@@ -250,6 +252,111 @@ void HomeView::drawCelebration(Gdiplus::Graphics& g, const HomeModel& model, con
     Buttons::draw(g, Layout::CelebrationButton, L"Show!", visuals(LauncherConstants::CelebrationButtonId), Buttons::Style::Primary,
         Icons::Icon::Sparkle, false, 14);
     g.Restore(saved);
+}
+
+void HomeView::drawModpackChanges(Gdiplus::Graphics& g, const HomeModel& model, const ControlVisuals& visuals) const
+{
+    using namespace LauncherConstants;
+    const auto& changes = *model.modpackChanges;
+    const auto& b = Layout::Hero;
+    fillRoundedRectangle(g, b, Theme::PanelRadius, Theme::Surface);
+    {
+        const auto saved = g.Save();
+        auto clip = createRoundedPath(b, Theme::PanelRadius);
+        g.SetClip(clip.get(), Gdiplus::CombineModeIntersect);
+        // A violet glow from the top-left corner, like light from the portal.
+        Gdiplus::GraphicsPath glow;
+        glow.AddEllipse(b.X - 180, b.Y - 220, 620.0F, 420.0F);
+        Gdiplus::PathGradientBrush light(&glow);
+        light.SetCenterColor(Gdiplus::Color(46, 165, 130, 255));
+        Gdiplus::Color edge(0, 165, 130, 255);
+        int count = 1;
+        light.SetSurroundColors(&edge, &count);
+        g.FillPath(&light, &glow);
+        g.Restore(saved);
+    }
+    drawRoundedRectangle(g, {b.X + .5F, b.Y + .5F, b.Width - 1, b.Height - 1}, Theme::PanelRadius, Theme::AccentOutline);
+
+    // Header: emblem, kicker, title and a one-line summary.
+    const Gdiplus::RectF emblem{b.X + 24, b.Y + 26, 46, 46};
+    fillRoundedRectangle(g, emblem, 14, Theme::AccentTint);
+    drawRoundedRectangle(g, {emblem.X + .5F, emblem.Y + .5F, emblem.Width - 1, emblem.Height - 1}, 14, Theme::AccentOutline);
+    Icons::draw(g, Icons::Icon::Mods, {emblem.X + 11, emblem.Y + 11, 24, 24}, Theme::AccentLight, 1.8F);
+    if (model.player.ambient) pulseRing(g, emblem.GetRight() - 3, emblem.Y + 3, Theme::Accent, model.player.time, 2.0F);
+    dot(g, emblem.GetRight() - 7, emblem.Y - 1, Theme::Accent, 8);
+    const float textX = emblem.GetRight() + 16;
+    drawText(g, L"MODPACK ATUALIZADO", {textX, b.Y + 24, 300, 16}, 11, Gdiplus::FontStyleBold, Theme::AccentLight);
+    drawDisplayText(g, L"O que mudou desde a sua última vez", {textX, b.Y + 42, 440, 30}, 20, Theme::TextPrimary,
+        Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+    std::wstring summary;
+    const auto part = [&summary](std::size_t count, const wchar_t* one, const wchar_t* many) {
+        if (count == 0) return;
+        if (!summary.empty()) summary += L" · ";
+        summary += std::to_wstring(count) + L" " + (count == 1 ? one : many);
+    };
+    part(changes.added.size(), L"entrou", L"entraram");
+    part(changes.removed.size(), L"saiu", L"saíram");
+    part(changes.updated.size(), L"atualizado", L"atualizados");
+    summary += L" · tudo é baixado ao clicar em Jogar";
+    drawText(g, summary, {textX, b.Y + 74, 500, 18}, 12.5F, Gdiplus::FontStyleRegular, Theme::TextSecondary,
+        Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+    Buttons::draw(g, Layout::ModpackChangesMods, L"Ver mods", visuals(ModpackChangesModsButtonId), Buttons::Style::Ghost, Icons::Icon::Mods);
+    Buttons::draw(g, Layout::ModpackChangesOk, L"Entendi", visuals(ModpackChangesOkButtonId), Buttons::Style::Primary, Icons::Icon::Check);
+
+    // Three columns: added, removed, updated.
+    const struct { const wchar_t* title; const std::vector<ModChange>* list; Gdiplus::Color tone; Icons::Icon icon; int kind; } columns[] = {
+        {L"Entraram", &changes.added, Theme::Success, Icons::Icon::Plus, 0},
+        {L"Saíram", &changes.removed, Theme::Error, Icons::Icon::Trash, 1},
+        {L"Atualizados", &changes.updated, Theme::Accent, Icons::Icon::Refresh, 2}};
+    for (int i = 0; i < 3; ++i) {
+        const auto& column = columns[i];
+        auto c = Layout::modpackChangesColumn(i);
+        c.Y += std::round(16 * (1 - easeOut((model.entrance - .08F * static_cast<float>(i)) / .5F)));
+        const bool empty = column.list->empty();
+        const auto tone = column.tone;
+        const auto tint = [&tone](BYTE alpha) { return Gdiplus::Color(alpha, tone.GetR(), tone.GetG(), tone.GetB()); };
+        fillRoundedRectangle(g, c, Theme::CardRadius, Theme::SurfaceSunken);
+        drawRoundedRectangle(g, {c.X + .5F, c.Y + .5F, c.Width - 1, c.Height - 1}, Theme::CardRadius, empty ? Theme::Divider : tint(70));
+        // Header with the column's color.
+        fillRoundedRectangle(g, {c.X + 14, c.Y + 14, 26, 26}, 8, tint(empty ? 18 : 40));
+        Icons::draw(g, column.icon, {c.X + 19, c.Y + 19, 16, 16}, empty ? Theme::TextMuted : tone, 2);
+        drawText(g, column.title, {c.X + 50, c.Y + 14, c.Width - 110, 26}, 14, Gdiplus::FontStyleBold,
+            empty ? Theme::TextMuted : Theme::TextPrimary, Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+        const std::wstring count = std::to_wstring(column.list->size());
+        const float countWidth = std::max(26.0F, measureText(g, count, 11.5F, Gdiplus::FontStyleBold) + 14);
+        const Gdiplus::RectF pill{c.GetRight() - 14 - countWidth, c.Y + 17, countWidth, 20};
+        fillPill(g, pill, tint(empty ? 14 : 46));
+        drawText(g, count, pill, 11.5F, Gdiplus::FontStyleBold, empty ? Theme::TextMuted : tone, Gdiplus::StringAlignmentCenter,
+            Gdiplus::StringAlignmentCenter);
+        Gdiplus::Pen line(Theme::Divider);
+        g.DrawLine(&line, c.X + 14, c.Y + 52, c.GetRight() - 14, c.Y + 52);
+        if (empty) {
+            drawText(g, L"Nada por aqui", {c.X, c.Y + 52, c.Width, c.Height - 52}, 12.5F, Gdiplus::FontStyleRegular, Theme::TextMuted,
+                Gdiplus::StringAlignmentCenter, Gdiplus::StringAlignmentCenter);
+            continue;
+        }
+        // Rows: name and version; "+N" when the column runs out of room.
+        constexpr float rowHeight = 24;
+        const auto capacity = static_cast<std::size_t>((c.Height - 62) / rowHeight);
+        const auto total = column.list->size();
+        const auto shown = total > capacity ? capacity - 1 : total;
+        for (std::size_t row = 0; row < shown; ++row) {
+            const auto& mod = (*column.list)[row];
+            const float y = c.Y + 58 + static_cast<float>(row) * rowHeight;
+            dot(g, c.X + 16, y + 9, tint(200), 6);
+            std::wstring version = column.kind == 2 && !mod.previousVersion.empty() ? mod.previousVersion + L" → " + mod.version : mod.version;
+            const float versionWidth = version.empty() ? 0.0F : std::min(c.Width * .42F, measureText(g, version, 11, Gdiplus::FontStyleRegular) + 6);
+            drawTextLine(g, mod.name, {c.X + 28, y, c.Width - 42 - versionWidth - 6, rowHeight}, 12.5F, Gdiplus::FontStyleBold,
+                column.kind == 1 ? Theme::TextSecondary : Theme::TextPrimary);
+            if (!version.empty())
+                drawTextLine(g, version, {c.GetRight() - 14 - versionWidth, y, versionWidth, rowHeight}, 11, Gdiplus::FontStyleRegular,
+                    column.kind == 2 ? Theme::AccentLight : Theme::TextMuted, Gdiplus::StringAlignmentFar);
+        }
+        if (shown < total)
+            drawText(g, L"+" + std::to_wstring(total - shown) + (total - shown == 1 ? L" outro" : L" outros"),
+                {c.X + 28, c.Y + 58 + static_cast<float>(shown) * rowHeight, c.Width - 42, rowHeight}, 12, Gdiplus::FontStyleRegular,
+                Theme::AccentLight, Gdiplus::StringAlignmentNear, Gdiplus::StringAlignmentCenter);
+    }
 }
 
 void HomeView::drawSpotlight(Gdiplus::Graphics& g, const HomeModel& model, const ControlVisuals& visuals) const

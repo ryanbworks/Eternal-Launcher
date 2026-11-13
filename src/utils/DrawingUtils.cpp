@@ -203,6 +203,20 @@ void DrawingUtils::drawText(Gdiplus::Graphics& graphics, std::wstring_view text,
     graphics.DrawString(text.data(), static_cast<INT>(text.size()), font, bounds, &format, &brush);
 }
 
+void DrawingUtils::drawTextLine(Gdiplus::Graphics& graphics, std::wstring_view text,
+                                const Gdiplus::RectF& bounds, float size, int style,
+                                const Gdiplus::Color& color, Gdiplus::StringAlignment horizontal)
+{
+    std::unique_ptr<Gdiplus::Font> owned;
+    const auto* font = cachedFont(false, size, style, owned);
+    Gdiplus::SolidBrush brush(color);
+    Gdiplus::StringFormat format(Gdiplus::StringFormatFlagsNoWrap);
+    format.SetAlignment(horizontal);
+    format.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+    format.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+    graphics.DrawString(text.data(), static_cast<INT>(text.size()), font, bounds, &format, &brush);
+}
+
 Gdiplus::Color DrawingUtils::colorForTone(StatusTone tone)
 {
     switch (tone)

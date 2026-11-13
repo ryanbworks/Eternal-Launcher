@@ -1,6 +1,7 @@
 #pragma once
 
 #include "components/Buttons.h"
+#include "services/ModpackChangelog.h"
 #include "services/SkinLookup.h"
 #include "types/LauncherState.h"
 
@@ -122,6 +123,9 @@ struct HomeModel
     int celebration = 0;
     float celebrationReveal = 0;
     std::uint64_t celebrationSeconds = 0;
+    // Mods the server added, removed or updated since the player last looked; shown in
+    // place of the landscape while set.
+    const ModpackChanges* modpackChanges = nullptr;
 };
 
 class HeroComponent;
@@ -144,6 +148,7 @@ private:
     void drawRanking(Gdiplus::Graphics& graphics, const HomeModel& model) const;
     void drawSpotlight(Gdiplus::Graphics& graphics, const HomeModel& model, const ControlVisuals& visuals) const;
     void drawCelebration(Gdiplus::Graphics& graphics, const HomeModel& model, const ControlVisuals& visuals) const;
+    void drawModpackChanges(Gdiplus::Graphics& graphics, const HomeModel& model, const ControlVisuals& visuals) const;
 public:
     // Light and deep tone of each play-time level.
     static Gdiplus::Color tierLight(int level);

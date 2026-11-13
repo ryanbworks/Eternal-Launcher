@@ -56,6 +56,8 @@ namespace
         {SpotlightReadButtonId, false, true, L"Ler novidade"},
         {SpotlightDismissButtonId, false, true, L"Ver depois"},
         {CelebrationButtonId, false, true, L"Fechar conquista"},
+        {ModpackChangesModsButtonId, false, true, L"Ver mods"},
+        {ModpackChangesOkButtonId, false, true, L"Entendi as mudanças do modpack"},
         {NicknameInputId, false, true, nullptr},
         {EditNicknameButtonId, false, true, L"Editar nickname"},
         {OfflineButtonId, false, true, L"Nickname"},
@@ -996,6 +998,7 @@ HomeModel MainPage::homeModel(bool preview) const
     model.energy = preview || !motionEnabled_ ? 0 : std::max({portalEnergy_, portalBurst_, .28F});
     model.phase = animationPhase_;
     model.drift = preview ? 0 : particlePhase_;
+    model.modpackChanges = modpackChangesVisible_ ? &modpackChanges_ : nullptr;
     model.celebration = celebration_;
     model.celebrationSeconds = celebrationSeconds_;
     model.celebrationReveal = preview ? (celebration_ > 0 ? 1.0F : 0.0F) : celebrationReveal_;
@@ -1435,12 +1438,13 @@ float MainPage::navigationTarget() const
 
 float MainPage::spotlightTarget() const
 {
-    return spotlightIndex() >= 0 && celebration_ == 0 && page_ == LauncherPage::Home && !installation_.visible ? 1.0F : 0.0F;
+    return spotlightIndex() >= 0 && celebration_ == 0 && !modpackChangesVisible_ && page_ == LauncherPage::Home &&
+        !installation_.visible ? 1.0F : 0.0F;
 }
 
 float MainPage::celebrationTarget() const
 {
-    return celebration_ > 0 && page_ == LauncherPage::Home && !installation_.visible ? 1.0F : 0.0F;
+    return celebration_ > 0 && !modpackChangesVisible_ && page_ == LauncherPage::Home && !installation_.visible ? 1.0F : 0.0F;
 }
 
 void MainPage::syncModKnobs()
@@ -1489,6 +1493,8 @@ Gdiplus::RectF MainPage::controlBounds(int id) const
     case QuickLogsButtonId: return Layout::quickAction(2);
     case SpotlightReadButtonId: return Layout::SpotlightRead;
     case CelebrationButtonId: return Layout::CelebrationButton;
+    case ModpackChangesOkButtonId: return Layout::ModpackChangesOk;
+    case ModpackChangesModsButtonId: return Layout::ModpackChangesMods;
     case SpotlightDismissButtonId: return Layout::SpotlightDismiss;
     case ScreenshotsRefreshButtonId: return Layout::ScreenshotsRefresh;
     case ScreenshotsFolderButtonId: return Layout::ScreenshotsFolder;
@@ -1527,7 +1533,8 @@ bool MainPage::controlVisible(int id) const
     const bool home = page_ == LauncherPage::Home;
     // The installation panel only covers the hero, so the news below stays usable.
     const bool leftColumn = home;
-    const bool heroVisible = home && !installation_.visible;
+    // The modpack changelog takes the landscape's slot, with its own buttons.
+    const bool heroVisible = home && !installation_.visible && !modpackChangesVisible_;
     switch (id) {
     case NicknameInputId:
     case EditNicknameButtonId:
@@ -1553,6 +1560,9 @@ bool MainPage::controlVisible(int id) const
         return heroVisible && spotlightIndex() >= 0 && celebration_ == 0;
     case CelebrationButtonId:
         return heroVisible && celebration_ > 0;
+    case ModpackChangesOkButtonId:
+    case ModpackChangesModsButtonId:
+        return home && !installation_.visible && modpackChangesVisible_;
     case ScreenshotsRefreshButtonId:
     case ScreenshotsFolderButtonId:
         return page_ == LauncherPage::Screenshots && screenshotViewer_ < 0;
@@ -1943,6 +1953,14 @@ void MainPage::handleCommand(int id, int)
     case CelebrationButtonId:
         dismissCelebration();
         break;
+    case ModpackChangesOkButtonId:
+        acknowledgeModpackChanges();
+        if (const auto* play = findControl(PlayButtonId); play && play->window) SetFocus(play->window);
+        break;
+    case ModpackChangesModsButtonId:
+        acknowledgeModpackChanges();
+        showPage(LauncherPage::Mods);
+        break;
     case NewsAllButtonId:
         newsFirst_ = 0;
         showPage(LauncherPage::News);
@@ -2275,6 +2293,35 @@ void MainPage::markNewsRead()
     // NOVO tags can still be seen there.
     for (const auto& item : viewState_.news) newsRead_.markSeen(item);
     newsRead_.save();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Modpack changelog
+// ---------------------------------------------------------------------------------------------
+
+void MainPage::updateModpackChanges()
+{
+    if (!mods_.manifestKnown) return;
+    modpackFiles_.clear();
+    for (const auto& mod : mods_.server) modpackFiles_.push_back(mod.name);
+    const auto directory = LauncherSettingsStore::dataDirectory();
+    const auto previous = ModpackChangelog::load(directory);
+    if (!previous) {
+        // First time with this feature (or a first install): this list is the baseline.
+        ModpackChangelog::save(directory, modpackFiles_);
+        modpackChangesVisible_ = false;
+        return;
+    }
+    modpackChanges_ = ModpackChangelog::compare(*previous, modpackFiles_);
+    modpackChangesVisible_ = !modpackChanges_.empty();
+}
+
+void MainPage::acknowledgeModpackChanges()
+{
+    if (!modpackFiles_.empty()) ModpackChangelog::save(LauncherSettingsStore::dataDirectory(), modpackFiles_);
+    modpackChangesVisible_ = false;
+    modpackChanges_ = {};
+    redraw();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2644,6 +2691,8 @@ void MainPage::beginPlay(bool repairOnly)
     fileServerThread_.request_stop();
     if (fileServerThread_.joinable()) fileServerThread_.join();
     repairOnly_ = repairOnly;
+    // Playing means the player has seen what changed in the modpack.
+    if (modpackChangesVisible_ && !playingVanilla_) acknowledgeModpackChanges();
     installation_.begin();
     installationMailbox_.begin(installation_.attempt);
     viewState_.operation = LauncherOperation::PreparingMinecraft;
@@ -2895,6 +2944,7 @@ void MainPage::applyFileServerResult(const FileServerManifestResponse& response)
         serverOffline_ = false;
         if (window_) KillTimer(window_, ServerRetryTimerId);
         refreshMods();
+        updateModpackChanges();
         serverCard.value = L"Online";
         serverCard.detail = L"Respondeu em " + std::to_wstring(response.elapsedMilliseconds) + L" ms";
         serverCard.tone = StatusTone::Success;
@@ -3281,6 +3331,7 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
         viewerImage_.reset(); viewerImagePath_.clear(); screenshotsMessage_.clear();
         previewRankingHours_ = {312, 167, 96};
         celebration_ = 0; previewTier_ = 0;
+        modpackChangesVisible_ = false; modpackChanges_ = {};
         page_ = LauncherPage::Home;
         newsFirst_ = 0; newsLoading_ = false; newsError_.clear();
         modsMessage_.clear(); helpMessage_.clear();
@@ -3301,6 +3352,16 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
     ready(); page_ = LauncherPage::News;
     viewState_.news[0].unread = true; viewState_.news[1].unread = true;
     if (!save(L"news-unread.png", 1)) return false;
+    // The modpack changed since the last visit.
+    ready();
+    modpackChanges_ = ModpackChangelog::compare(
+        {L"create-1.20.1-0.5.1.f.jar", L"jei-1.20.1-forge-15.3.0.4.jar", L"waystones-forge-1.20.1-14.1.3.jar", L"oldmap-1.0.jar",
+         L"farmersdelight-1.20.1-1.2.4.jar", L"geckolib-forge-1.20.1-4.4.4.jar"},
+        {L"create-1.20.1-0.5.2.jar", L"jei-1.20.1-forge-15.3.0.8.jar", L"waystones-forge-1.20.1-14.1.3.jar", L"aquaculture-1.20.1-2.5.1.jar",
+         L"sophisticated_backpacks-1.20.1-3.20.5.jar", L"supplementaries-1.20-2.8.10.jar", L"farmersdelight-1.20.1-1.2.4.jar",
+         L"geckolib-forge-1.20.1-4.4.9.jar", L"comforts-forge-6.4.0+1.20.1.jar"});
+    modpackChangesVisible_ = true;
+    if (!save(L"modpack-changes.png", 1)) return false;
     // A play-time level reached, and the level on the player card.
     ready(); celebration_ = 3; celebrationSeconds_ = 96 * 3600 + 20 * 60; previewTier_ = 3;
     if (!save(L"achievement.png", 1)) return false;

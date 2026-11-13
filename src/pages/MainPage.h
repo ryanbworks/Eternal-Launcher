@@ -172,6 +172,10 @@ private:
     void dismissSpotlight();
     void markNewsRead();
 
+    // Modpack changelog.
+    void updateModpackChanges();
+    void acknowledgeModpackChanges();
+
     // Play-time levels.
     std::optional<std::uint64_t> serverSecondsForAccount() const;
     void checkMilestone();
@@ -276,6 +280,11 @@ private:
     bool newsRequested_ = false;
     std::wstring newsError_;
     NewsReadState newsRead_;
+
+    // Modpack changelog since the list the player last acknowledged.
+    ModpackChanges modpackChanges_;
+    bool modpackChangesVisible_ = false;
+    std::vector<std::wstring> modpackFiles_;
 
     // Play-time level celebration.
     MilestoneStore milestones_;

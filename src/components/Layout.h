@@ -57,6 +57,10 @@ namespace Layout
     // A play-time level reached: a card centered on the landscape.
     inline const Rect Celebration{266, 88, 460, 316};
     inline const Rect CelebrationButton{416, 344, 160, 42};
+    // Modpack changelog: takes the landscape's slot until it is acknowledged.
+    inline const Rect ModpackChangesMods{636, 96, 112, 38};
+    inline const Rect ModpackChangesOk{756, 96, 112, 38};
+    inline Rect modpackChangesColumn(int index) { return {124 + static_cast<float>(index) * 252, 176, 240, 228}; }
 
     // Everything left of the player card: hero, tiles, news and ranking.
     inline const Rect LeftColumn{100, 68, 792, 708};

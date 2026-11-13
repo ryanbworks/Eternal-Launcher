@@ -1,5 +1,6 @@
 #include "components/HomeView.h"
 #include "services/MilestoneStore.h"
+#include "services/ModpackChangelog.h"
 #include "services/ModInventory.h"
 #include "services/NewsFeed.h"
 #include "services/PlaytimeApi.h"
@@ -154,6 +155,29 @@ namespace {
         check(std::abs(RankTier::progress(50*3600)-.5F)<.01F && RankTier::progress(400*3600)==1,"progress toward the next level");
     }
 
+    void modpackChangelog(const std::filesystem::path& root) {
+        using namespace ModpackChangelog;
+        check(modKey(L"create-1.20.1-0.5.1.f.jar")==L"create" && modKey(L"Xaeros_Minimap_24.2.0_Forge_1.20.jar")==L"xaeros_minimap" &&
+              modKey(L"geckolib-forge-1.20.1-4.4.4.jar")==L"geckolib-forge" && modKey(L"curios-forge-5.9.1+1.20.1.jar")==L"curios-forge" &&
+              modKey(L"modname-mc1.20.1-2.0.jar")==L"modname" && modKey(L"Noversion.jar")==L"noversion","mod keys drop the version");
+        check(displayName(L"sophisticated_backpacks-1.20.1-3.20.5.jar")==L"Sophisticated Backpacks","readable names");
+        check(version(L"create-1.20.1-0.5.1.f.jar")==L"0.5.1.f" && version(L"Noversion.jar").empty(),"versions come from the file name");
+        check(version(L"jei-1.20.1-forge-15.3.0.4.jar")==L"15.3.0.4" && version(L"comforts-forge-6.4.0+1.20.1.jar")==L"6.4.0" &&
+              version(L"supplementaries-1.20-2.8.10.jar")==L"2.8.10" && version(L"oldmap-1.0.jar")==L"1.0","the Minecraft version and loader are dropped");
+        const auto changes=compare({L"create-1.20.1-0.5.1.jar",L"jei-15.3.jar",L"oldmap-1.0.jar"},
+                                   {L"create-1.20.1-0.5.2.jar",L"jei-15.3.jar",L"aquaculture-2.5.jar"});
+        check(changes.added.size()==1 && changes.added[0].name==L"Aquaculture","new mods are added");
+        check(changes.removed.size()==1 && changes.removed[0].name==L"Oldmap","missing mods are removed");
+        check(changes.updated.size()==1 && changes.updated[0].previousVersion==L"0.5.1" && changes.updated[0].version==L"0.5.2",
+            "a new version of the same mod is an update");
+        check(compare({L"a-1.jar"},{L"A-1.jar"}).empty(),"case changes alone are not changes");
+        const auto directory=root/L"modpack";
+        check(!load(directory).has_value(),"no snapshot before the first save");
+        check(save(directory,{L"create-1.jar",L"jei-2.jar"}),"snapshot saves");
+        const auto loaded=load(directory);
+        check(loaded && loaded->size()==2 && (*loaded)[1]==L"jei-2.jar","snapshot loads back");
+    }
+
     void milestones(const std::filesystem::path& root) {
         const auto directory=root/L"milestones";
         MilestoneStore store;
@@ -261,6 +285,7 @@ int main()
     newsReadState(root);
     rankTiers();
     milestones(root);
+    modpackChangelog(root);
     screenshots(root);
     mods(root);
     skins();

@@ -59,6 +59,10 @@ namespace DrawingUtils
                   const Gdiplus::Color& color,
                   Gdiplus::StringAlignment horizontal = Gdiplus::StringAlignmentNear,
                   Gdiplus::StringAlignment vertical = Gdiplus::StringAlignmentNear);
+    // One line, vertically centered, never wrapped: overflow ends in an ellipsis.
+    void drawTextLine(Gdiplus::Graphics& graphics, std::wstring_view text,
+                      const Gdiplus::RectF& bounds, float size, int style, const Gdiplus::Color& color,
+                      Gdiplus::StringAlignment horizontal = Gdiplus::StringAlignmentNear);
     Gdiplus::Color colorForTone(StatusTone tone);
     bool contains(const Gdiplus::RectF& bounds, float x, float y);
     Gdiplus::Color blend(const Gdiplus::Color& from, const Gdiplus::Color& to, float amount);
