@@ -6,7 +6,18 @@ and versions use [SemVer](https://semver.org/) plus a codename.
 
 ## [Unreleased]
 
+## [3.0.0] — Zenith · 2026-11-13
+
 ### Added
+- **Conta Eternal.** Sign in with the group's own account (Drasl) instead of typing a
+  nickname. Each reserved account keeps the player's UUID, so inventories, bases and
+  progress stay as they were. The token is stored encrypted for the Windows user and the
+  password is never saved; the game starts with authlib-injector.
+- **Accounts and first access in the launcher.** Create an account from the sign-in
+  screen. A reserved account signs in the first time with the nickname alone and then
+  chooses a password, without a browser.
+- **Skins page.** Preview the account's skin front and back, keep a library of PNG
+  skins, pick classic or slim arms, use one on the server or go back to the default.
 - **Capturas.** A new page with every screenshot taken with F2 (modpack and 1.8.9),
   a full-size viewer, copy to the clipboard, show in folder and move to the Recycle Bin.
 - **Group gallery.** Share a screenshot from the viewer and the whole group sees it in
@@ -35,7 +46,12 @@ and versions use [SemVer](https://semver.org/) plus a codename.
 - **Screens on Home.** Sign-in, the installation and the play-time levels open as
   screens centered over a dimmed Home instead of sharing the landscape's slot.
 
+### Removed
+- **Nickname mode.** Playing under any typed nickname is gone; the Conta Eternal takes
+  its place. Conta original (Microsoft) stays available.
+
 ### Fixed
+- Typing the nickname in the sign-in screen and moving the mouse no longer erases it.
 - Cancelling or failing an installation no longer leaves its panel on Home for good,
   hiding the news spotlight, sign-in and the levels until the next game.
 
