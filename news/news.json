@@ -3,6 +3,27 @@
   "items": [
     {
       "category": "ATUALIZAÇÃO",
+      "title": "Eternal 3.0: entre com a sua Conta Eternal",
+      "date": "2026-11-13",
+      "body": "Agora você entra com a Conta Eternal. No primeiro acesso, digite só o seu nick, deixe a senha em branco e crie uma senha em seguida. Inventário, bases e progresso continuam do mesmo jeito. Quem ainda não tem conta cria uma no próprio launcher.",
+      "url": "https://github.com/ryanbworks/native-game-launcher/releases/tag/v3.0.0"
+    },
+    {
+      "category": "ATUALIZAÇÃO",
+      "title": "Eternal 3.0: escolha e explore skins",
+      "date": "2026-11-13",
+      "body": "Na nova página Skins você vê a sua skin de frente e de costas, guarda uma biblioteca e troca quando quiser. Em Explorar tem as skins do grupo, de jogadores famosos e uma busca por qualquer conta original pelo nick.",
+      "url": "https://github.com/ryanbworks/native-game-launcher/releases/tag/v3.0.0"
+    },
+    {
+      "category": "ATUALIZAÇÃO",
+      "title": "Eternal 3.0: capturas, níveis e mais",
+      "date": "2026-11-13",
+      "body": "Chegou a aba Capturas, com uma galeria para mostrar seus prints ao grupo. O tempo de jogo agora dá níveis, de Pedra a Netherite, o Início mostra o que mudou no modpack e o Top jogadores lista todo mundo. Login, instalação e níveis ganharam telas próprias.",
+      "url": "https://github.com/ryanbworks/native-game-launcher/releases/tag/v3.0.0"
+    },
+    {
+      "category": "ATUALIZAÇÃO",
       "title": "Eternal 2.2: sua skin no launcher",
       "date": "2026-11-11",
       "body": "O boneco do lado do nickname agora mostra o rosto da sua skin: se o nome for de uma conta original, aparece a skin dela; senão, o Steve. A instalação também ficou mais compacta e não esconde mais as notícias e o ranking enquanto o jogo é preparado. E corrigimos o bug que não deixava voltar da Conta original para o Nickname.",
