@@ -182,6 +182,22 @@ public:
             check(page.handleKeyboard(escape) && page.page_==LauncherPage::Screenshots && page.screenshotViewer_<0,
                 "Escape closes the viewer before leaving the page");
             page.screenshots_.clear();page.screenshotLoading_=false;
+            // The group tab: no folder, the same grid; the network stays off in tests.
+            page.galleryWorking_=true;
+            SendMessageW(control(page,ScreenshotsGroupTabId),BM_CLICK,0,0);
+            check(page.galleryTab_ && !shown(control(page,ScreenshotsFolderButtonId)) && shown(control(page,ScreenshotsRefreshButtonId)),
+                "the group tab replaces the folder button");
+            page.galleryPhotos_={{L"0123456789abcdef",L"Aurora_",1,1920,1080}};
+            page.galleryShared_={};
+            page.redraw();
+            SendMessageW(control(page,ScreenshotCardFirstId),BM_CLICK,0,0);
+            check(page.screenshotViewer_==0 && shown(control(page,ViewerReportButtonId)) && !shown(control(page,ViewerDeleteButtonId)) &&
+                  !shown(control(page,ViewerShareButtonId)) && !shown(control(page,ViewerFolderButtonId)),"another player's picture can be reported, not removed");
+            SendMessageW(control(page,ScreenshotsMineTabId),BM_CLICK,0,0);
+            check(page.screenshotViewer_<0 && !page.galleryTab_,"switching tabs closes the viewer");
+            SendMessageW(control(page,ViewerBackButtonId),BM_CLICK,0,0);
+            check(!page.galleryTab_ && shown(control(page,ScreenshotsFolderButtonId)),"back on the player's own captures");
+            page.galleryPhotos_.clear();page.galleryWorking_=false;
         }
         SendMessageW(control(page,NavHelpId),BM_CLICK,0,0);
         check(page.page_==LauncherPage::Help && shown(control(page,HelpRepairButtonId)) && shown(control(page,HelpCopySupportButtonId)),

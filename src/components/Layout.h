@@ -102,9 +102,16 @@ namespace Layout
     {
         return {100 + static_cast<float>(index % ScreenshotColumns) * 293, 168 + static_cast<float>(index / ScreenshotColumns) * 206, 277, 194};
     }
+    // "Minhas" / "Do grupo" segmented control.
+    inline const Rect ScreenshotsTabs{640, 86, 380, 40};
+    inline Rect screenshotsTab(int index) { return {644 + static_cast<float>(index) * 186, 90, 186, 32}; }
     inline const Rect ViewerBack{100, 84, 116, 44};
-    inline const Rect ViewerTitle{236, 80, 560, 52};
+    inline const Rect ViewerTitle{236, 80, 440, 52};
+    inline const Rect ViewerShare{686, 84, 116, 44};
     inline const Rect ViewerCopy{810, 84, 116, 44};
+    // A group picture: copy, then remove (own) or report (others).
+    inline const Rect ViewerGroupCopy{1018, 84, 116, 44};
+    inline const Rect ViewerGroupAction{1142, 84, 114, 44};
     inline const Rect ViewerFolder{934, 84, 150, 44};
     inline const Rect ViewerOpen{1092, 84, 108, 44};
     inline const Rect ViewerDelete{1208, 84, 48, 44};

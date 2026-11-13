@@ -1,4 +1,5 @@
 #include "components/HomeView.h"
+#include "services/GalleryApi.h"
 #include "services/MilestoneStore.h"
 #include "services/ModpackChangelog.h"
 #include "services/ModInventory.h"
@@ -145,6 +146,72 @@ namespace {
         Gdiplus::GdiplusShutdown(token);
     }
 
+    void gallery(const std::filesystem::path& root) {
+        const auto list=GalleryApi::parseList(R"({"photos":[
+            {"id":"0123456789abcdef","name":"Steve","created":1800000000,"width":1920,"height":1080},
+            {"id":"../../etc/passwd","name":"Steve"},
+            {"id":"0123456789abcdee","name":"<script>"},
+            {"id":"0123456789ABCDEF","name":"Aurora_"}]})");
+        check(list.success && list.photos.size()==1,"only well-formed ids and nicknames are kept");
+        if(!list.photos.empty()) check(list.photos[0].name==L"Steve" && list.photos[0].width==1920 && list.photos[0].created==1800000000,"photo fields are read");
+        check(!GalleryApi::parseList("{oops").success && !GalleryApi::parseList(R"({"photos":3})").success,"malformed lists are rejected");
+        const auto body=GalleryApi::uploadBody("abc","defgh");
+        check(body.size()==12 && body[0]==0 && body[3]==3 && body.substr(4,3)=="abc" && body.substr(7)=="defgh","upload body framing");
+
+        Gdiplus::GdiplusStartupInput input;ULONG_PTR token=0;
+        if(Gdiplus::GdiplusStartup(&token,&input,nullptr)!=Gdiplus::Ok) {check(false,"GDI+ starts");return;}
+        {
+            Gdiplus::Bitmap picture(320,180,PixelFormat32bppARGB);
+            {Gdiplus::Graphics g(&picture);Gdiplus::SolidBrush red(Gdiplus::Color(255,200,40,40));g.FillRectangle(&red,0,0,320,180);}
+            const auto jpeg=GalleryApi::encodeJpeg(picture,85);
+            check(jpeg.size()>100 && static_cast<unsigned char>(jpeg[0])==0xFF && static_cast<unsigned char>(jpeg[1])==0xD8,"JPEG encoding");
+            const auto decoded=GalleryApi::decode(jpeg);
+            check(decoded && decoded->GetWidth()==320 && decoded->GetHeight()==180,"JPEG decodes back");
+            check(!GalleryApi::decode("not a picture"),"garbage does not decode");
+
+            GallerySharedStore store;
+            store.load(root/L"gallery");
+            store.add({L"0123456789abcdef","token-1",GallerySharedStore::sourceKey(L"C:\\x\\shot.png",42)});
+            check(store.save(),"shared store saves");
+            GallerySharedStore reloaded;
+            reloaded.load(root/L"gallery");
+            check(reloaded.byId(L"0123456789abcdef") && reloaded.byId(L"0123456789abcdef")->token=="token-1" &&
+                  reloaded.bySource(L"shot.png|42"),"shared pictures are remembered by id and by source");
+            reloaded.erase(L"0123456789abcdef");
+            check(!reloaded.byId(L"0123456789abcdef"),"a removed picture is forgotten");
+
+            // Against a real gallery server, when one is given (see server/test_gallery_api.py).
+            std::array<wchar_t,256> url{};
+            if(GetEnvironmentVariableW(L"ETERNAL_GALLERY_TEST_URL",url.data(),static_cast<DWORD>(url.size()))) {
+                CLSID pngEncoder{};
+                UINT count=0,size=0;Gdiplus::GetImageEncodersSize(&count,&size);
+                std::vector<BYTE> bytes(size);auto* encoders=reinterpret_cast<Gdiplus::ImageCodecInfo*>(bytes.data());
+                Gdiplus::GetImageEncoders(count,size,encoders);
+                for(UINT i=0;i<count;++i) if(std::wstring_view(encoders[i].MimeType)==L"image/png") pngEncoder=encoders[i].Clsid;
+                Gdiplus::Bitmap shot(2560,1440,PixelFormat32bppARGB);
+                {Gdiplus::Graphics g(&shot);Gdiplus::SolidBrush blue(Gdiplus::Color(255,40,80,200));g.FillRectangle(&blue,0,0,2560,1440);}
+                const auto file=root/L"gallery"/L"2026-11-13_20.00.00.png";
+                check(shot.Save(file.c_str(),&pngEncoder)==Gdiplus::Ok,"integration screenshot saves");
+                const auto uploaded=GalleryApi::upload(url.data(),file,L"Steve");
+                check(uploaded.success && uploaded.id.size()==16 && !uploaded.deleteToken.empty(),"a screenshot uploads to the gallery");
+                const auto listed=GalleryApi::fetchList(url.data());
+                const bool found=std::any_of(listed.photos.begin(),listed.photos.end(),[&](const GalleryPhoto& p) {
+                    return p.id==uploaded.id && p.name==L"Steve" && p.width==1920 && p.height==1080;});
+                check(listed.success && found,"the upload is listed, scaled to 1920 x 1080");
+                const auto thumb=GalleryApi::fetchImage(url.data(),uploaded.id,false);
+                const auto full=GalleryApi::fetchImage(url.data(),uploaded.id,true);
+                check(thumb && thumb->GetWidth()==416 && full && full->GetWidth()==1920,"thumbnail and picture download and decode");
+                std::wstring error;
+                check(GalleryApi::report(url.data(),uploaded.id,error),"a picture can be reported");
+                check(!GalleryApi::remove(url.data(),uploaded.id,"wrong-token",error),"a wrong token cannot remove");
+                check(GalleryApi::remove(url.data(),uploaded.id,uploaded.deleteToken,error),"the uploader removes the picture");
+                check(!GalleryApi::fetchImage(url.data(),uploaded.id,false),"a removed picture is gone");
+                std::cout << "gallery integration: ran against ETERNAL_GALLERY_TEST_URL\n";
+            }
+        }
+        Gdiplus::GdiplusShutdown(token);
+    }
+
     void rankTiers() {
         check(RankTier::level(0)==1 && RankTier::level(24*3600+3599)==1,"level 1 below 25 h");
         check(RankTier::level(25*3600)==2 && RankTier::level(75*3600)==3 && RankTier::level(150*3600)==4 && RankTier::level(300*3600)==5,
@@ -287,6 +354,7 @@ int main()
     milestones(root);
     modpackChangelog(root);
     screenshots(root);
+    gallery(root);
     mods(root);
     skins();
     std::filesystem::remove_all(root,ignored);

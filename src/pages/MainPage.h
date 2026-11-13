@@ -15,6 +15,7 @@
 #include "services/InstallationCoordinator.h"
 #include "services/LauncherUpdateService.h"
 #include "services/MicrosoftAuthService.h"
+#include "services/GalleryApi.h"
 #include "services/MilestoneStore.h"
 #include "services/ModInventory.h"
 #include "services/NewsFeed.h"
@@ -191,6 +192,29 @@ private:
     void deleteScreenshot();
     void setScreenshotsMessage(std::wstring message, bool error = false);
     const ScreenshotEntry* currentScreenshot() const;
+    std::size_t shotCount() const;
+
+    // Group gallery.
+    struct GalleryEvent
+    {
+        enum class Kind { List, Image, Done, Upload, Remove, Report } kind = Kind::Done;
+        GalleryListResult list;
+        std::wstring id;
+        bool full = false;
+        std::unique_ptr<Gdiplus::Bitmap> bitmap;
+        GalleryUploadResult upload;
+        std::wstring source;
+        bool success = false;
+        std::wstring error;
+    };
+    void showGalleryTab(bool group);
+    void requestGalleryImages();
+    void handleGalleryEvent(GalleryEvent& event);
+    const GalleryPhoto* currentGalleryPhoto() const;
+    void shareScreenshot();
+    void removeGalleryPhoto();
+    void reportGalleryPhoto();
+    void copyCurrentPicture();
 
     HINSTANCE instance_;
     HWND window_ = nullptr;
@@ -307,6 +331,20 @@ private:
     std::wstring screenshotsMessage_;
     bool screenshotsMessageError_ = false;
 
+    // Group gallery tab.
+    bool galleryTab_ = false;
+    std::vector<GalleryPhoto> galleryPhotos_;
+    bool galleryLoaded_ = false;
+    bool galleryLoading_ = false;
+    bool galleryUnavailable_ = false;
+    bool galleryWorking_ = false;  // the list/picture worker is running
+    bool galleryBusy_ = false;     // an upload, removal or report is running
+    std::map<std::wstring, std::shared_ptr<Gdiplus::Bitmap>> galleryThumbnails_;
+    std::shared_ptr<Gdiplus::Bitmap> galleryImage_;
+    std::wstring galleryImageId_;
+    GallerySharedStore galleryShared_;
+    std::wstring galleryBaseUrl_;
+
     // Mods.
     ModInventorySnapshot mods_;
     bool modsScanned_ = false;
@@ -372,6 +410,8 @@ private:
     std::jthread playtimeSyncThread_;
     std::jthread skinThread_;
     std::jthread screenshotThread_;
+    std::jthread galleryThread_;
+    std::jthread galleryActionThread_;
     // Last member: destruction joins before any state captured by the worker is destroyed.
     std::jthread launcherUpdateThread_;
     // Last: all captured services, tracking state and HWND outlive this worker.

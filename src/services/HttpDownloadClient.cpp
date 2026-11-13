@@ -63,7 +63,8 @@ namespace {
         if(error) result.errorMessage+=L" (erro Windows "+std::to_wstring(error)+L").";
     }
     HttpDownloadResult fetch(std::wstring_view url,const std::filesystem::path* destination,
-        std::stop_token stop,const HttpDownloadProgressCallback& progress,const std::string* postBody=nullptr,DWORD waitLimit=0) {
+        std::stop_token stop,const HttpDownloadProgressCallback& progress,const std::string* postBody=nullptr,DWORD waitLimit=0,
+        const wchar_t* contentType=L"Content-Type: application/json\r\n") {
         HttpDownloadResult result;
         if(stop.stop_requested()) {result.cancelled=true;result.errorMessage=L"Download cancelado.";return result;}
         const auto waitFor=[waitLimit](DWORD normal) {return waitLimit ? waitLimit : normal;};
@@ -100,7 +101,7 @@ namespace {
             fail(result,InstallationFailure::Network,result.cancelled ? L"Download cancelado." : L"A conexão foi interrompida. Confira sua internet e tente novamente.",request.error.load());
         };
         const DWORD bodySize=postBody ? static_cast<DWORD>(postBody->size()) : 0;
-        if(!pending(WinHttpSendRequest(request.handle,postBody ? L"Content-Type: application/json\r\n" : WINHTTP_NO_ADDITIONAL_HEADERS,
+        if(!pending(WinHttpSendRequest(request.handle,postBody ? contentType : WINHTTP_NO_ADDITIONAL_HEADERS,
             postBody ? static_cast<DWORD>(-1L) : 0,postBody ? const_cast<char*>(postBody->data()) : nullptr,bodySize,bodySize,context)) ||
             !request.wait(WINHTTP_CALLBACK_STATUS_SENDREQUEST_COMPLETE,stop,waitFor(15000))) {networkFailure();return result;}
         request.reset();
@@ -157,6 +158,10 @@ HttpDownloadResult HttpDownloadClient::getText(std::wstring_view url,std::stop_t
 }
 HttpDownloadResult HttpDownloadClient::postJson(std::wstring_view url,const std::string& body,std::stop_token stop,unsigned long waitMilliseconds) const {
     try { return fetch(url,nullptr,stop,{},&body,waitMilliseconds); }
+    catch(const std::exception&) {HttpDownloadResult r;fail(r,InstallationFailure::Network,L"Não foi possível enviar os dados.");return r;}
+}
+HttpDownloadResult HttpDownloadClient::postBinary(std::wstring_view url,const std::string& body,std::stop_token stop) const {
+    try { return fetch(url,nullptr,stop,{},&body,30000,L"Content-Type: application/octet-stream\r\n"); }
     catch(const std::exception&) {HttpDownloadResult r;fail(r,InstallationFailure::Network,L"Não foi possível enviar os dados.");return r;}
 }
 HttpDownloadResult HttpDownloadClient::downloadFile(std::wstring_view url,const std::filesystem::path& destination,

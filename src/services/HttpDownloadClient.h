@@ -30,6 +30,9 @@ public:
     // Each network step waits at most `waitMilliseconds`, so a caller can bound a best-effort call.
     [[nodiscard]] HttpDownloadResult postJson(std::wstring_view url, const std::string& body,
         std::stop_token stopToken = {}, unsigned long waitMilliseconds = 15000) const;
+    // Uploads raw bytes (application/octet-stream), waiting up to 30 s per step.
+    [[nodiscard]] HttpDownloadResult postBinary(std::wstring_view url, const std::string& body,
+        std::stop_token stopToken = {}) const;
     [[nodiscard]] HttpDownloadResult downloadFile(
         std::wstring_view url,
         const std::filesystem::path& destination,

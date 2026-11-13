@@ -43,4 +43,7 @@ namespace ScreenshotLibrary
     bool remove(const std::filesystem::path& file, std::wstring& error);
     // Puts the full-size picture on the clipboard, ready to paste in Discord or WhatsApp.
     bool copyToClipboard(HWND owner, const std::filesystem::path& file, std::wstring& error);
+    bool copyToClipboard(HWND owner, Gdiplus::Bitmap& picture, std::wstring& error);
+    // Short relative time for cards: "agora", "há 5 min", "há 3 h", "ontem", "12 nov".
+    std::wstring formatWhen(std::int64_t unixSeconds, std::int64_t now);
 }

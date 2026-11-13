@@ -111,6 +111,8 @@ add_executable(EternalLauncher WIN32
     src/services/MilestoneStore.h
     src/services/ModpackChangelog.cpp
     src/services/ModpackChangelog.h
+    src/services/GalleryApi.cpp
+    src/services/GalleryApi.h
     src/services/SkinLookup.cpp
     src/services/SkinLookup.h
     src/services/VanillaMinecraftService.cpp
@@ -185,7 +187,7 @@ target_include_directories(EternalLauncher PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/
 
 # GDI+ draws the interface, while DWM and UxTheme integrate the window with the
 # Windows dark theme. None of these libraries adds an external dependency.
-target_link_libraries(EternalLauncher PRIVATE gdiplus dwmapi uxtheme comctl32 winhttp bcrypt ole32 shell32 comdlg32)
+target_link_libraries(EternalLauncher PRIVATE gdiplus dwmapi uxtheme comctl32 winhttp bcrypt ole32 shell32 comdlg32 shlwapi)
 
 if(MSVC)
     # The Visual Studio generator injects /W3 by default. Removing it before /W4
@@ -309,11 +311,11 @@ endif()
 if(BUILD_TESTING)
     add_executable(LauncherServicesTests tests/LauncherServicesTests.cpp
         src/services/PlaytimeStore.cpp src/services/PlaytimeApi.cpp src/services/NewsFeed.cpp src/services/ModInventory.cpp
-        src/services/SkinLookup.cpp src/services/ScreenshotLibrary.cpp src/services/MilestoneStore.cpp src/services/ModpackChangelog.cpp src/services/HttpDownloadClient.cpp src/utils/JsonValue.cpp)
+        src/services/SkinLookup.cpp src/services/ScreenshotLibrary.cpp src/services/MilestoneStore.cpp src/services/ModpackChangelog.cpp src/services/GalleryApi.cpp src/services/HttpDownloadClient.cpp src/utils/JsonValue.cpp)
     target_compile_features(LauncherServicesTests PRIVATE cxx_std_20)
     target_compile_definitions(LauncherServicesTests PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_include_directories(LauncherServicesTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
-    target_link_libraries(LauncherServicesTests PRIVATE winhttp shell32 gdiplus ole32)
+    target_link_libraries(LauncherServicesTests PRIVATE winhttp shell32 gdiplus ole32 shlwapi)
     if(MSVC)
         target_compile_options(LauncherServicesTests PRIVATE /W4 /permissive- /utf-8)
     endif()

@@ -81,6 +81,10 @@ namespace LauncherConstants
     inline constexpr int ViewerFolderButtonId = 1189;
     inline constexpr int ViewerOpenButtonId = 1190;
     inline constexpr int ViewerDeleteButtonId = 1191;
+    inline constexpr int ScreenshotsMineTabId = 1192;
+    inline constexpr int ScreenshotsGroupTabId = 1193;
+    inline constexpr int ViewerShareButtonId = 1194;
+    inline constexpr int ViewerReportButtonId = 1195;
 
     // Popup and tray menu commands.
     inline constexpr UINT MenuOpenGameFolder = 40001;
@@ -116,4 +120,6 @@ namespace LauncherConstants
     inline constexpr UINT SkinLookupResultMessage = WM_APP + 16;
     // lParam: ScreenshotImage*, or nullptr once the worker finished its list.
     inline constexpr UINT ScreenshotImageMessage = WM_APP + 17;
+    // lParam: GalleryEvent* (list, picture, upload, removal or report result).
+    inline constexpr UINT GalleryEventMessage = WM_APP + 18;
 }

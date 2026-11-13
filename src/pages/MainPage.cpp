@@ -84,6 +84,8 @@ namespace
         {ModsRefreshButtonId, false, true, L"Atualizar lista"},
         {ModsFolderButtonId, false, true, L"Abrir pasta"},
         {ModsAddButtonId, false, true, L"Adicionar mod"},
+        {ScreenshotsMineTabId, false, true, L"Minhas capturas"},
+        {ScreenshotsGroupTabId, false, true, L"Galeria do grupo"},
         {ScreenshotsRefreshButtonId, false, true, L"Atualizar capturas"},
         {ScreenshotsFolderButtonId, false, true, L"Abrir pasta de capturas"},
         {ScreenshotCardFirstId, false, true, L"Captura 1"},
@@ -99,10 +101,12 @@ namespace
         {ScreenshotCardFirstId + 10, false, true, L"Captura 11"},
         {ScreenshotCardFirstId + 11, false, true, L"Captura 12"},
         {ViewerBackButtonId, false, true, L"Voltar para as capturas"},
+        {ViewerShareButtonId, false, true, L"Compartilhar com o grupo"},
         {ViewerCopyButtonId, false, true, L"Copiar captura"},
         {ViewerFolderButtonId, false, true, L"Mostrar na pasta"},
         {ViewerOpenButtonId, false, true, L"Abrir no visualizador do Windows"},
         {ViewerDeleteButtonId, false, true, L"Mover captura para a Lixeira"},
+        {ViewerReportButtonId, false, true, L"Denunciar captura"},
         {ViewerPreviousButtonId, false, true, L"Captura anterior"},
         {ViewerNextButtonId, false, true, L"Próxima captura"},
         {HelpRepairButtonId, false, true, L"Reparar instalação"},
@@ -198,10 +202,16 @@ MainPage::~MainPage()
     launcherUpdateThread_.request_stop();
     if (launcherUpdateThread_.joinable()) launcherUpdateThread_.join();
     screenshotThread_.request_stop();
+    galleryThread_.request_stop();
+    galleryActionThread_.request_stop();
     if (screenshotThread_.joinable()) screenshotThread_.join();
-    // Results the worker posted after the window closed are never read; nothing else owns them.
+    if (galleryThread_.joinable()) galleryThread_.join();
+    if (galleryActionThread_.joinable()) galleryActionThread_.join();
+    // Results the workers posted after the window closed are never read; nothing else owns them.
     for (MSG pending{}; PeekMessageW(&pending, nullptr, ScreenshotImageMessage, ScreenshotImageMessage, PM_REMOVE);)
         delete reinterpret_cast<ScreenshotImage*>(pending.lParam);
+    for (MSG pending{}; PeekMessageW(&pending, nullptr, GalleryEventMessage, GalleryEventMessage, PM_REMOVE);)
+        delete reinterpret_cast<GalleryEvent*>(pending.lParam);
     releaseFrame();
     for (auto* brush : {backgroundBrush_, surfaceBrush_, inputBrush_, sunkenBrush_})
         if (brush) DeleteObject(brush);
@@ -266,6 +276,8 @@ bool MainPage::create(int showCommand, bool checkLauncherUpdate, std::wstring up
     layoutControls();
     loadNewsReadState();
     milestones_.load(LauncherSettingsStore::dataDirectory());
+    galleryShared_.load(LauncherSettingsStore::dataDirectory());
+    galleryBaseUrl_ = GalleryApi::baseUrl();
     syncControls();
     portalEntrance_ = motionEnabled_ ? 0.0F : 1.0F;
     portalBurst_ = motionEnabled_ ? 1.0F : 0.0F;
@@ -506,6 +518,12 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             if (page_ == LauncherPage::News) markNewsRead();
         }
         redraw();
+        return 0;
+    }
+    case GalleryEventMessage:
+    {
+        std::unique_ptr<GalleryEvent> event(reinterpret_cast<GalleryEvent*>(lParam));
+        if (event) handleGalleryEvent(*event);
         return 0;
     }
     case ScreenshotImageMessage:
@@ -1220,7 +1238,7 @@ void MainPage::redraw(bool animationFrame)
     const bool hero = home && !installation_.visible;
     const bool ambient = ambientMotion_ && hero && GetForegroundWindow() == window_;
     // Placeholders shimmer while screenshot thumbnails decode.
-    const bool screenshotsLoading = page_ == LauncherPage::Screenshots && screenshotLoading_;
+    const bool screenshotsLoading = page_ == LauncherPage::Screenshots && (galleryTab_ ? galleryWorking_ : screenshotLoading_);
     const bool running = motionEnabled_ && IsWindowVisible(window_) && !IsIconic(window_) && !closing_ &&
         (unsettled || indeterminate || screenshotsLoading || (home && !skinPending_.empty()) ||
          (hero &&(ambient || portalEntrance_ < 1 || portalHovered_ || portalEnergy_ > .005F || portalBurst_ > 0)));
@@ -1371,7 +1389,7 @@ void MainPage::animate()
             markContent(Layout::Installation, 4);
     }
     if (page_ == LauncherPage::Mods && modKnobs_ != knobsBefore) markContent(Layout::ModsUser, 4);
-    if (page_ == LauncherPage::Screenshots && screenshotLoading_ && screenshotViewer_ < 0)
+    if (page_ == LauncherPage::Screenshots && (galleryTab_ ? galleryWorking_ : screenshotLoading_) && screenshotViewer_ < 0)
         markContent({100, 168, 1156, 608}, 4);
     if (settingsBefore || settingsMoving) markContent(Layout::Content, 4);
     redraw(true);
@@ -1501,10 +1519,14 @@ Gdiplus::RectF MainPage::controlBounds(int id) const
     case ViewerBackButtonId: return Layout::ViewerBack;
     case ViewerPreviousButtonId: return Layout::ViewerPrevious;
     case ViewerNextButtonId: return Layout::ViewerNext;
-    case ViewerCopyButtonId: return Layout::ViewerCopy;
+    case ViewerCopyButtonId: return galleryTab_ ? Layout::ViewerGroupCopy : Layout::ViewerCopy;
     case ViewerFolderButtonId: return Layout::ViewerFolder;
     case ViewerOpenButtonId: return Layout::ViewerOpen;
-    case ViewerDeleteButtonId: return Layout::ViewerDelete;
+    case ViewerDeleteButtonId: return galleryTab_ ? Layout::ViewerGroupAction : Layout::ViewerDelete;
+    case ViewerShareButtonId: return Layout::ViewerShare;
+    case ViewerReportButtonId: return Layout::ViewerGroupAction;
+    case ScreenshotsMineTabId: return Layout::screenshotsTab(0);
+    case ScreenshotsGroupTabId: return Layout::screenshotsTab(1);
     case NewsAllButtonId: return {Layout::NewsAll.X + 20, Layout::NewsAll.Y, Layout::NewsAll.Width - 20, Layout::NewsAll.Height};
     case InstallationLogButtonId: return Layout::InstallationLog;
     case CancelInstallationButtonId: return Layout::InstallationCancel;
@@ -1564,18 +1586,29 @@ bool MainPage::controlVisible(int id) const
     case ModpackChangesModsButtonId:
         return home && !installation_.visible && modpackChangesVisible_;
     case ScreenshotsRefreshButtonId:
-    case ScreenshotsFolderButtonId:
+    case ScreenshotsMineTabId:
+    case ScreenshotsGroupTabId:
         return page_ == LauncherPage::Screenshots && screenshotViewer_ < 0;
+    case ScreenshotsFolderButtonId:
+        return page_ == LauncherPage::Screenshots && screenshotViewer_ < 0 && !galleryTab_;
     case ViewerBackButtonId:
     case ViewerCopyButtonId:
+        return page_ == LauncherPage::Screenshots && (currentScreenshot() || currentGalleryPhoto());
+    case ViewerShareButtonId:
     case ViewerFolderButtonId:
     case ViewerOpenButtonId:
-    case ViewerDeleteButtonId:
         return page_ == LauncherPage::Screenshots && currentScreenshot();
+    case ViewerDeleteButtonId:
+        // A group picture can only be removed from the computer that shared it.
+        if (const auto* photo = currentGalleryPhoto()) return page_ == LauncherPage::Screenshots && galleryShared_.byId(photo->id);
+        return page_ == LauncherPage::Screenshots && currentScreenshot();
+    case ViewerReportButtonId:
+        if (const auto* photo = currentGalleryPhoto()) return page_ == LauncherPage::Screenshots && !galleryShared_.byId(photo->id);
+        return false;
     case ViewerPreviousButtonId:
-        return page_ == LauncherPage::Screenshots && currentScreenshot() && screenshotViewer_ > 0;
+        return page_ == LauncherPage::Screenshots && screenshotViewer_ > 0 && static_cast<std::size_t>(screenshotViewer_) < shotCount();
     case ViewerNextButtonId:
-        return page_ == LauncherPage::Screenshots && currentScreenshot() && static_cast<std::size_t>(screenshotViewer_) + 1 < screenshots_.size();
+        return page_ == LauncherPage::Screenshots && screenshotViewer_ >= 0 && static_cast<std::size_t>(screenshotViewer_) + 1 < shotCount();
     case NewsAllButtonId:
         return leftColumn;
     case InstallationLogButtonId:
@@ -1598,7 +1631,7 @@ bool MainPage::controlVisible(int id) const
     if (inRange(id, HelpRepairButtonId, 8)) return page_ == LauncherPage::Help;
     if (inRange(id, ScreenshotCardFirstId, ScreenshotCardCount)) {
         const auto index = screenshotRow_ * Layout::ScreenshotColumns + static_cast<std::size_t>(id - ScreenshotCardFirstId);
-        return page_ == LauncherPage::Screenshots && screenshotViewer_ < 0 && index < screenshots_.size();
+        return page_ == LauncherPage::Screenshots && screenshotViewer_ < 0 && index < shotCount();
     }
     return false;
 }
@@ -1624,6 +1657,13 @@ bool MainPage::controlEnabled(int id) const
         return installation_.running && !installation_.cancelling;
     case ModsAddButtonId:
         return !gameRunning() && !installation_.running;
+    case ViewerShareButtonId:
+        if (const auto* shot = currentScreenshot())
+            return !galleryBusy_ && !galleryShared_.bySource(GallerySharedStore::sourceKey(shot->path, shot->size));
+        return false;
+    case ViewerDeleteButtonId:
+    case ViewerReportButtonId:
+        return !galleryBusy_;
     default:
         return true;
     }
@@ -1668,8 +1708,13 @@ std::wstring MainPage::controlLabel(int id) const
     }
     if (inRange(id, ScreenshotCardFirstId, ScreenshotCardCount)) {
         const auto index = screenshotRow_ * Layout::ScreenshotColumns + static_cast<std::size_t>(id - ScreenshotCardFirstId);
+        if (galleryTab_)
+            return index < galleryPhotos_.size() ? L"Captura de " + galleryPhotos_[index].name : std::wstring{};
         return index < screenshots_.size() ? L"Captura de " + ScreenshotLibrary::formatDate(screenshots_[index].modified) : std::wstring{};
     }
+    if (id == ScreenshotsMineTabId) return galleryTab_ ? L"Minhas capturas" : L"Minhas capturas (selecionada)";
+    if (id == ScreenshotsGroupTabId) return galleryTab_ ? L"Galeria do grupo (selecionada)" : L"Galeria do grupo";
+    if (id == ViewerDeleteButtonId && galleryTab_) return L"Remover da galeria do grupo";
     for (const auto& spec : ControlSpecs) if (spec.id == id && spec.label) return spec.label;
     return {};
 }
@@ -1794,7 +1839,7 @@ bool MainPage::handleKeyboard(MSG& message)
         if (page_ == LauncherPage::Screenshots && screenshotViewer_ >= 0) {
             if (message.wParam == VK_ESCAPE) { closeScreenshot(); return true; }
             if (message.wParam == VK_LEFT && screenshotViewer_ > 0) { openScreenshot(screenshotViewer_ - 1); return true; }
-            if (message.wParam == VK_RIGHT && static_cast<std::size_t>(screenshotViewer_) + 1 < screenshots_.size()) {
+            if (message.wParam == VK_RIGHT && static_cast<std::size_t>(screenshotViewer_) + 1 < shotCount()) {
                 openScreenshot(screenshotViewer_ + 1);
                 return true;
             }
@@ -1834,7 +1879,11 @@ void MainPage::showPage(LauncherPage page)
     // Leaving the list: what was on it is read now, so the NOVO tags go away.
     if (page_ == LauncherPage::News)
         for (auto& item : viewState_.news) item.unread = false;
-    if (page_ == LauncherPage::Screenshots) { screenshotViewer_ = -1; viewerImage_.reset(); viewerImagePath_.clear(); }
+    if (page_ == LauncherPage::Screenshots) {
+        screenshotViewer_ = -1;
+        viewerImage_.reset(); viewerImagePath_.clear();
+        galleryImage_.reset(); galleryImageId_.clear();
+    }
     page_ = page;
     if (page == LauncherPage::Settings) {
         settingsPage_.open(settings_, settingsWarning_);
@@ -1843,7 +1892,12 @@ void MainPage::showPage(LauncherPage page)
     }
     if (page == LauncherPage::Mods) { refreshMods(); modsMessage_.clear(); modsMessageError_ = false; }
     if (page == LauncherPage::News) markNewsRead();
-    if (page == LauncherPage::Screenshots) { screenshotsMessage_.clear(); screenshotsMessageError_ = false; refreshScreenshots(); }
+    if (page == LauncherPage::Screenshots) {
+        screenshotsMessage_.clear();
+        screenshotsMessageError_ = false;
+        if (galleryTab_) { galleryLoaded_ = false; galleryUnavailable_ = false; }
+        refreshScreenshots();
+    }
     if (page == LauncherPage::Help) helpMessage_.clear();
     if (page == LauncherPage::Versions) vanillaInstalled_ = VanillaMinecraftService::isInstalled();
     portalHovered_ = false;
@@ -1966,23 +2020,28 @@ void MainPage::handleCommand(int id, int)
         showPage(LauncherPage::News);
         break;
     case ScreenshotsRefreshButtonId:
+        if (galleryTab_) {
+            galleryLoaded_ = false;
+            galleryUnavailable_ = false;
+            screenshotsMessage_.clear();
+            requestGalleryImages();
+            redraw();
+            break;
+        }
         refreshScreenshots();
         setScreenshotsMessage(screenshots_.empty() ? L"Nenhuma captura encontrada." : L"Lista atualizada.");
         break;
+    case ScreenshotsMineTabId: showGalleryTab(false); break;
+    case ScreenshotsGroupTabId: showGalleryTab(true); break;
+    case ViewerShareButtonId: shareScreenshot(); break;
+    case ViewerReportButtonId: reportGalleryPhoto(); break;
     case ScreenshotsFolderButtonId:
         openPath(gameDirectory() / L"screenshots", true);
         break;
     case ViewerBackButtonId: closeScreenshot(); break;
     case ViewerPreviousButtonId: if (screenshotViewer_ > 0) openScreenshot(screenshotViewer_ - 1); break;
     case ViewerNextButtonId: openScreenshot(screenshotViewer_ + 1); break;
-    case ViewerCopyButtonId:
-        if (const auto* shot = currentScreenshot()) {
-            std::wstring error;
-            if (ScreenshotLibrary::copyToClipboard(window_, shot->path, error))
-                setScreenshotsMessage(L"Copiada! Cole no Discord ou no WhatsApp com Ctrl+V.");
-            else setScreenshotsMessage(error, true);
-        }
-        break;
+    case ViewerCopyButtonId: copyCurrentPicture(); break;
     case ViewerFolderButtonId:
         if (const auto* shot = currentScreenshot()) {
             // Explorer opens the folder with the file selected.
@@ -1993,7 +2052,10 @@ void MainPage::handleCommand(int id, int)
     case ViewerOpenButtonId:
         if (const auto* shot = currentScreenshot()) openPath(shot->path);
         break;
-    case ViewerDeleteButtonId: deleteScreenshot(); break;
+    case ViewerDeleteButtonId:
+        if (galleryTab_) removeGalleryPhoto();
+        else deleteScreenshot();
+        break;
     case CancelInstallationButtonId: cancelInstallation(); break;
     case RetryServerButtonId: retryServer(); break;
     case InstallationLogButtonId:
@@ -2058,11 +2120,11 @@ void MainPage::scrollContent(int delta, Gdiplus::PointF point)
     } else if (page_ == LauncherPage::Screenshots) {
         if (screenshotViewer_ >= 0) {
             // In the viewer the wheel steps through the pictures.
-            const int target = std::clamp(screenshotViewer_ - notches, 0, static_cast<int>(screenshots_.size()) - 1);
+            const int target = std::clamp(screenshotViewer_ - notches, 0, static_cast<int>(shotCount()) - 1);
             if (target != screenshotViewer_) openScreenshot(target);
             return;
         }
-        const int last = static_cast<int>(ScreenshotsView::lastFirstRow(screenshots_.size()));
+        const int last = static_cast<int>(ScreenshotsView::lastFirstRow(shotCount()));
         const int row = std::clamp(static_cast<int>(screenshotRow_) - notches, 0, last);
         if (static_cast<std::size_t>(row) != screenshotRow_) {
             screenshotRow_ = static_cast<std::size_t>(row);
@@ -2382,26 +2444,70 @@ void MainPage::dismissCelebration()
 ScreenshotsModel MainPage::screenshotsModel(bool preview) const
 {
     ScreenshotsModel model;
-    model.entries = &screenshots_;
-    model.thumbnails = &screenshotThumbnails_;
+    model.group = galleryTab_;
     model.firstRow = screenshotRow_;
     model.viewer = screenshotViewer_;
-    if (const auto* shot = currentScreenshot(); shot && viewerImagePath_ == shot->path.wstring()) {
-        model.viewerImage = viewerImage_.get();
-        model.viewerWidth = viewerWidth_;
-        model.viewerHeight = viewerHeight_;
-    }
     model.message = screenshotsMessage_;
     model.messageError = screenshotsMessageError_;
     model.entrance = preview ? 1.0F : pageFade_;
     model.time = preview ? 0.0F : time_;
+    const auto now = wallClock();
+    if (galleryTab_) {
+        model.thumbnails = &galleryThumbnails_;
+        model.loading = galleryLoading_;
+        model.unavailable = galleryUnavailable_;
+        model.cards.reserve(galleryPhotos_.size());
+        for (const auto& photo : galleryPhotos_)
+            model.cards.push_back({photo.id, photo.name, ScreenshotLibrary::formatWhen(photo.created, now),
+                galleryShared_.byId(photo.id) ? L"Sua" : L"", false});
+        if (const auto* photo = currentGalleryPhoto()) {
+            model.viewerTitle = L"Captura de " + photo->name;
+            model.viewerDetail = std::to_wstring(screenshotViewer_ + 1) + L" de " + std::to_wstring(galleryPhotos_.size()) + L" · " +
+                ScreenshotLibrary::formatDate(photo->created);
+            if (photo->width > 0) model.viewerDetail += L" · " + std::to_wstring(photo->width) + L" × " + std::to_wstring(photo->height);
+            model.viewerMine = galleryShared_.byId(photo->id) != nullptr;
+            model.viewerWidth = photo->width;
+            model.viewerHeight = photo->height;
+            if (galleryImageId_ == photo->id) model.viewerImage = galleryImage_.get();
+        }
+        return model;
+    }
+    model.thumbnails = &screenshotThumbnails_;
+    model.sharing = galleryBusy_;
+    model.cards.reserve(screenshots_.size());
+    for (const auto& entry : screenshots_)
+        model.cards.push_back({entry.path.wstring(), ScreenshotLibrary::formatDate(entry.modified), ModInventory::formatSize(entry.size),
+            entry.vanilla ? L"1.8.9" : L"", galleryShared_.bySource(GallerySharedStore::sourceKey(entry.path, entry.size)) != nullptr});
+    if (const auto* shot = currentScreenshot()) {
+        model.viewerTitle = ScreenshotLibrary::formatDate(shot->modified);
+        model.viewerDetail = std::to_wstring(screenshotViewer_ + 1) + L" de " + std::to_wstring(screenshots_.size());
+        if (viewerImagePath_ == shot->path.wstring()) {
+            model.viewerImage = viewerImage_.get();
+            model.viewerWidth = viewerWidth_;
+            model.viewerHeight = viewerHeight_;
+            if (viewerWidth_ > 0) model.viewerDetail += L" · " + std::to_wstring(viewerWidth_) + L" × " + std::to_wstring(viewerHeight_);
+        }
+        model.viewerDetail += L" · " + ModInventory::formatSize(shot->size) + (shot->vanilla ? L" · Minecraft 1.8.9" : L" · Modpack Eternal");
+        model.viewerShared = galleryShared_.bySource(GallerySharedStore::sourceKey(shot->path, shot->size)) != nullptr;
+    }
     return model;
 }
 
 const ScreenshotEntry* MainPage::currentScreenshot() const
 {
-    if (screenshotViewer_ < 0 || static_cast<std::size_t>(screenshotViewer_) >= screenshots_.size()) return nullptr;
+    if (galleryTab_ || screenshotViewer_ < 0 || static_cast<std::size_t>(screenshotViewer_) >= screenshots_.size()) return nullptr;
     return &screenshots_[static_cast<std::size_t>(screenshotViewer_)];
+}
+
+const GalleryPhoto* MainPage::currentGalleryPhoto() const
+{
+    if (!galleryTab_ || screenshotViewer_ < 0 || static_cast<std::size_t>(screenshotViewer_) >= galleryPhotos_.size()) return nullptr;
+    return &galleryPhotos_[static_cast<std::size_t>(screenshotViewer_)];
+}
+
+std::size_t MainPage::shotCount() const
+{
+    return galleryTab_ ? galleryPhotos_.size() : screenshots_.size();
 }
 
 void MainPage::refreshScreenshots()
@@ -2421,6 +2527,7 @@ void MainPage::refreshScreenshots()
 void MainPage::requestScreenshotImages()
 {
     if (!window_ || page_ != LauncherPage::Screenshots) return;
+    if (galleryTab_) { requestGalleryImages(); return; }
     // One worker at a time; when it finishes, this runs again for whatever is still missing.
     if (screenshotLoading_) return;
     if (screenshotThumbnails_.size() > 72) {
@@ -2474,12 +2581,14 @@ void MainPage::requestScreenshotImages()
 
 void MainPage::openScreenshot(int index)
 {
-    if (index < 0 || static_cast<std::size_t>(index) >= screenshots_.size()) return;
+    if (index < 0 || static_cast<std::size_t>(index) >= shotCount()) return;
     const bool wasGrid = screenshotViewer_ < 0;
     screenshotViewer_ = index;
     screenshotsMessage_.clear();
     screenshotsMessageError_ = false;
-    if (viewerImagePath_ != screenshots_[static_cast<std::size_t>(index)].path.wstring()) {
+    if (galleryTab_) {
+        if (galleryImageId_ != galleryPhotos_[static_cast<std::size_t>(index)].id) { galleryImage_.reset(); galleryImageId_.clear(); }
+    } else if (viewerImagePath_ != screenshots_[static_cast<std::size_t>(index)].path.wstring()) {
         viewerImage_.reset();
         viewerImagePath_.clear();
         viewerWidth_ = viewerHeight_ = 0;
@@ -2507,6 +2616,8 @@ void MainPage::closeScreenshot()
     screenshotsMessageError_ = false;
     viewerImage_.reset();
     viewerImagePath_.clear();
+    galleryImage_.reset();
+    galleryImageId_.clear();
     requestScreenshotImages();
     redraw();
     // Focus returns to the card of the picture that was open.
@@ -2541,6 +2652,228 @@ void MainPage::setScreenshotsMessage(std::wstring message, bool error)
 {
     screenshotsMessage_ = std::move(message);
     screenshotsMessageError_ = error;
+    redraw();
+}
+
+void MainPage::copyCurrentPicture()
+{
+    std::wstring error;
+    bool copied = false;
+    if (const auto* shot = currentScreenshot()) copied = ScreenshotLibrary::copyToClipboard(window_, shot->path, error);
+    else if (const auto* photo = currentGalleryPhoto()) {
+        if (galleryImage_ && galleryImageId_ == photo->id) copied = ScreenshotLibrary::copyToClipboard(window_, *galleryImage_, error);
+        else error = L"Espere a captura terminar de carregar.";
+    } else return;
+    if (copied) setScreenshotsMessage(L"Copiada! Cole no Discord ou no WhatsApp com Ctrl+V.");
+    else setScreenshotsMessage(error, true);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Group gallery
+// ---------------------------------------------------------------------------------------------
+
+void MainPage::showGalleryTab(bool group)
+{
+    if (galleryTab_ == group) return;
+    closeScreenshot();
+    galleryTab_ = group;
+    screenshotRow_ = 0;
+    screenshotsMessage_.clear();
+    screenshotsMessageError_ = false;
+    // The viewer's copy and remove buttons sit elsewhere in each tab.
+    layoutControls();
+    if (group) {
+        // Opening the tab always brings the newest list.
+        galleryLoaded_ = false;
+        galleryUnavailable_ = false;
+    }
+    requestScreenshotImages();
+    redraw();
+}
+
+void MainPage::requestGalleryImages()
+{
+    if (!window_ || page_ != LauncherPage::Screenshots || !galleryTab_ || galleryWorking_) return;
+    struct Job { std::wstring id; bool full; };
+    std::vector<Job> jobs;
+    const bool needList = !galleryLoaded_ && !galleryUnavailable_;
+    if (!needList) {
+        if (const auto* photo = currentGalleryPhoto(); photo && galleryImageId_ != photo->id) jobs.push_back({photo->id, true});
+        const std::size_t first = screenshotRow_ * Layout::ScreenshotColumns;
+        const std::size_t last = std::min(galleryPhotos_.size(), first + ScreenshotsView::Visible + Layout::ScreenshotColumns);
+        for (std::size_t i = first; i < last; ++i)
+            if (!galleryThumbnails_.count(galleryPhotos_[i].id)) jobs.push_back({galleryPhotos_[i].id, false});
+        if (jobs.empty()) return;
+    }
+    if (galleryThread_.joinable()) galleryThread_.join();
+    galleryWorking_ = true;
+    galleryLoading_ = needList;
+    galleryThread_ = std::jthread([window = window_, url = galleryBaseUrl_, needList, jobs = std::move(jobs)](std::stop_token stop) {
+        const auto post = [window](GalleryEvent* event) {
+            if (!PostMessageW(window, GalleryEventMessage, 0, reinterpret_cast<LPARAM>(event))) delete event;
+        };
+        if (needList) {
+            auto* event = new GalleryEvent;
+            event->kind = GalleryEvent::Kind::List;
+            event->list = GalleryApi::fetchList(url, stop);
+            post(event);
+        }
+        for (const auto& job : jobs) {
+            if (stop.stop_requested()) break;
+            auto* event = new GalleryEvent;
+            event->kind = GalleryEvent::Kind::Image;
+            event->id = job.id;
+            event->full = job.full;
+            event->bitmap = GalleryApi::fetchImage(url, job.id, job.full, stop);
+            post(event);
+        }
+        auto* done = new GalleryEvent;
+        done->kind = GalleryEvent::Kind::Done;
+        post(done);
+    });
+    redraw();
+}
+
+void MainPage::handleGalleryEvent(GalleryEvent& event)
+{
+    using Kind = GalleryEvent::Kind;
+    switch (event.kind) {
+    case Kind::List:
+        galleryLoading_ = false;
+        if (event.list.success) {
+            const std::wstring open = currentGalleryPhoto() ? currentGalleryPhoto()->id : std::wstring{};
+            galleryPhotos_ = std::move(event.list.photos);
+            galleryLoaded_ = true;
+            galleryUnavailable_ = false;
+            // Keep the open picture open if it is still there.
+            screenshotViewer_ = -1;
+            for (std::size_t i = 0; !open.empty() && i < galleryPhotos_.size(); ++i)
+                if (galleryPhotos_[i].id == open) screenshotViewer_ = static_cast<int>(i);
+            screenshotRow_ = std::min(screenshotRow_, ScreenshotsView::lastFirstRow(galleryPhotos_.size()));
+            // Forget thumbnails of pictures that left the gallery.
+            std::map<std::wstring, std::shared_ptr<Gdiplus::Bitmap>> kept;
+            for (const auto& photo : galleryPhotos_)
+                if (const auto found = galleryThumbnails_.find(photo.id); found != galleryThumbnails_.end()) kept.insert(*found);
+            galleryThumbnails_ = std::move(kept);
+        } else {
+            galleryUnavailable_ = true;
+        }
+        break;
+    case Kind::Image:
+        if (event.full) {
+            if (const auto* photo = currentGalleryPhoto(); photo && photo->id == event.id) {
+                galleryImage_.reset(event.bitmap.release());
+                galleryImageId_ = event.id;
+                if (!galleryImage_) setScreenshotsMessage(L"Não foi possível carregar esta captura.", true);
+            }
+        } else {
+            // A failed download still stores an entry so it is not retried in a loop.
+            galleryThumbnails_[event.id] = std::shared_ptr<Gdiplus::Bitmap>(event.bitmap.release());
+        }
+        break;
+    case Kind::Done:
+        if (galleryThread_.joinable()) galleryThread_.join();
+        galleryWorking_ = false;
+        requestGalleryImages();
+        break;
+    case Kind::Upload:
+        if (galleryActionThread_.joinable()) galleryActionThread_.join();
+        galleryBusy_ = false;
+        if (event.upload.success) {
+            galleryShared_.add({event.upload.id, event.upload.deleteToken, event.source});
+            galleryShared_.save();
+            galleryLoaded_ = false;  // the next visit to the group tab shows it
+            setScreenshotsMessage(event.upload.pending ? L"Enviada! Ela aparece na galeria quando um admin aprovar."
+                                                       : L"Compartilhada! Já está na Galeria do grupo.");
+        } else {
+            setScreenshotsMessage(event.upload.errorMessage, true);
+        }
+        break;
+    case Kind::Remove:
+        if (galleryActionThread_.joinable()) galleryActionThread_.join();
+        galleryBusy_ = false;
+        if (event.success) {
+            galleryShared_.erase(event.id);
+            galleryShared_.save();
+            galleryThumbnails_.erase(event.id);
+            const auto found = std::find_if(galleryPhotos_.begin(), galleryPhotos_.end(), [&](const GalleryPhoto& p) { return p.id == event.id; });
+            if (found != galleryPhotos_.end()) galleryPhotos_.erase(found);
+            if (galleryPhotos_.empty()) closeScreenshot();
+            else if (screenshotViewer_ >= 0) openScreenshot(std::min(screenshotViewer_, static_cast<int>(galleryPhotos_.size()) - 1));
+            setScreenshotsMessage(L"Captura removida da galeria do grupo.");
+        } else {
+            setScreenshotsMessage(event.error, true);
+        }
+        break;
+    case Kind::Report:
+        if (galleryActionThread_.joinable()) galleryActionThread_.join();
+        galleryBusy_ = false;
+        setScreenshotsMessage(event.success ? L"Denúncia enviada. Obrigado por cuidar da galeria!" : event.error, !event.success);
+        break;
+    }
+    if (page_ == LauncherPage::Screenshots) redraw();
+}
+
+void MainPage::shareScreenshot()
+{
+    const auto* shot = currentScreenshot();
+    if (!shot || galleryBusy_) return;
+    const auto nickname = rankingName();
+    if (!NicknameStore::isValid(nickname)) {
+        setScreenshotsMessage(L"Escolha um nickname válido na tela inicial antes de compartilhar.", true);
+        return;
+    }
+    const auto prompt = L"Compartilhar esta captura com o grupo?\n\nEla aparece na Galeria do grupo para todo mundo, com o seu nickname (" +
+        nickname + L"). Você pode remover depois por este computador.";
+    if (MessageBoxW(window_, prompt.c_str(), L"Compartilhar captura", MB_OKCANCEL | MB_ICONQUESTION) != IDOK) return;
+    if (galleryActionThread_.joinable()) galleryActionThread_.join();
+    galleryBusy_ = true;
+    setScreenshotsMessage(L"Enviando para a galeria do grupo...");
+    galleryActionThread_ = std::jthread([window = window_, url = galleryBaseUrl_, path = shot->path, nickname,
+                                            source = GallerySharedStore::sourceKey(shot->path, shot->size)](std::stop_token stop) {
+        auto* event = new GalleryEvent;
+        event->kind = GalleryEvent::Kind::Upload;
+        event->source = source;
+        event->upload = GalleryApi::upload(url, path, nickname, stop);
+        if (!PostMessageW(window, GalleryEventMessage, 0, reinterpret_cast<LPARAM>(event))) delete event;
+    });
+}
+
+void MainPage::removeGalleryPhoto()
+{
+    const auto* photo = currentGalleryPhoto();
+    const auto* shared = photo ? galleryShared_.byId(photo->id) : nullptr;
+    if (!shared || galleryBusy_) return;
+    if (MessageBoxW(window_, L"Remover esta captura da Galeria do grupo?\n\nO arquivo no seu computador continua onde está.",
+            L"Remover da galeria", MB_OKCANCEL | MB_ICONQUESTION | MB_DEFBUTTON2) != IDOK) return;
+    if (galleryActionThread_.joinable()) galleryActionThread_.join();
+    galleryBusy_ = true;
+    galleryActionThread_ = std::jthread([window = window_, url = galleryBaseUrl_, id = photo->id, token = shared->token](std::stop_token) {
+        auto* event = new GalleryEvent;
+        event->kind = GalleryEvent::Kind::Remove;
+        event->id = id;
+        event->success = GalleryApi::remove(url, id, token, event->error);
+        if (!PostMessageW(window, GalleryEventMessage, 0, reinterpret_cast<LPARAM>(event))) delete event;
+    });
+    redraw();
+}
+
+void MainPage::reportGalleryPhoto()
+{
+    const auto* photo = currentGalleryPhoto();
+    if (!photo || galleryBusy_) return;
+    const auto prompt = L"Denunciar a captura de " + photo->name + L"?\n\nUse para conteúdo ofensivo ou que não é do jogo. "
+        L"Com denúncias de 3 pessoas ela sai da galeria até um admin olhar.";
+    if (MessageBoxW(window_, prompt.c_str(), L"Denunciar captura", MB_OKCANCEL | MB_ICONWARNING | MB_DEFBUTTON2) != IDOK) return;
+    if (galleryActionThread_.joinable()) galleryActionThread_.join();
+    galleryBusy_ = true;
+    galleryActionThread_ = std::jthread([window = window_, url = galleryBaseUrl_, id = photo->id](std::stop_token) {
+        auto* event = new GalleryEvent;
+        event->kind = GalleryEvent::Kind::Report;
+        event->id = id;
+        event->success = GalleryApi::report(url, id, event->error);
+        if (!PostMessageW(window, GalleryEventMessage, 0, reinterpret_cast<LPARAM>(event))) delete event;
+    });
     redraw();
 }
 
@@ -3558,6 +3891,44 @@ bool MainPage::renderPreviews(const std::filesystem::path& directory)
         if (!save(L"screenshot-viewer.png", 1)) return false;
         screenshotsMessage_ = L"Copiada! Cole no Discord ou no WhatsApp com Ctrl+V.";
         if (!save(L"screenshot-viewer-copied.png", 1)) return false;
+        // Already in the group gallery.
+        const auto sharedBefore = galleryShared_;
+        galleryShared_.add({L"00000000000000aa", "preview", GallerySharedStore::sourceKey(screenshots_[2].path, screenshots_[2].size)});
+        galleryShared_.add({L"00000000000000bb", "preview", GallerySharedStore::sourceKey(screenshots_[5].path, screenshots_[5].size)});
+        screenshotsMessage_ = L"Compartilhada! Já está na Galeria do grupo.";
+        if (!save(L"screenshot-viewer-shared.png", 1)) return false;
+        screenshotViewer_ = -1; screenshotsMessage_.clear();
+        if (!save(L"screenshots-shared.png", 1)) return false;
+
+        // The group gallery tab.
+        galleryTab_ = true; galleryLoaded_ = true;
+        const wchar_t* names[] = {L"Aurora_", L"Pedrinho", L"Steve", L"LunaCraft", L"Tico_BR"};
+        galleryPhotos_.clear(); galleryThumbnails_.clear();
+        for (int i = 0; i < 14; ++i) {
+            GalleryPhoto photo;
+            wchar_t id[17]{};
+            swprintf_s(id, L"%016x", 0xb0 + i);
+            photo.id = id;
+            photo.name = names[i % 5];
+            photo.created = now - (i < 3 ? 600 + i * 2400 : i * 9 * 3600);
+            photo.width = 1920; photo.height = 1080;
+            galleryPhotos_.push_back(photo);
+            if (i != 6) galleryThumbnails_[photo.id] = scene(i + 7, 416, 234);
+        }
+        galleryShared_.add({galleryPhotos_[2].id, "preview", L""});
+        if (!save(L"gallery.png", 1)) return false;
+        screenshotViewer_ = 1;
+        galleryImage_ = scene(8, 1920, 1080); galleryImageId_ = galleryPhotos_[1].id;
+        if (!save(L"gallery-viewer.png", 1)) return false;
+        screenshotViewer_ = 2;
+        galleryImage_ = scene(9, 1920, 1080); galleryImageId_ = galleryPhotos_[2].id;
+        if (!save(L"gallery-viewer-mine.png", 1)) return false;
+        screenshotViewer_ = -1; galleryPhotos_.clear(); galleryLoaded_ = false; galleryLoading_ = true;
+        if (!save(L"gallery-loading.png", 1)) return false;
+        galleryLoading_ = false; galleryLoaded_ = true;
+        if (!save(L"gallery-empty.png", 1)) return false;
+        galleryTab_ = false; galleryImage_.reset(); galleryImageId_.clear(); galleryThumbnails_.clear();
+        galleryShared_ = sharedBefore;
         ready(); page_ = LauncherPage::Screenshots;
         if (!save(L"screenshots-empty.png", 1)) return false;
     }

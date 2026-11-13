@@ -115,9 +115,29 @@ bool ScreenshotLibrary::remove(const std::filesystem::path& file, std::wstring& 
 
 bool ScreenshotLibrary::copyToClipboard(HWND owner, const std::filesystem::path& file, std::wstring& error)
 {
-    error = L"Não foi possível copiar a captura.";
     Gdiplus::Bitmap source(file.c_str(), FALSE);
-    if (source.GetLastStatus() != Gdiplus::Ok) return false;
+    if (source.GetLastStatus() != Gdiplus::Ok) { error = L"Não foi possível copiar a captura."; return false; }
+    return copyToClipboard(owner, source, error);
+}
+
+std::wstring ScreenshotLibrary::formatWhen(std::int64_t unixSeconds, std::int64_t now)
+{
+    if (unixSeconds <= 0) return {};
+    const auto age = now - unixSeconds;
+    if (age < 60) return L"agora";
+    if (age < 3600) return L"há " + std::to_wstring(age / 60) + L" min";
+    if (age < 86400) return L"há " + std::to_wstring(age / 3600) + L" h";
+    if (age < 2 * 86400) return L"ontem";
+    if (age < 7 * 86400) return L"há " + std::to_wstring(age / 86400) + L" dias";
+    // Older: "12 nov".
+    const auto full = formatDate(unixSeconds);
+    const auto space = full.find(L' ', full.find(L' ') + 1);
+    return space == std::wstring::npos ? full : full.substr(0, space);
+}
+
+bool ScreenshotLibrary::copyToClipboard(HWND owner, Gdiplus::Bitmap& source, std::wstring& error)
+{
+    error = L"Não foi possível copiar a captura.";
     HBITMAP bitmap = nullptr;
     if (source.GetHBITMAP(Gdiplus::Color(255, 0, 0, 0), &bitmap) != Gdiplus::Ok || !bitmap) return false;
     // CF_DIB is what chat apps read; build it from the DDB GDI+ produced.

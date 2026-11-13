@@ -74,10 +74,21 @@ public:
     void draw(Gdiplus::Graphics& graphics, const VersionsModel& model, const HeroComponent& hero, const ControlVisuals& visuals) const;
 };
 
+// One card of the Capturas grid: a local screenshot or a picture of the group gallery.
+struct ShotCard
+{
+    std::wstring key;     // thumbnail key: the file path, or the gallery id
+    std::wstring title;   // bold line under the picture
+    std::wstring detail;  // muted text at the right of that line
+    std::wstring badge;   // chip over the picture ("1.8.9", "Sua")
+    bool shared = false;  // a local picture already in the group gallery
+};
+
 struct ScreenshotsModel
 {
-    const std::vector<ScreenshotEntry>* entries = nullptr;
-    // Decoded thumbnails by path; a missing one draws a placeholder while it loads.
+    bool group = false;   // the group gallery tab instead of the player's own captures
+    std::vector<ShotCard> cards;
+    // Decoded thumbnails by card key; a missing one draws a placeholder while it loads.
     const std::map<std::wstring, std::shared_ptr<Gdiplus::Bitmap>>* thumbnails = nullptr;
     std::size_t firstRow = 0;
     // Index of the picture open in the viewer, or -1 for the grid.
@@ -85,8 +96,16 @@ struct ScreenshotsModel
     const Gdiplus::Bitmap* viewerImage = nullptr;
     int viewerWidth = 0;
     int viewerHeight = 0;
+    std::wstring viewerTitle;
+    std::wstring viewerDetail;
     std::wstring message;
     bool messageError = false;
+    // Group gallery state.
+    bool loading = false;         // the list is on its way
+    bool unavailable = false;     // the server did not answer
+    bool sharing = false;         // an upload is running
+    bool viewerShared = false;    // the open local picture is already in the gallery
+    bool viewerMine = false;      // the open gallery picture was shared from here
     float entrance = 1;
     float time = 0;
 };
