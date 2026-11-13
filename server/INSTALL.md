@@ -81,6 +81,42 @@ sudo -u eternal-playtime ETERNAL_PLAYTIME_DB=/var/lib/eternal-playtime/playtime.
 `set-imported` replaces the imported hours of a player, `remove` deletes the player
 from the ranking and `import-window N` closes the import N days from now.
 
+## Group gallery
+
+`install.sh` also installs the `eternal-gallery` service, which listens on
+`127.0.0.1:8766` and keeps its database and pictures in `/var/lib/eternal-gallery`.
+Include that folder in your backups. To check:
+
+```sh
+systemctl status eternal-gallery --no-pager
+curl -f 'https://eternalfast.aplot.cloud/api/gallery/photos?limit=5'
+```
+
+The launcher scales and encodes each shared screenshot as JPEG (at most 1920 × 1080
+and 3 MB) and sends `POST` requests to `/api/gallery/*`; allow that path in the
+Cloudflare WAF like `/api/playtime/*`. The rules that keep it small and civil:
+
+- 15 pictures per player and 40 per address every 24 hours; the gallery keeps the
+  newest 600 and deletes older ones.
+- The uploader's launcher keeps a token that removes their own picture.
+- Reports from 3 different addresses hide a picture until an admin decides.
+- `ETERNAL_GALLERY_REVIEW=1` in the unit keeps every new picture hidden until approved.
+
+Moderation:
+
+```sh
+cd /usr/local/lib/eternal-launcher
+sudo -u eternal-gallery ETERNAL_GALLERY_DIR=/var/lib/eternal-gallery python3 gallery_api.py list
+sudo -u eternal-gallery ETERNAL_GALLERY_DIR=/var/lib/eternal-gallery python3 gallery_api.py hide ID
+sudo -u eternal-gallery ETERNAL_GALLERY_DIR=/var/lib/eternal-gallery python3 gallery_api.py show ID
+sudo -u eternal-gallery ETERNAL_GALLERY_DIR=/var/lib/eternal-gallery python3 gallery_api.py delete ID
+sudo -u eternal-gallery ETERNAL_GALLERY_DIR=/var/lib/eternal-gallery python3 gallery_api.py purge NICK
+```
+
+`list` shows every picture with its reports, `hide` takes one out of the gallery,
+`show` brings back (or approves) one and clears its reports, `delete` removes it for
+good and `purge` deletes every picture of a player.
+
 ## Troubleshooting
 
 The manifest service is `oneshot`: showing `inactive (dead)` after finishing

@@ -1,0 +1,23 @@
+[Unit]
+Description=Eternal Launcher group screenshot gallery API
+After=network.target
+
+[Service]
+Type=simple
+User=eternal-gallery
+Group=eternal-gallery
+StateDirectory=eternal-gallery
+StateDirectoryMode=0750
+Environment=ETERNAL_GALLERY_DIR=/var/lib/eternal-gallery
+# 1 keeps new pictures hidden until "gallery_api.py show <id>" approves them.
+Environment=ETERNAL_GALLERY_REVIEW=0
+ExecStart=/usr/bin/python3 /usr/local/lib/eternal-launcher/gallery_api.py serve
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

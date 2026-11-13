@@ -374,7 +374,7 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     serve = commands.add_parser("serve", help="run the API")
     serve.add_argument("--port", type=int, default=int(os.environ.get("ETERNAL_PLAYTIME_PORT", "8765")))
-    commands.add_parser("top", help="print the 20 players with the most time")
+    commands.add_parser("top", help="print the players with the most time")
     set_imported = commands.add_parser("set-imported", help="replace the imported hours of a player")
     set_imported.add_argument("nickname")
     set_imported.add_argument("hours", type=float)

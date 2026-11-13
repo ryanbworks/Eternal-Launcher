@@ -8,7 +8,7 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-for source_file in server/refresh_manifest.py server/eternal-manifest.service server/eternal-manifest.timer server/playtime_api.py server/eternal-playtime.service infrastructure/nginx/eternal-launcher.conf; do
+for source_file in server/refresh_manifest.py server/eternal-manifest.service server/eternal-manifest.timer server/playtime_api.py server/eternal-playtime.service server/gallery_api.py server/eternal-gallery.service infrastructure/nginx/eternal-launcher.conf; do
     test -f "$project_root/$source_file"
 done
 command -v apt-get >/dev/null
@@ -38,6 +38,8 @@ for target in /usr/local/lib/eternal-launcher/refresh_manifest.py \
     /etc/systemd/system/eternal-manifest.timer \
     /usr/local/lib/eternal-launcher/playtime_api.py \
     /etc/systemd/system/eternal-playtime.service \
+    /usr/local/lib/eternal-launcher/gallery_api.py \
+    /etc/systemd/system/eternal-gallery.service \
     /etc/nginx/sites-available/eternal-launcher; do
     if [ -e "$target" ]; then
         cp --parents -a -- "$target" "$backup_root/"
@@ -49,6 +51,8 @@ install -m 0644 "$project_root/server/eternal-manifest.service" /etc/systemd/sys
 install -m 0644 "$project_root/server/eternal-manifest.timer" /etc/systemd/system/eternal-manifest.timer
 install -m 0644 "$project_root/server/playtime_api.py" /usr/local/lib/eternal-launcher/playtime_api.py
 install -m 0644 "$project_root/server/eternal-playtime.service" /etc/systemd/system/eternal-playtime.service
+install -m 0644 "$project_root/server/gallery_api.py" /usr/local/lib/eternal-launcher/gallery_api.py
+install -m 0644 "$project_root/server/eternal-gallery.service" /etc/systemd/system/eternal-gallery.service
 install -m 0644 "$project_root/infrastructure/nginx/eternal-launcher.conf" /etc/nginx/sites-available/eternal-launcher
 # Normalize files copied from Windows checkouts.
 sed -i 's/\r$//' /usr/local/lib/eternal-launcher/refresh_manifest.py \
@@ -56,11 +60,17 @@ sed -i 's/\r$//' /usr/local/lib/eternal-launcher/refresh_manifest.py \
     /etc/systemd/system/eternal-manifest.timer \
     /usr/local/lib/eternal-launcher/playtime_api.py \
     /etc/systemd/system/eternal-playtime.service \
+    /usr/local/lib/eternal-launcher/gallery_api.py \
+    /etc/systemd/system/eternal-gallery.service \
     /etc/nginx/sites-available/eternal-launcher
 
 # The play time database belongs to a dedicated user without login.
 if ! id eternal-playtime >/dev/null 2>&1; then
     useradd --system --no-create-home --shell /usr/sbin/nologin eternal-playtime
+fi
+# The shared screenshots too, apart from the play time.
+if ! id eternal-gallery >/dev/null 2>&1; then
+    useradd --system --no-create-home --shell /usr/sbin/nologin eternal-gallery
 fi
 
 if [ ! -L "$site_link" ]; then
@@ -75,11 +85,12 @@ fi
 
 python3 -m py_compile /usr/local/lib/eternal-launcher/refresh_manifest.py
 python3 -m py_compile /usr/local/lib/eternal-launcher/playtime_api.py
+python3 -m py_compile /usr/local/lib/eternal-launcher/gallery_api.py
 nginx -t
 systemctl daemon-reload
 systemctl start eternal-manifest.service
-systemctl enable --now eternal-manifest.timer eternal-playtime nginx
-systemctl restart eternal-playtime
+systemctl enable --now eternal-manifest.timer eternal-playtime eternal-gallery nginx
+systemctl restart eternal-playtime eternal-gallery
 systemctl reload nginx
 # reload returns before the new workers start serving.
 curl --fail --silent --show-error --retry 5 --retry-delay 1 --retry-all-errors \
@@ -87,4 +98,7 @@ curl --fail --silent --show-error --retry 5 --retry-delay 1 --retry-all-errors \
 printf '\n'
 curl --fail --silent --show-error --retry 5 --retry-delay 1 --retry-all-errors \
     --max-time 10 -H 'Host: eternalfast.aplot.cloud' 'http://127.0.0.1/api/playtime/leaderboard?limit=1'
+printf '\n'
+curl --fail --silent --show-error --retry 5 --retry-delay 1 --retry-all-errors \
+    --max-time 10 -H 'Host: eternalfast.aplot.cloud' 'http://127.0.0.1/api/gallery/photos?limit=1'
 printf '\nInstallation complete. Upload files over SFTP to %s.\nBackup: %s\n' "$files_root" "$backup_root"
