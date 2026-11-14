@@ -3,6 +3,20 @@
   "items": [
     {
       "category": "ATUALIZAÇÃO",
+      "title": "Eternal 3.1: Jogar bem mais rápido",
+      "date": "2026-11-14",
+      "body": "O launcher agora lembra os arquivos que já conferiu, então o Jogar abre bem mais rápido quando está tudo instalado. Na primeira vez depois de atualizar ele ainda confere tudo uma vez. E entrar na conta não começa mais o jogo sozinho.",
+      "url": "https://github.com/ryanbworks/native-game-launcher/releases/tag/v3.1.0"
+    },
+    {
+      "category": "ATUALIZAÇÃO",
+      "title": "Eternal 3.1: OptiFine no 1.8.9 e skins em 3D",
+      "date": "2026-11-14",
+      "body": "A versão 1.8.9 agora abre com OptiFine: mais FPS, zoom e shaders. Na página Skins a sua skin aparece em 3D, girando; arraste para virar. O menu mudou de ordem e o launcher ganhou animações novas.",
+      "url": "https://github.com/ryanbworks/native-game-launcher/releases/tag/v3.1.0"
+    },
+    {
+      "category": "ATUALIZAÇÃO",
       "title": "Eternal 3.0: entre com a sua Conta Eternal",
       "date": "2026-11-13",
       "body": "Agora você entra com a Conta Eternal. No primeiro acesso, digite só o seu nick, deixe a senha em branco e crie uma senha em seguida. Inventário, bases e progresso continuam do mesmo jeito. Quem ainda não tem conta cria uma no próprio launcher.",

@@ -6,6 +6,8 @@ and versions use [SemVer](https://semver.org/) plus a codename.
 
 ## [Unreleased]
 
+## [3.1.0] — Zenith · 2026-11-14
+
 ### Added
 - **OptiFine on 1.8.9.** Fetched once from optifine.net and installed with OptiFine's
   own patcher; the game starts with it. Without the site, 1.8.9 opens as before.
