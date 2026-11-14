@@ -294,6 +294,9 @@ std::wstring MinecraftLaunchCommandBuilder::buildVanilla(
     const std::filesystem::path& gamePath, const LauncherSettings& settings) const
 {
     const auto assets = gamePath / L"assets";
+    // The installation leaves this marker only while OptiFine is in the classpath.
+    std::error_code ignored;
+    const bool optiFine = std::filesystem::is_regular_file(gamePath / L"eternal-optifine", ignored);
     std::vector<std::wstring> arguments = {
         javaExecutable.wstring(),
         L"-Xms" + std::to_wstring(settings.minimumMemoryMegabytes) + L"M",
@@ -314,9 +317,9 @@ std::wstring MinecraftLaunchCommandBuilder::buildVanilla(
         L"-Dminecraft.launcher.version=" + std::wstring(LauncherConfig::LauncherVersion),
         L"-cp",
         buildClasspath(gamePath),
-        L"net.minecraft.client.main.Main",
+        optiFine ? L"net.minecraft.launchwrapper.Launch" : L"net.minecraft.client.main.Main",
         L"--username", identity.name,
-        L"--version", std::wstring(LauncherConfig::VanillaVersion),
+        L"--version", std::wstring(optiFine ? LauncherConfig::OptiFineVersionName : LauncherConfig::VanillaVersion),
         L"--gameDir", gamePath.wstring(),
         L"--assetsDir", assets.wstring(),
         L"--assetIndex", std::wstring(LauncherConfig::VanillaAssetIndex),
@@ -329,6 +332,8 @@ std::wstring MinecraftLaunchCommandBuilder::buildVanilla(
     };
     if (identity.eternal()) arguments.insert(arguments.begin() + 1, L"-javaagent:" + identity.javaAgent);
     if (settings.fullscreen) arguments.push_back(L"--fullscreen");
+    // OptiFine's tweaker patches the game through its launchwrapper.
+    if (optiFine) arguments.insert(arguments.end(), {L"--tweakClass", L"optifine.OptiFineTweaker"});
     return joinArguments(arguments);
 }
 

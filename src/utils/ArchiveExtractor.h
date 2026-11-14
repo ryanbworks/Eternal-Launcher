@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <stop_token>
+#include <string>
 #include <vector>
 
 namespace ArchiveExtractor
@@ -10,6 +11,12 @@ namespace ArchiveExtractor
     // interpreter or a tool installed by the user.
     [[nodiscard]] bool extract(
         const std::filesystem::path& archive,
+        const std::filesystem::path& destination,
+        std::stop_token stopToken);
+    // Extracts only `entry` (a path inside the archive) into `destination`.
+    [[nodiscard]] bool extractEntry(
+        const std::filesystem::path& archive,
+        const std::wstring& entry,
         const std::filesystem::path& destination,
         std::stop_token stopToken);
 

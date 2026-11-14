@@ -29,6 +29,15 @@ bool ArchiveExtractor::extract(
     const std::filesystem::path& destination,
     std::stop_token stopToken)
 {
+    return extractEntry(archive, {}, destination, stopToken);
+}
+
+bool ArchiveExtractor::extractEntry(
+    const std::filesystem::path& archive,
+    const std::wstring& entry,
+    const std::filesystem::path& destination,
+    std::stop_token stopToken)
+{
     if(stopToken.stop_requested()) return false;
     const auto tar = std::filesystem::path(environmentVariable(L"SystemRoot")) /
                      L"System32" / L"tar.exe";
@@ -37,6 +46,7 @@ bool ArchiveExtractor::extract(
     std::filesystem::create_directories(destination);
     std::wstring command = quote(tar.wstring()) + L" -xf " + quote(archive.wstring()) +
                            L" -C " + quote(destination.wstring());
+    if (!entry.empty()) command += L" " + quote(entry);
     STARTUPINFO startup{};
     startup.cb = sizeof(startup);
     PROCESS_INFORMATION process{};

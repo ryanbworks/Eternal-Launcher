@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string_view>
 #include "config/LauncherVersion.h"
 
@@ -56,6 +57,17 @@ namespace LauncherConfig
     inline constexpr std::wstring_view VanillaVersion = L"1.8.9";
     inline constexpr std::wstring_view VanillaAssetIndex = L"1.8";
     inline constexpr std::wstring_view VanillaGameDirectoryName = L"minecraft-1.8.9";
+    // OptiFine for the 1.8.9. Its license forbids redistributing the file, so each
+    // launcher fetches it from optifine.net: the download page hands out a link with a
+    // token, and the file must match the pinned size and SHA-256.
+    inline constexpr std::wstring_view OptiFineFileName = L"OptiFine_1.8.9_HD_U_M5.jar";
+    inline constexpr std::wstring_view OptiFinePageUrl = L"https://optifine.net/adloadx?f=OptiFine_1.8.9_HD_U_M5.jar";
+    inline constexpr std::string_view OptiFineSha256 = "2739760a70fca6ae5c7dc817bcc6283f18f55e38fa23778da7f387a6b724b2c4";
+    inline constexpr std::uint64_t OptiFineSize = 2585014;
+    // OptiFine ships its own launchwrapper inside the jar.
+    inline constexpr std::wstring_view OptiFineLaunchwrapper = L"launchwrapper-of-2.2.jar";
+    inline constexpr std::string_view OptiFineLaunchwrapperSha256 = "09d8f19ac2fb654809f72469106bcbabbde178db28903c4abfcf4a9114cc3a8c";
+    inline constexpr std::wstring_view OptiFineVersionName = L"1.8.9-OptiFine_HD_U_M5";
     inline constexpr std::wstring_view Java8RuntimeDirectoryName = L"runtime-8";
     inline constexpr std::wstring_view Java8RuntimeMetadataUrl =
         L"https://api.adoptium.net/v3/assets/latest/8/hotspot"

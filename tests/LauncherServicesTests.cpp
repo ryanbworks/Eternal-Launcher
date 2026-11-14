@@ -7,6 +7,9 @@
 #include "services/MilestoneStore.h"
 #include "services/ModpackChangelog.h"
 #include "services/ModInventory.h"
+#include "services/OptiFine.h"
+#include "services/HttpDownloadClient.h"
+#include "config/LauncherConfig.h"
 #include "services/NewsFeed.h"
 #include "services/PlaytimeApi.h"
 #include "services/PlaytimeStore.h"
@@ -171,6 +174,18 @@ namespace {
         check(catalog.success && catalog.skins.empty() && catalog.featured.size()==1 && catalog.featured[0].name==L"Technoblade",
               "the Populares catalog comes apart from the shared skins");
         check(GalleryApi::parseSkins(R"({"skins":[]})").success,"servers without a catalog still list");
+        check(OptiFine::downloadLink("<a href='downloadx?f=OptiFine_1.8.9_HD_U_M5.jar&x=04e6cff6b0021b4a'>Download</a>","OptiFine_1.8.9_HD_U_M5.jar")==
+              L"https://optifine.net/downloadx?f=OptiFine_1.8.9_HD_U_M5.jar&x=04e6cff6b0021b4a","the OptiFine link comes from its download page");
+        check(OptiFine::downloadLink("<a href='downloadx?f=OptiFine_1.8.8_HD_U_I7.jar&x=abcdef12'>","OptiFine_1.8.9_HD_U_M5.jar").empty() &&
+              OptiFine::downloadLink("nothing here","OptiFine_1.8.9_HD_U_M5.jar").empty(),"another file or a changed page gives no link");
+        // Against optifine.net, when asked: ETERNAL_OPTIFINE_TEST=1.
+        std::array<wchar_t,8> optifineTest{};
+        if(GetEnvironmentVariableW(L"ETERNAL_OPTIFINE_TEST",optifineTest.data(),static_cast<DWORD>(optifineTest.size()))) {
+            const auto page=HttpDownloadClient{}.getText(LauncherConfig::OptiFinePageUrl);
+            check(page.success && !OptiFine::downloadLink(page.content,"OptiFine_1.8.9_HD_U_M5.jar").empty(),
+                  "the launcher's own HTTP client finds the OptiFine link on optifine.net");
+            std::cout << "optifine integration: ran\n";
+        }
         check(GalleryApi::skinTitle(L"  Mago<>do  Fogo?! ")==L"Mago do Fogo !" && GalleryApi::skinTitle(L"%%%")==L"Skin" &&
               GalleryApi::skinTitle(L"Ação") == L"Ação" && GalleryApi::skinTitle(std::wstring(40,L'a')).size()==32,
               "library names become titles the server accepts");

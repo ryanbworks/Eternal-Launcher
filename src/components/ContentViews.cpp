@@ -119,9 +119,9 @@ void VersionsView::draw(Gdiplus::Graphics& g, const VersionsModel& m, const Hero
            {Icons::Icon::Download, L"Mods sincronizados a cada Jogar"},
            {Icons::Icon::Folder, L"Aceita os seus próprios mods"}}}},
         {L"VERSÃO CLÁSSICA", L"Minecraft 1.8.9",
-         {L"Sem mods", L"Java 8", m.vanillaInstalled ? std::wstring(L"Instalada") : std::wstring(L"Baixa no primeiro jogo")},
+         {L"OptiFine", L"Java 8", m.vanillaInstalled ? std::wstring(L"Instalada") : std::wstring(L"Baixa no primeiro jogo")},
          {{{Icons::Icon::Play, L"Boa para Bedwars, SkyWars e outros minigames"},
-           {Icons::Icon::Layers, L"Pasta e Java próprios, sem mexer no modpack"},
+           {Icons::Icon::Sparkle, L"Com OptiFine: mais FPS, zoom e shaders"},
            {Icons::Icon::Clock, L"Este tempo não conta no ranking"},
            {Icons::Icon::Key, L"Hypixel e servidores premium pedem Conta original"}}}}};
     for (int i = 0; i < 2; ++i) {
