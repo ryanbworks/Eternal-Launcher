@@ -24,6 +24,7 @@
 #include "services/ScreenshotLibrary.h"
 #include "services/PlaytimeStore.h"
 #include "services/SkinLookup.h"
+#include "services/VerifiedFileCache.h"
 #include "types/LauncherState.h"
 
 #include <windows.h>

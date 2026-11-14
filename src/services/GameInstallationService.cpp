@@ -425,20 +425,23 @@ GameInstallationResult GameInstallationService::install(
         if(stopToken.stop_requested()) return {false,L"Instalação cancelada.",0};
         const auto natives = gamePath / L"natives";
         std::error_code ignored;
-        std::filesystem::remove_all(natives, ignored);
-        std::filesystem::create_directories(natives);
-        for (const auto& archive : plan.nativeArchives)
+        // Extracted once per set of native JARs; later Plays reuse the folder.
+        bool nativesReused = false;
+        if (!ArchiveExtractor::prepareNatives(plan.nativeArchives, natives, L"lwjgl.dll", stopToken, nativesReused))
         {
-            if (!ArchiveExtractor::extract(archive, natives, stopToken))
+            return {false, L"Não foi possível extrair uma biblioteca nativa.", 0,InstallationFailure::Process};
+        }
+        if (!nativesReused)
+        {
+            if (!copyNativeLibrariesToRoot(natives))
             {
-                return {false, L"Não foi possível extrair uma biblioteca nativa.", 0,InstallationFailure::Process};
+                return {false, L"Nenhuma biblioteca nativa compatível foi preparada.", 0,InstallationFailure::Integrity};
             }
+            ArchiveExtractor::rememberNatives(plan.nativeArchives, natives);
         }
-        if (!copyNativeLibrariesToRoot(natives))
-        {
-            return {false, L"Nenhuma biblioteca nativa compatível foi preparada.", 0,InstallationFailure::Integrity};
-        }
-        report(InstallationStage::Natives,InstallationActivity::Extracting,L"Bibliotecas nativas preparadas.",InstallationStepState::Complete);
+        report(InstallationStage::Natives,InstallationActivity::Extracting,
+            nativesReused ? L"Bibliotecas nativas já preparadas." : L"Bibliotecas nativas preparadas.",
+            nativesReused ? InstallationStepState::Available : InstallationStepState::Complete);
 
         const auto forgeInstaller = dataPath / L"downloads" /
                                     L"forge-1.20.1-47.4.10-installer.jar";

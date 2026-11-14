@@ -336,6 +336,8 @@ bool MainPage::create(int showCommand, bool checkLauncherUpdate, std::wstring up
     loadNewsReadState();
     milestones_.load(LauncherSettingsStore::dataDirectory());
     galleryShared_.load(LauncherSettingsStore::dataDirectory());
+    // Files that already matched their hash are not read again on every Play.
+    VerifiedFileCache::shared().open(LauncherSettingsStore::dataDirectory() / L"verified-files.txt");
     skinsShared_.load(LauncherSettingsStore::dataDirectory(), L"skins-shared.txt");
     galleryBaseUrl_ = GalleryApi::baseUrl();
     accountsBaseUrl_ = EternalAccount::baseUrl();
@@ -4244,6 +4246,8 @@ void MainPage::startRepair()
         settingsPage_.setMessage(settingsError, true);
         return;
     }
+    // Reparar reads every file again, whatever was verified before.
+    VerifiedFileCache::shared().clear();
     beginPlay(true);
 }
 

@@ -1,5 +1,6 @@
 #include "services/VerifiedDownloader.h"
 #include "services/HttpDownloadClient.h"
+#include "services/VerifiedFileCache.h"
 #include "utils/FileHash.h"
 #include <windows.h>
 #include <algorithm>
@@ -12,9 +13,14 @@ namespace {
         return file.hashAlgorithm==FileHashAlgorithm::Sha256 ? FileHash::sha256(path,stop) : FileHash::sha1(path,stop);
     }
     bool isCurrent(const VerifiedDownload& file,std::stop_token stop) {
-        return std::filesystem::is_regular_file(file.destination) &&
-            (!file.expectedSize || std::filesystem::file_size(file.destination)==file.expectedSize) &&
-            !file.expectedHash.empty() && hashFile(file,file.destination,stop)==file.expectedHash;
+        if(file.expectedHash.empty() || !std::filesystem::is_regular_file(file.destination) ||
+           (file.expectedSize && std::filesystem::file_size(file.destination)!=file.expectedSize)) return false;
+        // The same file that matched before (same size and write time) is not read again.
+        auto& cache=VerifiedFileCache::shared();
+        if(cache.matches(file.destination,file.hashAlgorithm,file.expectedHash)) return true;
+        if(hashFile(file,file.destination,stop)!=file.expectedHash) return false;
+        cache.remember(file.destination,file.hashAlgorithm,file.expectedHash);
+        return true;
     }
     struct PartialCleanup {
         std::filesystem::path path;
@@ -29,15 +35,42 @@ VerifiedDownloadResult VerifiedDownloader::downloadAll(const std::vector<Verifie
     progress.message=L"Verificando arquivos existentes...";
     progress.totalFiles=files.size();
     if(callback) callback(progress);
+    // Whatever was saved in the cache stays useful even if this run fails or is cancelled.
+    struct SaveCache { ~SaveCache() { VerifiedFileCache::shared().save(); } } saveCache;
     std::vector<const VerifiedDownload*> queue;
-    try {
-        for(const auto& file:files) {
-            if(stop.stop_requested()) return {false,L"Instalação cancelada."};
-            if(isCurrent(file,stop)) ++progress.reusedFiles;
-            else queue.push_back(&file);
+    {
+        // Existing files are checked on several threads; most are cache hits after the first run.
+        std::vector<char> current(files.size(),0);
+        std::atomic_size_t next=0,checked=0;
+        std::atomic_bool failed=false;
+        std::mutex progressMutex;
+        const auto checker=[&] {
+            while(!stop.stop_requested() && !failed) {
+                const auto index=next.fetch_add(1);
+                if(index>=files.size()) return;
+                try {current[index]=isCurrent(files[index],stop) ? 1 : 0;}
+                catch(const std::exception&) {failed=true;return;}
+                const auto done=checked.fetch_add(1)+1;
+                if(callback && (done%200==0 || done==files.size())) {
+                    std::scoped_lock lock(progressMutex);
+                    InstallationProgress update=progress;
+                    update.message=L"Conferindo arquivos · "+std::to_wstring(done)+L" de "+std::to_wstring(files.size());
+                    callback(update);
+                }
+            }
+        };
+        std::vector<std::jthread> checkers;
+        const auto count=std::min<std::size_t>(std::max(1U,std::min(workerCount,std::max(1U,std::thread::hardware_concurrency()))),
+            std::max<std::size_t>(1,files.size()));
+        for(std::size_t i=0;i<count;++i) checkers.emplace_back(checker);
+        for(auto& thread:checkers) thread.join();
+        if(failed) return {false,L"Não foi possível conferir os arquivos. Confira permissões da pasta.",InstallationFailure::Disk};
+        if(stop.stop_requested()) return {false,L"Instalação cancelada."};
+        for(std::size_t i=0;i<files.size();++i) {
+            if(current[i]) ++progress.reusedFiles;
+            else queue.push_back(&files[i]);
         }
-    } catch(const std::exception&) {return {false,L"Não foi possível conferir os arquivos. Confira permissões da pasta.",InstallationFailure::Disk};}
-    if(stop.stop_requested()) return {false,L"Instalação cancelada."};
+    }
     progress.activity=queue.empty() ? InstallationActivity::Verifying : InstallationActivity::Downloading;
     progress.totalFiles=queue.size();
     progress.message=queue.empty() ? L"Arquivos já disponíveis e verificados." : L"Baixando arquivos...";
@@ -110,6 +143,7 @@ VerifiedDownloadResult VerifiedDownloader::downloadAll(const std::vector<Verifie
                 if(!MoveFileExW(partial.c_str(),file.destination.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)) {
                     failure(InstallationFailure::Disk,L"Não foi possível publicar o arquivo. Confira espaço livre e permissões.");return;
                 }
+                VerifiedFileCache::shared().remember(file.destination,file.hashAlgorithm,file.expectedHash);
                 {std::scoped_lock lock(mutex);++progress.completedFiles;publish();}
             } catch(const std::exception&) {
                 failure(InstallationFailure::Disk,L"Não foi possível preparar os arquivos. Confira espaço livre e permissões.");return;

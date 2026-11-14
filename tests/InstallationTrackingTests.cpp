@@ -3,6 +3,7 @@
 #include "types/InstallationProgress.h"
 #include "services/HttpDownloadClient.h"
 #include "services/VerifiedDownloader.h"
+#include "services/VerifiedFileCache.h"
 #include "services/InstallationCoordinator.h"
 #include "services/GameInstallationService.h"
 #include "services/JavaRuntimeService.h"
@@ -255,6 +256,33 @@ namespace {
             "Java service exposes cancellation distinctly");
         check(read(directory/L"worlds"/L"saved-world"/L"level.dat")=="preserved world","cancel and retry preserve existing worlds");
     }
+    void verifiedCache(const std::filesystem::path& directory) {
+        auto& cache=VerifiedFileCache::shared();
+        const auto file=directory/L"Mods"/L"Example.jar";
+        write(file,"mod bytes");
+        const auto hash=FileHash::sha1(file);
+        check(!cache.matches(file,FileHashAlgorithm::Sha1,hash),"an unopened cache knows nothing");
+        cache.open(directory/L"verified-files.txt");
+        cache.remember(file,FileHashAlgorithm::Sha1,hash);
+        check(cache.matches(directory/L"mods"/L"example.jar",FileHashAlgorithm::Sha1,hash),"a verified file is remembered, whatever the case");
+        check(!cache.matches(file,FileHashAlgorithm::Sha1,"other")&&!cache.matches(file,FileHashAlgorithm::Sha256,hash),
+            "a different expected hash or algorithm is checked again");
+        cache.save();
+        cache.open(directory/L"verified-files.txt");
+        check(cache.matches(file,FileHashAlgorithm::Sha1,hash),"the cache survives a restart");
+        write(file,"mod bytez");  // same size, new write time
+        FILETIME later{};GetSystemTimeAsFileTime(&later);
+        ULARGE_INTEGER ticks{};ticks.LowPart=later.dwLowDateTime;ticks.HighPart=later.dwHighDateTime;ticks.QuadPart+=10'000'000ULL*60;
+        later.dwLowDateTime=ticks.LowPart;later.dwHighDateTime=ticks.HighPart;
+        if(const HANDLE handle=CreateFileW(file.c_str(),FILE_WRITE_ATTRIBUTES,0,nullptr,OPEN_EXISTING,0,nullptr);handle!=INVALID_HANDLE_VALUE) {
+            SetFileTime(handle,nullptr,nullptr,&later);CloseHandle(handle);
+        }
+        check(!cache.matches(file,FileHashAlgorithm::Sha1,hash),"a file rewritten on disk is hashed again");
+        cache.remember(file,FileHashAlgorithm::Sha1,hash);
+        cache.clear();
+        check(!cache.matches(file,FileHashAlgorithm::Sha1,hash),"Reparar forgets everything");
+        cache.open({});
+    }
     void subprocessCancellation() {
         wchar_t executable[MAX_PATH]{};GetModuleFileNameW(nullptr,executable,MAX_PATH);
         std::wstring command=L"\""+std::wstring(executable)+L"\" --waiting-child";
@@ -275,7 +303,7 @@ int main(int argc,char** argv) {
     if(argc==2 && std::string_view(argv[1])=="--waiting-child") {Sleep(60000);return 0;}
     const auto root=std::filesystem::temp_directory_path()/L"EternalInstallationTests"/std::to_wstring(GetCurrentProcessId());
     std::filesystem::create_directories(root);
-    try {metricsAndMailbox();httpAndDownloads(root/L"downloads");coordinator(root/L"instance");subprocessCancellation();}
+    try {metricsAndMailbox();httpAndDownloads(root/L"downloads");coordinator(root/L"instance");verifiedCache(root/L"cache");subprocessCancellation();}
     catch(const std::exception& error) {std::cerr<<error.what()<<'\n';++failures;}
     // Delete only the isolated test-owned directory; never touch a real game instance.
     if(root.is_absolute() && root.parent_path()==std::filesystem::temp_directory_path()/L"EternalInstallationTests") std::filesystem::remove_all(root);

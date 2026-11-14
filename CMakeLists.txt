@@ -164,6 +164,8 @@ add_executable(EternalLauncher WIN32
     src/services/MinecraftManifestService.h
     src/services/VerifiedDownloader.cpp
     src/services/VerifiedDownloader.h
+    src/services/VerifiedFileCache.cpp
+    src/services/VerifiedFileCache.h
     src/services/JavaRuntimeService.cpp
     src/services/JavaRuntimeService.h
     src/services/JavaRuntimePackage.cpp
@@ -296,7 +298,7 @@ endif()
 if(BUILD_TESTING)
     add_executable(InstallationTrackingTests tests/InstallationTrackingTests.cpp
         src/services/InstallationCoordinator.cpp src/services/HttpDownloadClient.cpp
-        src/services/VerifiedDownloader.cpp src/services/GameInstallationService.cpp
+        src/services/VerifiedDownloader.cpp src/services/VerifiedFileCache.cpp src/services/GameInstallationService.cpp
         src/services/MinecraftManifestService.cpp src/services/JavaRuntimeService.cpp
         src/services/JavaRuntimePackage.cpp src/services/PortableJavaInstaller.cpp
         src/services/ModCleanup.cpp src/utils/ArchiveExtractor.cpp src/utils/FileHash.cpp

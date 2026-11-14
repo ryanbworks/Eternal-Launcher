@@ -206,6 +206,17 @@ std::wstring MinecraftLaunchCommandBuilder::build(
         javaExecutable.wstring(),
         L"-Xms" + std::to_wstring(settings.minimumMemoryMegabytes) + L"M",
         L"-Xmx" + std::to_wstring(settings.maximumMemoryMegabytes) + L"M",
+        // G1 tuned for a modded client: short pauses and a large young generation
+        // for the bursts of allocation of loading and chunk generation.
+        L"-XX:+UseG1GC",
+        L"-XX:+ParallelRefProcEnabled",
+        L"-XX:MaxGCPauseMillis=200",
+        L"-XX:+UnlockExperimentalVMOptions",
+        L"-XX:+DisableExplicitGC",
+        L"-XX:G1NewSizePercent=30",
+        L"-XX:G1MaxNewSizePercent=40",
+        L"-XX:G1HeapRegionSize=8M",
+        L"-XX:G1ReservePercent=20",
         L"-Djava.library.path=" + natives.wstring(),
         L"-Djna.tmpdir=" + natives.wstring(),
         L"-Dorg.lwjgl.system.SharedLibraryExtractPath=" + natives.wstring(),
@@ -287,6 +298,13 @@ std::wstring MinecraftLaunchCommandBuilder::buildVanilla(
         javaExecutable.wstring(),
         L"-Xms" + std::to_wstring(settings.minimumMemoryMegabytes) + L"M",
         L"-Xmx" + std::to_wstring(settings.maximumMemoryMegabytes) + L"M",
+        // Mojang's own G1 settings for this generation: steadier frame times than Java 8's default.
+        L"-XX:+UnlockExperimentalVMOptions",
+        L"-XX:+UseG1GC",
+        L"-XX:G1NewSizePercent=20",
+        L"-XX:G1ReservePercent=20",
+        L"-XX:MaxGCPauseMillis=50",
+        L"-XX:G1HeapRegionSize=32M",
         // Mojang's default on Windows: without it, Intel drivers break old versions.
         L"-XX:HeapDumpPath=MojangTricksIntelDriversForPerformance_javaw.exe_minecraft.exe.heapdump",
         L"-Djava.library.path=" + (gamePath / L"natives").wstring(),

@@ -218,7 +218,7 @@ InstallationResult VanillaMinecraftService::prepare(std::stop_token stop, const 
         const auto downloaded = VerifiedDownloader{}.downloadAll(unique, stop, [&](const InstallationProgress& value) {
             auto copy = value;
             copy.stage = InstallationStage::Minecraft;
-            copy.message = L"Baixando Minecraft 1.8.9, bibliotecas e assets...";
+            if (value.activity == InstallationActivity::Downloading) copy.message = L"Baixando Minecraft 1.8.9, bibliotecas e assets...";
             progress(copy);
         });
         if (!downloaded.success) return failed({downloaded.failure, downloaded.message});
@@ -227,14 +227,15 @@ InstallationResult VanillaMinecraftService::prepare(std::stop_token stop, const 
 
         progress({InstallationStage::Natives, InstallationActivity::Extracting, InstallationStepState::Active, L"Preparando bibliotecas nativas..."});
         const auto natives = game / L"natives";
-        std::filesystem::remove_all(natives, ignored);
-        std::filesystem::create_directories(natives);
-        for (const auto& archive : plan.nativeArchives)
-            if (!ArchiveExtractor::extract(archive, natives, stop))
-                return failed({InstallationFailure::Process, L"Não foi possível extrair uma biblioteca nativa."});
+        bool nativesReused = false;
+        if (!ArchiveExtractor::prepareNatives(plan.nativeArchives, natives, L"lwjgl64.dll", stop, nativesReused))
+            return failed({InstallationFailure::Process, L"Não foi possível extrair uma biblioteca nativa."});
         if (!std::filesystem::is_regular_file(natives / L"lwjgl64.dll"))
             return failed({InstallationFailure::Integrity, L"As bibliotecas nativas da 1.8.9 não foram preparadas."});
-        progress({InstallationStage::Natives, InstallationActivity::Extracting, InstallationStepState::Complete, L"Bibliotecas nativas preparadas."});
+        if (!nativesReused) ArchiveExtractor::rememberNatives(plan.nativeArchives, natives);
+        progress({InstallationStage::Natives, InstallationActivity::Extracting,
+            nativesReused ? InstallationStepState::Available : InstallationStepState::Complete,
+            nativesReused ? L"Bibliotecas nativas já preparadas." : L"Bibliotecas nativas preparadas."});
         skipUnusedStages();
 
         std::string classpath;

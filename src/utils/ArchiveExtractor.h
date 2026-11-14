@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <stop_token>
+#include <vector>
 
 namespace ArchiveExtractor
 {
@@ -11,4 +12,16 @@ namespace ArchiveExtractor
         const std::filesystem::path& archive,
         const std::filesystem::path& destination,
         std::stop_token stopToken);
+
+    // Extracts the native JARs into `directory`, unless it already holds them: a marker
+    // remembers which archives (path, size, write time) produced the folder, and
+    // `required` (a file name in the folder) must still be there. `reused` says which.
+    [[nodiscard]] bool prepareNatives(
+        const std::vector<std::filesystem::path>& archives,
+        const std::filesystem::path& directory,
+        const std::filesystem::path& required,
+        std::stop_token stopToken,
+        bool& reused);
+    // Records that `directory` now holds what `archives` produce.
+    void rememberNatives(const std::vector<std::filesystem::path>& archives, const std::filesystem::path& directory);
 }

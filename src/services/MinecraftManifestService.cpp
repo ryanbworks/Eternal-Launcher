@@ -2,11 +2,14 @@
 
 #include "config/LauncherConfig.h"
 #include "services/HttpDownloadClient.h"
+#include "utils/FileHash.h"
 #include "utils/JsonValue.h"
 
 #include <windows.h>
 
 #include <cstdint>
+#include <fstream>
+#include <iterator>
 #include <optional>
 
 namespace
@@ -69,7 +72,10 @@ namespace
         const JsonValue* descriptor,
         const std::filesystem::path& destinationRoot)
     {
-        const auto relativePath = text(child(descriptor, "path"));
+        // Libraries name a path; the logging config only has an id (its file name).
+        auto relativePath = text(child(descriptor, "path"));
+        if (relativePath.empty()) relativePath = text(child(descriptor, "id"));
+        if (relativePath.find("..") != std::string::npos) return std::nullopt;
         const auto url = text(child(descriptor, "url"));
         const auto sha1 = text(child(descriptor, "sha1"));
         if (relativePath.empty() || url.empty() || sha1.empty()) return std::nullopt;
@@ -92,6 +98,29 @@ namespace
         }
         return document;
     }
+
+    std::string readFile(const std::filesystem::path& file)
+    {
+        std::ifstream input(file, std::ios::binary);
+        return std::string((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    }
+
+    // A release's version JSON never changes, so the copy saved by an earlier install
+    // spares the two requests to Mojang. Anything odd falls back to the network.
+    std::optional<std::string> localVersion(const std::filesystem::path& gameDirectory, std::string_view versionId)
+    {
+        const auto id = utf8ToWide(versionId);
+        const auto file = gameDirectory / L"versions" / id / (id + L".json");
+        std::error_code ignored;
+        if (!std::filesystem::is_regular_file(file, ignored)) return std::nullopt;
+        auto content = readFile(file);
+        const auto document = JsonValue::parse(content);
+        if (!document || text(child(&*document, "id")) != versionId ||
+            text(child(child(child(&*document, "downloads"), "client"), "sha1")).empty() ||
+            text(child(child(&*document, "assetIndex"), "sha1")).empty())
+            return std::nullopt;
+        return content;
+    }
 }
 
 MinecraftInstallPlanResult MinecraftManifestService::createPlan(
@@ -99,45 +128,54 @@ MinecraftInstallPlanResult MinecraftManifestService::createPlan(
 {
     const auto wideVersion = utf8ToWide(versionId);
     HttpDownloadClient http;
-    const auto manifestResponse = http.getText(VersionManifestUrl,stop);
-    if (!manifestResponse.success)
-    {
-        return {false, L"Não foi possível obter o manifesto oficial do Minecraft: " +
-                           manifestResponse.errorMessage, {},manifestResponse.failure};
-    }
-
     std::wstring parseError;
-    const auto manifest = parseDocument(manifestResponse.content, parseError);
-    if (!manifest) return {false, parseError, {}};
-
-    std::string versionUrl;
-    const auto* versions = child(&*manifest, "versions");
-    if (const auto* entries = versions == nullptr ? nullptr : versions->arrayValue())
+    std::string versionContent;
+    if (auto local = localVersion(gameDirectory, versionId))
     {
-        for (const auto& entry : *entries)
+        versionContent = std::move(*local);
+    }
+    else
+    {
+        const auto manifestResponse = http.getText(VersionManifestUrl,stop);
+        if (!manifestResponse.success)
         {
-            if (text(child(&entry, "id")) == versionId)
+            return {false, L"Não foi possível obter o manifesto oficial do Minecraft: " +
+                               manifestResponse.errorMessage, {},manifestResponse.failure};
+        }
+
+        const auto manifest = parseDocument(manifestResponse.content, parseError);
+        if (!manifest) return {false, parseError, {}};
+
+        std::string versionUrl;
+        const auto* versions = child(&*manifest, "versions");
+        if (const auto* entries = versions == nullptr ? nullptr : versions->arrayValue())
+        {
+            for (const auto& entry : *entries)
             {
-                versionUrl = text(child(&entry, "url"));
-                break;
+                if (text(child(&entry, "id")) == versionId)
+                {
+                    versionUrl = text(child(&entry, "url"));
+                    break;
+                }
             }
         }
-    }
-    if (versionUrl.empty())
-    {
-        return {false, L"Minecraft " + wideVersion + L" não foi encontrado no manifesto oficial.", {}};
-    }
+        if (versionUrl.empty())
+        {
+            return {false, L"Minecraft " + wideVersion + L" não foi encontrado no manifesto oficial.", {}};
+        }
 
-    const auto versionResponse = http.getText(utf8ToWide(versionUrl),stop);
-    if (!versionResponse.success)
-    {
-        return {false, versionResponse.errorMessage, {},versionResponse.failure};
+        const auto versionResponse = http.getText(utf8ToWide(versionUrl),stop);
+        if (!versionResponse.success)
+        {
+            return {false, versionResponse.errorMessage, {},versionResponse.failure};
+        }
+        versionContent = versionResponse.content;
     }
-    const auto version = parseDocument(versionResponse.content, parseError);
+    const auto version = parseDocument(versionContent, parseError);
     if (!version) return {false, parseError, {}};
 
     MinecraftInstallPlan plan;
-    plan.versionMetadata = versionResponse.content;
+    plan.versionMetadata = versionContent;
     const auto librariesRoot = gameDirectory / L"libraries";
 
     const auto* client = child(child(&*version, "downloads"), "client");
@@ -203,13 +241,24 @@ MinecraftInstallPlanResult MinecraftManifestService::createPlan(
     {
         return {false, L"O manifesto não contém o índice de assets do Minecraft.", {}};
     }
-    const auto assetResponse = http.getText(utf8ToWide(assetUrl),stop);
-    if (!assetResponse.success)
+    // The asset index is also reused when the saved copy still matches its hash.
+    const auto assetFile = gameDirectory / L"assets" / L"indexes" / (utf8ToWide(text(child(assetIndex, "id"))) + L".json");
+    std::error_code missing;
+    if (!text(child(assetIndex, "id")).empty() && std::filesystem::is_regular_file(assetFile, missing) &&
+        FileHash::sha1(assetFile, stop) == assetHash)
     {
-        return {false, assetResponse.errorMessage, {},assetResponse.failure};
+        plan.assetIndexMetadata = readFile(assetFile);
     }
-    plan.assetIndexMetadata = assetResponse.content;
-    const auto assets = parseDocument(assetResponse.content, parseError);
+    else
+    {
+        const auto assetResponse = http.getText(utf8ToWide(assetUrl),stop);
+        if (!assetResponse.success)
+        {
+            return {false, assetResponse.errorMessage, {},assetResponse.failure};
+        }
+        plan.assetIndexMetadata = assetResponse.content;
+    }
+    const auto assets = parseDocument(plan.assetIndexMetadata, parseError);
     if (!assets) return {false, parseError, {}};
 
     const auto* objects = child(&*assets, "objects");
