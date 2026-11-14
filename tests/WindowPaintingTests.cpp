@@ -213,7 +213,7 @@ public:
         // Conta Eternal: playing while signed out asks for the account first.
         check(!page.eternalSignedIn() && !shown(control(page,AccountSignOutButtonId)),"signed out: no sign-out button");
         SendMessageW(page.window_,WM_COMMAND,MAKEWPARAM(PlayButtonId,BN_CLICKED),reinterpret_cast<LPARAM>(control(page,PlayButtonId)));
-        check(page.loginOpen_ && page.playAfterLogin_ && shown(page.loginUser_) && shown(page.loginPassword_) &&
+        check(page.loginOpen_ && shown(page.loginUser_) && shown(page.loginPassword_) &&
               shown(control(page,LoginSubmitButtonId)) && !shown(control(page,SpotlightReadButtonId)),"Play while signed out opens the sign-in panel");
         SetWindowTextW(page.loginUser_,L"");
         SendMessageW(control(page,LoginSubmitButtonId),BM_CLICK,0,0);

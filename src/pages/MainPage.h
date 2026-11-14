@@ -179,7 +179,7 @@ private:
 
     // Conta Eternal.
     struct EternalReady { EternalAuthResult auth; std::filesystem::path agent; std::wstring error; };
-    void openLogin(bool playAfter, std::wstring notice = {});
+    void openLogin(std::wstring notice = {});
     void closeLogin();
     void submitLogin();
     void setLoginMode(int mode);
@@ -392,7 +392,6 @@ private:
     bool loginOpen_ = false;
     float loginReveal_ = 0;
     bool loginBusy_ = false;
-    bool playAfterLogin_ = false;
     std::wstring loginError_;
     std::wstring loginNotice_;
     bool eternalPreparing_ = false;

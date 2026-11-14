@@ -668,11 +668,11 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         if (!EternalSessionStore::save(LauncherSettingsStore::dataDirectory(), eternalSession_))
             MessageBoxW(window_, L"Você entrou, mas não foi possível lembrar a sessão. Na próxima abertura será preciso entrar de novo.",
                 L"Conta Eternal", MB_OK | MB_ICONWARNING);
-        const bool play = playAfterLogin_;
+        // Signing in only signs in: Home comes back (with a level reached, if any) and the
+        // player presses Jogar when ready.
         closeLogin();
         startSkinLookup();
         fetchLeaderboardAsync();
-        if (play) prepareEternalPlay();
         redraw();
         return 0;
     }
@@ -693,7 +693,7 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
                 viewState_.operation = LauncherOperation::ReadyToPlay;
                 viewState_.headline = L"Entre de novo";
                 viewState_.operationMessage = ready->auth.errorMessage;
-                openLogin(true, L"Sua sessão expirou. Entre de novo para jogar.");
+                openLogin(L"Sua sessão expirou. Entre de novo para jogar.");
                 if (loginUser_) SetWindowTextW(loginUser_, name.c_str());
                 if (loginPassword_) SetFocus(loginPassword_);
             } else {
@@ -2465,7 +2465,7 @@ void MainPage::handleCommand(int id, int)
     case SkinSlimButtonId: skinSlimChoice_ = true; redraw(); break;
     case SkinUseButtonId: useSelectedSkin(); break;
     case SkinResetButtonId: resetSkin(); break;
-    case SkinSignInButtonId: openLogin(false); break;
+    case SkinSignInButtonId: openLogin(); break;
     case NavSettingsId: showPage(LauncherPage::Settings); break;
     case NavHelpId: showPage(LauncherPage::Help); break;
     case PlayButtonId: handlePrimaryAction(); break;
@@ -3455,7 +3455,7 @@ void MainPage::handlePrimaryAction()
         return;
     }
     // Conta Eternal: sign in first, then check the session and the agent before playing.
-    if (!eternalSignedIn()) { openLogin(true); return; }
+    if (!eternalSignedIn()) { openLogin(); return; }
     prepareEternalPlay();
 }
 
@@ -3468,9 +3468,8 @@ float MainPage::loginTarget() const
     return loginOpen_ && page_ == LauncherPage::Home && !installation_.visible ? 1.0F : 0.0F;
 }
 
-void MainPage::openLogin(bool playAfter, std::wstring notice)
+void MainPage::openLogin(std::wstring notice)
 {
-    playAfterLogin_ = playAfter;
     loginNotice_ = std::move(notice);
     loginError_.clear();
     if (page_ != LauncherPage::Home) showPage(LauncherPage::Home);
