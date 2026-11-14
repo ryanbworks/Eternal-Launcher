@@ -85,14 +85,14 @@ void ChromeView::draw(Gdiplus::Graphics& g, float width, float height, LauncherP
         Buttons::drawIcon(g, bounds, glyph, visual, false, 22);
         if (selected) Icons::draw(g, glyph, {bounds.X + 13, bounds.Y + 13, 22, 22}, Theme::AccentLight, 1.8F);
     };
-    for (int i = 0; i < static_cast<int>(std::size(navigation)); ++i)
-        icon(Layout::navButton(i), navigation[i].icon, navigation[i].id, page == navigation[i].page);
+    for (const auto& entry : navigation)
+        icon(Layout::navButton(navigationSlot(entry.page)), entry.icon, entry.id, page == entry.page);
     icon(Layout::sidebarHelp(height), Icons::Icon::Help, NavHelpId, page == LauncherPage::Help);
 
     if (newsBadge > 0) {
         // Unread news: a counter on the corner of the News icon, with a soft ring that keeps
         // calling while it is there.
-        const auto news = Layout::navButton(static_cast<int>(LauncherPage::News));
+        const auto news = Layout::navButton(navigationSlot(LauncherPage::News));
         const std::wstring count = newsBadge > 9 ? std::wstring(L"9+") : std::to_wstring(newsBadge);
         const float badgeWidth = std::max(18.0F, DrawingUtils::measureText(g, count, 10.5F, Gdiplus::FontStyleBold) + 9);
         const Gdiplus::RectF badge{news.GetRight() - badgeWidth + 4, news.Y + 3, badgeWidth, 18};

@@ -6,8 +6,21 @@
 #include <objidl.h>
 #include <gdiplus.h>
 
-// The order follows the navigation rail; Help is anchored to its bottom.
+#include <iterator>
+
 enum class LauncherPage { Home, Versions, News, Mods, Screenshots, Skins, Settings, Help };
+
+// The navigation rail, top to bottom. Help is anchored to the rail's bottom instead.
+inline constexpr LauncherPage NavigationOrder[] = {LauncherPage::Home, LauncherPage::Versions, LauncherPage::Skins,
+    LauncherPage::Screenshots, LauncherPage::News, LauncherPage::Mods, LauncherPage::Settings};
+
+// The rail slot of a page (Layout::navButton index), or -1 for Help.
+inline int navigationSlot(LauncherPage page)
+{
+    for (int slot = 0; slot < static_cast<int>(std::size(NavigationOrder)); ++slot)
+        if (NavigationOrder[slot] == page) return slot;
+    return -1;
+}
 
 // Custom title bar and navigation rail, drawn in window-anchored logical units.
 class ChromeView

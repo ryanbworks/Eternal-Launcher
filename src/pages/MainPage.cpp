@@ -48,10 +48,10 @@ namespace
     constexpr ControlSpec ControlSpecs[] = {
         {NavHomeId, true, true, L"Início"},
         {NavVersionsId, true, true, L"Versões"},
+        {NavSkinsId, true, true, L"Skins"},
+        {NavScreenshotsId, true, true, L"Capturas"},
         {NavNewsId, true, true, L"Notícias"},
         {NavModsId, true, true, L"Mods"},
-        {NavScreenshotsId, true, true, L"Capturas"},
-        {NavSkinsId, true, true, L"Skins"},
         {NavSettingsId, true, true, L"Configurações"},
         {NavHelpId, true, true, L"Ajuda"},
         {LoginUserInputId, false, true, nullptr},
@@ -1597,7 +1597,7 @@ void MainPage::animate()
         // The badge rings and the podium shimmers while the window is in front.
         if (ambientNow || working || playing) {
             if (unreadNewsCount() > 0) {
-                const auto news = Layout::navButton(static_cast<int>(LauncherPage::News));
+                const auto news = Layout::navButton(navigationSlot(LauncherPage::News));
                 markChrome({news.X, news.Y - 10, news.Width + 16, news.Height}, 8);
             }
             if (rankingState_ == RankingState::Ready)
@@ -1711,7 +1711,7 @@ float MainPage::chromeHeight() const { return viewScale_ > 0 ? clientHeight_ / v
 float MainPage::navigationTarget() const
 {
     if (page_ == LauncherPage::Help) return Layout::sidebarHelp(chromeHeight()).Y;
-    return Layout::navButton(static_cast<int>(page_)).Y;
+    return Layout::navButton(navigationSlot(page_)).Y;
 }
 
 float MainPage::spotlightTarget() const
@@ -1765,13 +1765,13 @@ Gdiplus::RectF MainPage::controlBounds(int id) const
     case MinimizeButtonId: return Layout::captionButton(0, chromeWidth());
     case MaximizeButtonId: return Layout::captionButton(1, chromeWidth());
     case CloseButtonId: return Layout::captionButton(2, chromeWidth());
-    case NavHomeId: return Layout::navButton(0);
-    case NavVersionsId: return Layout::navButton(1);
-    case NavNewsId: return Layout::navButton(2);
-    case NavModsId: return Layout::navButton(3);
-    case NavScreenshotsId: return Layout::navButton(4);
-    case NavSkinsId: return Layout::navButton(5);
-    case NavSettingsId: return Layout::navButton(6);
+    case NavHomeId: return Layout::navButton(navigationSlot(LauncherPage::Home));
+    case NavVersionsId: return Layout::navButton(navigationSlot(LauncherPage::Versions));
+    case NavNewsId: return Layout::navButton(navigationSlot(LauncherPage::News));
+    case NavModsId: return Layout::navButton(navigationSlot(LauncherPage::Mods));
+    case NavScreenshotsId: return Layout::navButton(navigationSlot(LauncherPage::Screenshots));
+    case NavSkinsId: return Layout::navButton(navigationSlot(LauncherPage::Skins));
+    case NavSettingsId: return Layout::navButton(navigationSlot(LauncherPage::Settings));
     case SkinFolderButtonId: return Layout::SkinsFolder;
     case SkinAddButtonId: return Layout::SkinsAdd;
     case SkinRemoveButtonId:
