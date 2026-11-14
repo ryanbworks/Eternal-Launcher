@@ -6,6 +6,25 @@ and versions use [SemVer](https://semver.org/) plus a codename.
 
 ## [Unreleased]
 
+### Added
+- **OptiFine on 1.8.9.** Fetched once from optifine.net and installed with OptiFine's
+  own patcher; the game starts with it. Without the site, 1.8.9 opens as before.
+- **A turning skin.** The Skins stage shows the figure in 3D, turning slowly; drag it to
+  turn it, or use Frente and Costas.
+- **More motion.** Lists cascade in, the installation screen grows into place, the
+  rail's selection springs to the page and buttons sink a little when pressed.
+
+### Changed
+- **Much faster Jogar.** Files that already passed their check are not read again on
+  every Play; the rest is checked in parallel, Mojang's files on disk are reused and the
+  native libraries are only extracted when they change. Reparar still checks everything.
+- **Rail order.** Início, Versões, Skins, Capturas, Notícias, Mods, Configurações.
+- **Signing in only signs in.** Jogar while signed out opens the sign-in; after it, Home
+  comes back (with a new level, if any) and the game waits for another Jogar.
+
+### Fixed
+- The modpack's log configuration was never downloaded.
+
 ## [3.0.0] — Zenith · 2026-11-13
 
 ### Added
