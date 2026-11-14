@@ -284,8 +284,11 @@ void ModsView::draw(Gdiplus::Graphics& g, const ModsModel& m, const ControlVisua
         if (server == 0)
             drawText(g, inventory && inventory->manifestKnown ? L"O servidor não lista nenhum mod." : L"A lista aparece quando o servidor responder.",
                 {serverBounds.X, serverBounds.Y + 8, serverBounds.Width, 40}, 13, Gdiplus::FontStyleRegular, Theme::TextMuted);
+        const auto firstServer = static_cast<std::size_t>(std::max(0.0F, m.serverScroll / ServerRowHeight));
         for (std::size_t i = 0; i < server; ++i) {
-            const float top = serverBounds.Y + static_cast<float>(i) * ServerRowHeight - m.serverScroll;
+            // Rows cascade in when the page opens; only the first few wait, so all land together.
+            const float top = serverBounds.Y + static_cast<float>(i) * ServerRowHeight - m.serverScroll +
+                rise(m.entrance, static_cast<int>(std::min<std::size_t>(i - std::min(i, firstServer), 6)), 14);
             if (top + ServerRowHeight < serverBounds.Y || top > serverBounds.GetBottom()) continue;
             const auto& mod = inventory->server[i];
             Gdiplus::SolidBrush state(mod.installed ? Theme::Success : Theme::TextMuted);
@@ -320,8 +323,10 @@ void ModsView::draw(Gdiplus::Graphics& g, const ModsModel& m, const ControlVisua
                 {userBounds.X + 40, userBounds.Y + 196, userBounds.Width - 80, 44}, 12.5F, Gdiplus::FontStyleRegular, Theme::TextSecondary,
                 Gdiplus::StringAlignmentCenter);
         }
+        const auto firstUser = static_cast<std::size_t>(std::max(0.0F, m.userScroll / UserRowHeight));
         for (std::size_t i = 0; i < user; ++i) {
-            const float top = userBounds.Y + static_cast<float>(i) * UserRowHeight - m.userScroll;
+            const float top = userBounds.Y + static_cast<float>(i) * UserRowHeight - m.userScroll +
+                rise(m.entrance, static_cast<int>(std::min<std::size_t>(i - std::min(i, firstUser), 6)), 14);
             if (top + UserRowHeight < userBounds.Y || top > userBounds.GetBottom()) continue;
             const auto& mod = inventory->user[i];
             const bool hovered = m.hoveredRow == static_cast<int>(i);
@@ -728,29 +733,35 @@ void SkinsView::draw(Gdiplus::Graphics& g, const SkinsModel& m, const ControlVis
         int count = 1;
         light.SetSurroundColors(&edge, &count);
         g.FillPath(&light, &spot);
-        // A floor shadow under each figure.
-        for (const auto* figure : {&Layout::SkinsFront, &Layout::SkinsBack}) {
-            Gdiplus::SolidBrush shadow(Gdiplus::Color(90, 0, 0, 0));
-            g.FillEllipse(&shadow, figure->X + 20, figure->GetBottom() + stage.Y - Layout::SkinsStage.Y - 6, figure->Width - 40, 14.0F);
-        }
         g.Restore(saved);
     }
     const SkinCard* selected = m.selected >= 0 && static_cast<std::size_t>(m.selected) < m.cards.size() ? &m.cards[static_cast<std::size_t>(m.selected)] : nullptr;
     const float dy = stage.Y - Layout::SkinsStage.Y;
-    const Gdiplus::RectF front{Layout::SkinsFront.X, Layout::SkinsFront.Y + dy, Layout::SkinsFront.Width, Layout::SkinsFront.Height};
-    const Gdiplus::RectF backView{Layout::SkinsBack.X, Layout::SkinsBack.Y + dy, Layout::SkinsBack.Width, Layout::SkinsBack.Height};
-    if (selected && selected->texture) {
-        SkinRenderer::drawBody(g, *selected->texture, front, m.slimChoice, false);
-        SkinRenderer::drawBody(g, *selected->texture, backView, m.slimChoice, true);
-    } else {
-        silhouette(g, front, Gdiplus::Color(255, 58, 56, 82));
-        silhouette(g, backView, Gdiplus::Color(255, 48, 46, 70));
-        if (m.currentLoading && selected && selected->current)
-            drawText(g, L"Carregando...", {plate.X, plate.GetBottom() - 40, plate.Width, 20}, 12.5F, Gdiplus::FontStyleRegular, Theme::TextMuted,
-                Gdiplus::StringAlignmentCenter);
+    const Gdiplus::RectF figure{Layout::SkinsFigure.X, Layout::SkinsFigure.Y + dy, Layout::SkinsFigure.Width, Layout::SkinsFigure.Height};
+    {
+        // A floor shadow that narrows as the figure shows its side.
+        const float width = 70 + 50 * std::abs(std::cos(m.turn));
+        Gdiplus::SolidBrush shadow(Gdiplus::Color(90, 0, 0, 0));
+        g.FillEllipse(&shadow, figure.X + (figure.Width - width) / 2, figure.GetBottom() - 6, width, 14.0F);
     }
-    drawText(g, L"FRENTE", {front.X, plate.Y + 12, front.Width, 16}, 10.5F, Gdiplus::FontStyleBold, Theme::TextMuted, Gdiplus::StringAlignmentCenter);
-    drawText(g, L"COSTAS", {backView.X, plate.Y + 12, backView.Width, 16}, 10.5F, Gdiplus::FontStyleBold, Theme::TextMuted, Gdiplus::StringAlignmentCenter);
+    if (selected && selected->texture) {
+        SkinRenderer::drawTurned(g, *selected->texture, figure, m.slimChoice, m.turn);
+    } else {
+        silhouette(g, figure, Gdiplus::Color(255, 58, 56, 82));
+        if (m.currentLoading && selected && selected->current)
+            drawText(g, L"Carregando...", {plate.X, figure.Y + figure.Height / 2 - 10, plate.Width, 20}, 12.5F, Gdiplus::FontStyleRegular,
+                Theme::TextMuted, Gdiplus::StringAlignmentCenter);
+    }
+    if (selected && selected->texture) {
+        // Turn to a side; dragging the figure turns it too.
+        const auto facing = std::cos(m.turn);
+        Buttons::draw(g, {Layout::SkinsTurnFront.X, Layout::SkinsTurnFront.Y + dy, Layout::SkinsTurnFront.Width, Layout::SkinsTurnFront.Height},
+            L"Frente", visuals(SkinTurnFrontId), Buttons::Style::Chip, std::nullopt, facing > .92F, 11.5F);
+        Buttons::draw(g, {Layout::SkinsTurnBack.X, Layout::SkinsTurnBack.Y + dy, Layout::SkinsTurnBack.Width, Layout::SkinsTurnBack.Height},
+            L"Costas", visuals(SkinTurnBackId), Buttons::Style::Chip, std::nullopt, facing < -.92F, 11.5F);
+        drawText(g, L"Arraste para girar", {plate.X, plate.Y + 12, plate.Width, 16}, 10.5F, Gdiplus::FontStyleBold, Theme::TextMuted,
+            Gdiplus::StringAlignmentCenter);
+    }
     const Gdiplus::RectF corner{Layout::SkinsRemove.X, Layout::SkinsRemove.Y + dy, Layout::SkinsRemove.Width, Layout::SkinsRemove.Height};
     const Gdiplus::RectF beside{Layout::SkinsShare.X, Layout::SkinsShare.Y + dy, Layout::SkinsShare.Width, Layout::SkinsShare.Height};
     const Gdiplus::Color removeHover(255, 52, 30, 40);
@@ -872,13 +883,15 @@ void SkinsView::draw(Gdiplus::Graphics& g, const SkinsModel& m, const ControlVis
         const auto& item = m.cards[index];
         auto b = Layout::skinCard(static_cast<int>(slot));
         b.Y += library.Y - Layout::SkinsLibrary.Y;
+        // Cards cascade in by row, then column, whenever the list changes.
+        b.Y += rise(m.cardsEntrance, static_cast<int>(slot) / Layout::SkinColumns + static_cast<int>(slot) % Layout::SkinColumns / 2, 18);
         const auto v = visuals(SkinCardFirstId + static_cast<int>(slot));
         const bool chosen = static_cast<int>(index) == m.selected;
         b.Y -= std::round(3 * v.hover);
         fillRoundedRectangle(g, b, 14, chosen ? Theme::AccentTint : blend(Theme::SurfaceSunken, Theme::SurfaceElevated, v.hover));
-        const Gdiplus::RectF figure{b.X + (b.Width - 56) / 2, b.Y + 12, 56, 112};
-        if (item.texture) SkinRenderer::drawBody(g, *item.texture, figure, item.slim, false);
-        else silhouette(g, figure, Gdiplus::Color(255, 58, 56, 82));
+        const Gdiplus::RectF thumbnail{b.X + (b.Width - 56) / 2, b.Y + 12, 56, 112};
+        if (item.texture) SkinRenderer::drawBody(g, *item.texture, thumbnail, item.slim, false);
+        else silhouette(g, thumbnail, Gdiplus::Color(255, 58, 56, 82));
         if (item.group || item.searched || item.featured) {
             // Where it comes from: the server's players, the search or the Populares catalog.
             const Gdiplus::RectF chip{b.X + 8, b.Y + 8, 24, 24};

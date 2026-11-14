@@ -30,4 +30,7 @@ namespace SkinRenderer
     // Draws the whole body, flat, front or back, filling `bounds` (16 x 32 skin pixels),
     // with the outer layer (hat, jacket, sleeves, pants) on top.
     void drawBody(Gdiplus::Graphics& graphics, const SkinTexture& skin, const Gdiplus::RectF& bounds, bool slim, bool back);
+    // The whole figure in 3D, turned `angle` radians around its vertical axis (0 faces the
+    // viewer), seen level and without perspective. Fills `bounds` like drawBody.
+    void drawTurned(Gdiplus::Graphics& graphics, const SkinTexture& skin, const Gdiplus::RectF& bounds, bool slim, float angle);
 }

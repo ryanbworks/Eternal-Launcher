@@ -100,6 +100,8 @@ namespace
         {SkinExploreTabId, false, true, L"Explorar skins"},
         {SkinSearchInputId, false, true, nullptr},
         {SkinSearchButtonId, false, true, L"Buscar skin pelo nick"},
+        {SkinTurnFrontId, false, true, L"Mostrar a frente da skin"},
+        {SkinTurnBackId, false, true, L"Mostrar as costas da skin"},
         {SkinFilterFirstId, false, true, L"Todas"},
         {SkinFilterFirstId + 1, false, true, L"Do grupo"},
         {SkinFilterFirstId + 2, false, true, L"Compartilhadas"},
@@ -442,6 +444,15 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
         return 0;
     case WM_MOUSEMOVE:
     {
+        if (skinDragging_) {
+            // Dragging across the stage turns the figure under the pointer.
+            const int x = GET_X_LPARAM(lParam);
+            skinTurn_ = std::remainder(skinTurn_ + static_cast<float>(x - skinDragX_) * .012F / std::max(.25F, viewScale_), 6.2831853F);
+            skinDragX_ = x;
+            markContent(Layout::SkinsPlate, 2);
+            redraw(true);
+            return 0;
+        }
         const auto point = toContent(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
         bool changed = false;
         const bool hovered = page_ == LauncherPage::Home && !installation_.visible && !loginOpen_ && !levelsOpen_ &&
@@ -472,9 +483,37 @@ LRESULT MainPage::handleMessage(UINT message, WPARAM wParam, LPARAM lParam)
             SetCursor(LoadCursor(nullptr, IDC_HAND));
             return TRUE;
         }
+        if (reinterpret_cast<HWND>(wParam) == window_ && LOWORD(lParam) == HTCLIENT && page_ == LauncherPage::Skins && stageHasSkin()) {
+            POINT cursor{};
+            GetCursorPos(&cursor);
+            ScreenToClient(window_, &cursor);
+            const auto point = toContent(cursor.x, cursor.y);
+            if (skinDragging_ || Layout::SkinsPlate.Contains(point.X, point.Y)) { SetCursor(LoadCursor(nullptr, IDC_SIZEWE)); return TRUE; }
+        }
         return DefWindowProc(window_, message, wParam, lParam);
+    case WM_LBUTTONDOWN:
+    {
+        const auto point = toContent(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+        if (page_ == LauncherPage::Skins && stageHasSkin() && Layout::SkinsPlate.Contains(point.X, point.Y)) {
+            skinDragging_ = true;
+            skinDragX_ = GET_X_LPARAM(lParam);
+            skinTurnGoal_.reset();
+            SetCapture(window_);
+        }
+        return 0;
+    }
     case WM_LBUTTONUP:
+        if (skinDragging_) {
+            skinDragging_ = false;
+            skinTurnPause_ = 2500;  // let the player look before it turns by itself again
+            ReleaseCapture();
+            redraw();
+            return 0;
+        }
         if (page_ == LauncherPage::Mods) handleModsClick(toContent(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)));
+        return 0;
+    case WM_CAPTURECHANGED:
+        if (skinDragging_ && reinterpret_cast<HWND>(lParam) != window_) { skinDragging_ = false; skinTurnPause_ = 2500; redraw(); }
         return 0;
     case WM_MOUSEWHEEL:
     {
@@ -1131,6 +1170,7 @@ ControlVisual MainPage::visual(int id, bool preview) const
     result.hover = result.enabled ? control->hover : 0;
     result.focused = keyboardCues && GetFocus() == control->window;
     result.pressed = (SendMessageW(control->window, BM_GETSTATE, 0, 0) & BST_PUSHED) != 0;
+    result.press = result.enabled ? control->press : 0;
     return result;
 }
 
@@ -1297,6 +1337,7 @@ ModsModel MainPage::modsModel() const
     model.messageError = modsMessageError_;
     model.locked = gameRunning() || installation_.running;
     model.knobs = &modKnobs_;
+    model.entrance = motionEnabled_ ? listReveal_ : 1.0F;
     return model;
 }
 
@@ -1325,9 +1366,16 @@ void MainPage::render(Gdiplus::Graphics& g, float width, float height, bool prev
     switch (page_) {
     case LauncherPage::Home:
         home_.draw(g, homeModel(preview), hero_, visuals, true);
-        if (installation_.visible)
+        if (installation_.visible) {
+            // The installation screen fades in over Home and grows into place.
+            const float reveal = preview ? 1.0F : 1 - std::pow(1 - std::clamp(installationReveal_, 0.0F, 1.0F), 3.0F);
+            HomeView::drawScreenVeil(g, reveal);
+            const auto opening = g.Save();
+            HomeView::growScreen(g, Layout::Installation, reveal);
             installationPanel_.draw(g, installation_, animationPhase_, visuals, preview ? -1 : installationFill_,
                 preview ? std::array<float, 6>{} : completionPulse_);
+            g.Restore(opening);
+        }
         break;
     case LauncherPage::Versions:
         versionsView_.draw(g, VersionsModel{vanillaSelected_, vanillaInstalled_, mods_.manifestKnown ? static_cast<int>(mods_.server.size()) : -1,
@@ -1337,7 +1385,7 @@ void MainPage::render(Gdiplus::Graphics& g, float width, float height, bool prev
         newsView_.draw(g, NewsModel{&viewState_.news, newsFirst_, newsLoading_, newsError_, preview ? 1.0F : pageFade_}, visuals);
         break;
     case LauncherPage::Mods:
-        modsView_.draw(g, modsModel(), visuals);
+        { auto mods = modsModel(); if (preview) mods.entrance = 1; modsView_.draw(g, mods, visuals); }
         break;
     case LauncherPage::Screenshots:
         screenshotsView_.draw(g, screenshotsModel(preview), visuals);
@@ -1382,7 +1430,7 @@ void MainPage::updateMotionPreference()
         animationPhase_ = 0.45F;
         portalEntrance_ = 1;
         pageFade_ = 1;
-        navIndicator_ = navigationTarget();
+        navIndicator_ = navigationTarget(); navVelocity_ = 0;
         spotlightReveal_ = spotlightTarget();
         celebrationReveal_ = celebrationTarget();
         levelsReveal_ = levelsTarget();
@@ -1395,6 +1443,11 @@ void MainPage::updateMotionPreference()
 void MainPage::redraw(bool animationFrame)
 {
     if (!window_) return;
+    if (installation_.visible != installationWasVisible_) {
+        // The installation screen opens with its own motion.
+        installationWasVisible_ = installation_.visible;
+        installationReveal_ = installation_.visible && motionEnabled_ ? 0.0F : 1.0F;
+    }
     if (pulseAttempt_ != installation_.attempt) {
         pulseAttempt_ = installation_.attempt;
         completionPulse_ = {};
@@ -1425,8 +1478,13 @@ void MainPage::redraw(bool animationFrame)
         else if (playProgressShown_ < 0 || progress < playProgressShown_ - .5F) playProgressShown_ = progress;
     }
 
-    bool unsettled = std::abs(displayedProgress_ - static_cast<float>(viewState_.progressPercent)) > 0.1F || pageFade_ < 1;
-    for (const auto& control : controls_) unsettled |= std::abs(control.hover - (control.hovered ? 1.0F : 0.0F)) > 0.005F;
+    bool unsettled = std::abs(displayedProgress_ - static_cast<float>(viewState_.progressPercent)) > 0.1F || pageFade_ < 1 || installationReveal_ < 1 ||
+        listReveal_ < 1 || skinTurnGoal_.has_value() || skinTurnPause_ > 0 ||
+        (page_ == LauncherPage::Skins && stageHasSkin() && GetForegroundWindow() == window_);
+    for (const auto& control : controls_) {
+        unsettled |= std::abs(control.hover - (control.hovered ? 1.0F : 0.0F)) > 0.005F || control.press > 0;
+        unsettled |= control.hovered && control.window && (SendMessageW(control.window, BM_GETSTATE, 0, 0) & BST_PUSHED) != 0 && control.press < 1;
+    }
     const float selection = originalMode_ ? 1.0F : 0.0F;
     unsettled |= std::abs(identitySelection_ - selection) > .005F;
     const bool transferVisible = installation_.visible && installation_.running && !installation_.cancelling &&
@@ -1435,7 +1493,7 @@ void MainPage::redraw(bool animationFrame)
     for (const float pulse : completionPulse_) unsettled |= pulse > 0;
     const bool pressed = findControl(PlayButtonId) && findControl(PlayButtonId)->window &&
         (SendMessageW(findControl(PlayButtonId)->window, BM_GETSTATE, 0, 0) & BST_PUSHED) != 0;
-    unsettled |= std::abs(navIndicator_ - navigationTarget()) > .75F || std::abs(spotlightReveal_ - spotlightTarget()) > .01F ||
+    unsettled |= std::abs(navIndicator_ - navigationTarget()) > .5F || navVelocity_ != 0 || std::abs(spotlightReveal_ - spotlightTarget()) > .01F ||
         std::abs(celebrationReveal_ - celebrationTarget()) > .01F || std::abs(levelsReveal_ - levelsTarget()) > .01F ||
         std::abs(loginReveal_ - loginTarget()) > .01F;
     unsettled |= playSweep_ < 1 || playPulse_ > 0 || std::abs(playPress_ - (pressed ? 1.0F : 0.0F)) > .01F ||
@@ -1453,9 +1511,11 @@ void MainPage::redraw(bool animationFrame)
         displayedProgress_ = static_cast<float>(viewState_.progressPercent);
         identitySelection_ = selection;
         installationFill_ = fillTarget;
-        portalEntrance_ = 1; portalEnergy_ = 0; portalBurst_ = 0; pageFade_ = 1;
+        portalEntrance_ = 1; portalEnergy_ = 0; portalBurst_ = 0; pageFade_ = 1; installationReveal_ = 1; listReveal_ = 1;
+        if (skinTurnGoal_) { skinTurn_ = *skinTurnGoal_; skinTurnGoal_.reset(); }
+        skinTurnPause_ = 0;
         completionPulse_ = {};
-        navIndicator_ = navigationTarget(); spotlightReveal_ = spotlightTarget(); celebrationReveal_ = celebrationTarget();
+        navIndicator_ = navigationTarget(); navVelocity_ = 0; spotlightReveal_ = spotlightTarget(); celebrationReveal_ = celebrationTarget();
         levelsReveal_ = levelsTarget();
         loginReveal_ = loginTarget();
         playSweep_ = 1; playPulse_ = 0; playPress_ = pressed ? 1.0F : 0.0F; playLight_ = playLightTarget_;
@@ -1513,13 +1573,15 @@ void MainPage::animate()
     previousFrame_ = now;
     // Remember what is on screen so only what actually moves gets repainted.
     const float fadeBefore = pageFade_, navBefore = navIndicator_, spotlightBefore = spotlightReveal_, selectionBefore = identitySelection_;
-    const float screensBefore[] = {levelsReveal_, loginReveal_, celebrationReveal_};
+    const float screensBefore[] = {levelsReveal_, loginReveal_, celebrationReveal_, installationReveal_, listReveal_};
     const float playBefore[] = {playSweep_, playPulse_, playPress_, playLight_, playProgressShown_, displayedProgress_};
     const float fillBefore = installationFill_, entranceBefore = portalEntrance_;
     const auto pulsesBefore = completionPulse_;
     std::vector<float> hoverBefore;
     hoverBefore.reserve(controls_.size());
-    for (const auto& control : controls_) hoverBefore.push_back(control.hover);
+    std::vector<float> pressBefore;
+    pressBefore.reserve(controls_.size());
+    for (const auto& control : controls_) { hoverBefore.push_back(control.hover); pressBefore.push_back(control.press); }
     const auto knobsBefore = modKnobs_;
     const bool settingsBefore = page_ == LauncherPage::Settings && settingsPage_.advance(0);
     particlePhase_ = std::fmod(particlePhase_ + dt / 8000, 1.0F);
@@ -1533,6 +1595,11 @@ void MainPage::animate()
         const float target = control.hovered ? 1.0F : 0.0F;
         control.hover += (target - control.hover) * ease;
         if (std::abs(target - control.hover) < 0.006F) control.hover = target;
+        // Only a button under the pointer can be held down.
+        const bool down = control.hovered && control.window && (SendMessageW(control.window, BM_GETSTATE, 0, 0) & BST_PUSHED) != 0;
+        const float pressTarget = down ? 1.0F : 0.0F;
+        control.press += (pressTarget - control.press) * (1 - std::exp(-dt / 30));
+        if (std::abs(pressTarget - control.press) < 0.01F) control.press = pressTarget;
     }
     const float target = static_cast<float>(viewState_.progressPercent);
     // A new phase can reset progress, so never animate a backwards value.
@@ -1547,12 +1614,36 @@ void MainPage::animate()
     if (std::abs(fillTarget - installationFill_) < .1F) installationFill_ = fillTarget;
     if (page_ == LauncherPage::Home && !installation_.visible) portalEntrance_ = std::min(1.0F, portalEntrance_ + dt / 750);
     pageFade_ = std::min(1.0F, pageFade_ + dt / 300);
+    installationReveal_ = std::min(1.0F, installationReveal_ + dt / 280);
+    listReveal_ = std::min(1.0F, listReveal_ + dt / 520);
+    if (page_ == LauncherPage::Skins && stageHasSkin()) {
+        const float turnBefore = skinTurn_;
+        if (skinTurnGoal_) {
+            skinTurn_ += (*skinTurnGoal_ - skinTurn_) * (1 - std::exp(-dt / 90));
+            if (std::abs(*skinTurnGoal_ - skinTurn_) < .003F) { skinTurn_ = *skinTurnGoal_; skinTurnGoal_.reset(); skinTurnPause_ = 3500; }
+        } else if (!skinDragging_) {
+            if (skinTurnPause_ > 0) skinTurnPause_ = std::max(0.0F, skinTurnPause_ - dt);
+            // About one turn every fourteen seconds, only while the window is in front.
+            else if (motionEnabled_ && GetForegroundWindow() == window_) skinTurn_ = std::remainder(skinTurn_ + dt * .00045F, 6.2831853F);
+        }
+        if (skinTurn_ != turnBefore) markContent(Layout::SkinsPlate, 2);
+    }
     time_ = std::fmod(time_ + dt / 1000, 3600.0F);
     const auto approach = [dt](float& value, float goal, float tau, float snap) {
         value += (goal - value) * (1 - std::exp(-dt / tau));
         if (std::abs(goal - value) < snap) value = goal;
     };
-    approach(navIndicator_, navigationTarget(), 50, .75F);
+    {
+        // The selection springs to the page: a quick move with a small overshoot.
+        constexpr float omega = .026F, damping = .75F;  // per millisecond; ~240 ms period
+        const float goal = navigationTarget();
+        for (float left = dt; left > 0; left -= 8) {
+            const float step = std::min(left, 8.0F);
+            navVelocity_ += (omega * omega * (goal - navIndicator_) - 2 * damping * omega * navVelocity_) * step;
+            navIndicator_ += navVelocity_ * step;
+        }
+        if (std::abs(goal - navIndicator_) < .5F && std::abs(navVelocity_) < .02F) { navIndicator_ = goal; navVelocity_ = 0; }
+    }
     approach(spotlightReveal_, spotlightTarget(), 90, .01F);
     approach(celebrationReveal_, celebrationTarget(), 140, .01F);
     approach(levelsReveal_, levelsTarget(), 70, .01F);
@@ -1579,10 +1670,12 @@ void MainPage::animate()
 
     // Mark the regions this frame changed.
     // Pages fade in whole, and a screen's dim layer covers all of Home while it opens or closes.
-    if (pageFade_ != fadeBefore || levelsReveal_ != screensBefore[0] || loginReveal_ != screensBefore[1]) frameDirty_ = invalidateAll_ = true;
+    if (pageFade_ != fadeBefore || levelsReveal_ != screensBefore[0] || loginReveal_ != screensBefore[1] || installationReveal_ != screensBefore[3] ||
+        listReveal_ != screensBefore[4])
+        frameDirty_ = invalidateAll_ = true;
     if (navIndicator_ != navBefore) markChrome({0, TitleBarHeight, SidebarWidth, chromeHeight() - TitleBarHeight});
     for (std::size_t i = 0; i < controls_.size() && i < hoverBefore.size(); ++i)
-        if (controls_[i].hover != hoverBefore[i]) markControl(controls_[i].id);
+        if (controls_[i].hover != hoverBefore[i] || controls_[i].press != pressBefore[i]) markControl(controls_[i].id);
     if (page_ == LauncherPage::Home) {
         const bool heroVisible = !installation_.visible;
         const bool ambientNow = motionEnabled_ && ambientMotion_ && GetForegroundWindow() == window_;
@@ -1780,6 +1873,8 @@ Gdiplus::RectF MainPage::controlBounds(int id) const
     case SkinShareButtonId: return Layout::SkinsShare;
     case SkinSaveButtonId: return Layout::SkinsReset;
     case SkinRefreshButtonId: return Layout::SkinsRefresh;
+    case SkinTurnFrontId: return Layout::SkinsTurnFront;
+    case SkinTurnBackId: return Layout::SkinsTurnBack;
     case SkinSearchInputId: return Layout::SkinsSearch;
     case SkinSearchButtonId: return Layout::SkinsSearchGo;
     case SkinMineTabId: return Layout::skinsTab(0);
@@ -1892,6 +1987,9 @@ bool MainPage::controlVisible(int id) const
     case SkinClassicButtonId:
     case SkinSlimButtonId:
         return page_ == LauncherPage::Skins;
+    case SkinTurnFrontId:
+    case SkinTurnBackId:
+        return page_ == LauncherPage::Skins && stageHasSkin();
     case SkinFolderButtonId:
     case SkinAddButtonId:
         return page_ == LauncherPage::Skins && !skinExplore_;
@@ -2214,7 +2312,7 @@ void MainPage::layoutControls()
         }
     }
     settingsPage_.layout(viewScale_, offsetX_, offsetY_);
-    navIndicator_ = navigationTarget();
+    navIndicator_ = navigationTarget(); navVelocity_ = 0;
 }
 
 void MainPage::syncControls()
@@ -2394,6 +2492,8 @@ void MainPage::showPage(LauncherPage page)
     portalHovered_ = false;
     modsHoverRow_ = modsHoverAction_ = -1;
     pageFade_ = motionEnabled_ ? 0.0F : 1.0F;
+    // Pages made of cards or rows cascade them in; the rest only fade.
+    if (page == LauncherPage::Skins || page == LauncherPage::Screenshots || page == LauncherPage::Mods) replayList();
     redraw();
     // Keyboard focus follows the page: a control of the previous page never keeps it.
     if (focused && focused != window_ && IsChild(window_, focused) && !(GetWindowLongPtrW(focused, GWL_STYLE) & WS_VISIBLE)) {
@@ -2460,6 +2560,8 @@ void MainPage::handleCommand(int id, int)
     case SkinShareButtonId: shareLibrarySkin(); break;
     case SkinReportButtonId: reportCommunitySkin(); break;
     case SkinSaveButtonId: saveExploreSkin(); break;
+    case SkinTurnFrontId: turnSkinTo(0); break;
+    case SkinTurnBackId: turnSkinTo(3.14159265F); break;
     case SkinSearchButtonId: searchSkin(); break;
     case SkinClassicButtonId: skinSlimChoice_ = false; redraw(); break;
     case SkinSlimButtonId: skinSlimChoice_ = true; redraw(); break;
@@ -2987,7 +3089,7 @@ ScreenshotsModel MainPage::screenshotsModel(bool preview) const
     model.viewer = screenshotViewer_;
     model.message = screenshotsMessage_;
     model.messageError = screenshotsMessageError_;
-    model.entrance = preview ? 1.0F : pageFade_;
+    model.entrance = preview ? 1.0F : std::min(pageFade_, listReveal_);
     model.time = preview ? 0.0F : time_;
     const auto now = wallClock();
     if (galleryTab_) {
@@ -3216,6 +3318,7 @@ void MainPage::showGalleryTab(bool group)
     closeScreenshot();
     galleryTab_ = group;
     screenshotRow_ = 0;
+    replayList();
     screenshotsMessage_.clear();
     screenshotsMessageError_ = false;
     // The viewer's copy and remove buttons sit elsewhere in each tab.
@@ -3640,6 +3743,9 @@ SkinsModel MainPage::skinsModel(bool preview) const
     model.message = skinsMessage_;
     model.messageError = skinsMessageError_;
     model.entrance = preview ? 1.0F : pageFade_;
+    model.cardsEntrance = preview ? 1.0F : std::min(pageFade_, listReveal_);
+    // Previews catch the figure a little turned, so its sides show.
+    model.turn = preview ? .55F : skinTurn_;
     model.time = preview ? 0.0F : time_;
     model.sharing = skinSharing_;
     model.explore = skinExplore_;
@@ -3712,6 +3818,7 @@ void MainPage::setExploreFilter(int filter)
 {
     if (filter < 0 || filter > 3 || filter == exploreFilter_) return;
     exploreFilter_ = filter;
+    replayList();
     exploreSelected_ = 0;
     exploreRow_ = 0;
     if (const auto* skin = exploreSkin(0)) skinSlimChoice_ = skin->slim;
@@ -3721,10 +3828,33 @@ void MainPage::setExploreFilter(int filter)
     redraw();
 }
 
+void MainPage::replayList()
+{
+    listReveal_ = motionEnabled_ ? 0.0F : 1.0F;
+}
+
+bool MainPage::stageHasSkin() const
+{
+    if (skinExplore_) return exploreSkin(exploreSelected_) != nullptr;
+    if (skinSelected_ == 0) return currentSkin_.has_value();
+    return skinSelected_ > 0 && static_cast<std::size_t>(skinSelected_) <= skinLibrary_.size();
+}
+
+void MainPage::turnSkinTo(float angle)
+{
+    // The nearest turn that shows that side, so it never spins the long way round.
+    const float goal = skinTurn_ - std::remainder(skinTurn_ - angle, 6.2831853F);
+    if (motionEnabled_) skinTurnGoal_ = goal;
+    else skinTurn_ = goal;
+    skinTurnPause_ = 3500;
+    redraw();
+}
+
 void MainPage::showSkinsTab(bool explore)
 {
     if (skinExplore_ == explore) return;
     skinExplore_ = explore;
+    replayList();
     skinsMessage_.clear();
     skinsMessageError_ = false;
     if (explore) {
@@ -3869,6 +3999,8 @@ void MainPage::handleExploreEvent(SkinEvent& event)
     case SkinEvent::Kind::ExploreCommunity:
     case SkinEvent::Kind::ExploreGroup:
         if (event.generation != exploreGeneration_) return;
+        // The first skins to arrive cascade in; later arrivals join without replaying it.
+        if (exploreCount() == 0 && (!event.explore.empty() || !event.featured.empty())) replayList();
         if (event.kind == SkinEvent::Kind::ExploreCommunity) {
             exploreCommunity_ = std::move(event.explore);
             exploreFeatured_ = std::move(event.featured);

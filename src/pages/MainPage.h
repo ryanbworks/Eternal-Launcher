@@ -59,6 +59,7 @@ private:
         bool chrome = false;
         bool hovered = false;
         float hover = 0;
+        float press = 0;  // 0..1, eased while the button is held down
         RECT rect{};  // client pixels, refreshed on layout
     };
 
@@ -305,6 +306,20 @@ private:
     float pageFade_ = 1;
     float time_ = 0;              // seconds; drives idle effects (breathing, blinking, sheens)
     float navIndicator_ = 60;     // logical top of the sliding navigation selection
+    float navVelocity_ = 0;       // its spring speed, logical pixels per millisecond
+    float installationReveal_ = 1;      // 0..1 opening of the installation screen
+    bool installationWasVisible_ = false;
+    // 0..1 cascade of the cards and rows of a list; replayList() starts it again.
+    float listReveal_ = 1;
+    void replayList();
+    // The skin stage turns slowly by itself; dragging turns it, Frente/Costas turn it to a side.
+    float skinTurn_ = 0;
+    std::optional<float> skinTurnGoal_;
+    float skinTurnPause_ = 0;  // milliseconds before turning by itself again
+    bool skinDragging_ = false;
+    int skinDragX_ = 0;
+    bool stageHasSkin() const;
+    void turnSkinTo(float angle);
     float spotlightReveal_ = 0;
     float playSweep_ = 1;
     float playPulse_ = 0;

@@ -148,8 +148,12 @@ namespace Layout
     inline const Rect SkinsAdd{1112, 84, 144, 44};
     inline const Rect SkinsStage{100, 168, 440, 608};
     inline constexpr float SkinsPlateHeight = 344;
-    inline const Rect SkinsFront{154, 212, 144, 288};
-    inline const Rect SkinsBack{342, 212, 144, 288};
+    // The turning figure in the middle of the plate, dragged with the mouse, and the two
+    // buttons that turn it to its front or its back.
+    inline const Rect SkinsFigure{234, 216, 172, 256};
+    inline const Rect SkinsPlate{116, 184, 408, SkinsPlateHeight};
+    inline const Rect SkinsTurnFront{246, 488, 70, 28};
+    inline const Rect SkinsTurnBack{324, 488, 70, 28};
     inline const Rect SkinsRemove{476, 192, 40, 40};
     // Share (Minhas) in the opposite corner; report or remove (Explorar) in the remove button's place.
     inline const Rect SkinsShare{124, 192, 40, 40};

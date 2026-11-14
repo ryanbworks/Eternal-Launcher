@@ -16,6 +16,7 @@ struct ControlVisual
     bool focused = false;
     bool pressed = false;
     bool enabled = true;
+    float press = 0;  // 0..1: eased version of `pressed`; buttons sink a little with it
 };
 using ControlVisuals = std::function<ControlVisual(int id)>;
 

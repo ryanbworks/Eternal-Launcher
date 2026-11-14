@@ -12,6 +12,15 @@ void Buttons::draw(Gdiplus::Graphics& g, const Gdiplus::RectF& b, std::wstring_v
                    const ControlVisual& v, Style style, std::optional<Icons::Icon> icon, bool selected, float labelSize)
 {
     const float hover = v.enabled ? std::clamp(v.hover, 0.0F, 1.0F) : 0.0F;
+    // Held down, the button sinks a little toward its center.
+    const auto state = g.Save();
+    if (v.enabled && v.press > 0 && style != Style::Link && style != Style::Tab) {
+        const float scale = 1 - .035F * std::clamp(v.press, 0.0F, 1.0F);
+        const float cx = b.X + b.Width / 2, cy = b.Y + b.Height / 2;
+        g.TranslateTransform(cx, cy);
+        g.ScaleTransform(scale, scale);
+        g.TranslateTransform(-cx, -cy);
+    }
     Gdiplus::Color fill(0, 0, 0, 0), outline(0, 0, 0, 0), ink = Theme::TextPrimary;
     float radius = Theme::ControlRadius;
     switch (style)
@@ -68,6 +77,7 @@ void Buttons::draw(Gdiplus::Graphics& g, const Gdiplus::RectF& b, std::wstring_v
             style == Style::Link ? Gdiplus::StringAlignmentNear : Gdiplus::StringAlignmentCenter, Gdiplus::StringAlignmentCenter);
     }
     if (v.focused) DrawingUtils::drawFocusRing(g, b, radius, style == Style::Primary ? Theme::AccentInk : Theme::AccentLight);
+    g.Restore(state);
 }
 
 void Buttons::drawIcon(Gdiplus::Graphics& g, const Gdiplus::RectF& b, Icons::Icon icon, const ControlVisual& v,
@@ -79,7 +89,9 @@ void Buttons::drawIcon(Gdiplus::Graphics& g, const Gdiplus::RectF& b, Icons::Ico
     if (fill.GetA() > 0) DrawingUtils::fillRoundedRectangle(g, b, 14, fill);
     const Gdiplus::Color ink = !v.enabled ? Theme::TextMuted : selected ? Theme::AccentLight :
         (hoverFill ? blend(Theme::TextSecondary, Theme::TextPrimary, hover) : blend(Theme::TextMuted, Theme::TextPrimary, hover));
-    Icons::draw(g, icon, {b.X + (b.Width - iconSize) / 2, b.Y + (b.Height - iconSize) / 2, iconSize, iconSize}, ink, 1.8F);
+    // The icon leans in under the pointer and sinks when pressed.
+    const float size = iconSize * (1 + .1F * hover - .12F * (v.enabled ? std::clamp(v.press, 0.0F, 1.0F) : 0.0F));
+    Icons::draw(g, icon, {b.X + (b.Width - size) / 2, b.Y + (b.Height - size) / 2, size, size}, ink, 1.8F);
     if (v.focused) DrawingUtils::drawFocusRing(g, b, 14, Theme::AccentLight);
 }
 

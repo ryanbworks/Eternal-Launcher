@@ -3,6 +3,8 @@
 #include "services/GalleryApi.h"
 
 #include <algorithm>
+#include <cmath>
+#include <vector>
 
 namespace
 {
@@ -95,5 +97,111 @@ void SkinRenderer::drawBody(Gdiplus::Graphics& g, const SkinTexture& skin, const
     }
     for (const auto& face : base) blit(g, skin, face, originX, originY, cell, false);
     for (const auto& face : outer) blit(g, skin, face, originX, originY, cell, true);
+    g.Restore(saved);
+}
+
+namespace
+{
+    // A body part: its box in skin pixels (x across, y down from the top of the head,
+    // z toward the viewer at angle 0) and its texture origin in the standard layout.
+    struct Part
+    {
+        float x0, y0, z0, w, h, d;
+        int u, v;
+        bool mirror = false;  // legacy skins draw the left limbs with the right ones' texture
+        bool overlay = false;
+        int tw = 0, th = 0, td = 0;  // texture size: the box size before the outer layer grows it
+    };
+
+    // One side of a part as it lands on screen, kept for back-to-front drawing.
+    struct SideFace
+    {
+        float depth;
+        float left, right;    // screen x of the texture's first and last column edge
+        float top, height;    // screen y and height
+        int u, v, columns, rows;
+        bool reverse;         // the texture runs right to left on screen
+        bool overlay;
+    };
+}
+
+void SkinRenderer::drawTurned(Gdiplus::Graphics& g, const SkinTexture& skin, const Gdiplus::RectF& bounds, bool slim, float angle)
+{
+    const float cell = std::min(bounds.Width / 16, bounds.Height / 32);
+    const float centerX = bounds.X + bounds.Width / 2, originY = bounds.Y + (bounds.Height - 32 * cell) / 2;
+    const bool legacy = skin.height == 32;
+    const float arm = slim ? 3.0F : 4.0F;
+    // Texture sizes match the boxes; set them before the outer layer copies the parts.
+    const auto sized = [](Part part) { part.tw = static_cast<int>(part.w); part.th = static_cast<int>(part.h); part.td = static_cast<int>(part.d); return part; };
+    std::vector<Part> parts = {
+        {-4, 0, -4, 8, 8, 8, 0, 0},                         // head
+        {-4, 8, -2, 8, 12, 4, 16, 16},                      // body
+        {-4 - arm, 8, -2, arm, 12, 4, 40, 16},              // right arm (viewer's left)
+        legacy ? Part{4, 8, -2, arm, 12, 4, 40, 16, true} : Part{4, 8, -2, arm, 12, 4, 32, 48},
+        {-4, 20, -2, 4, 12, 4, 0, 16},                      // right leg
+        legacy ? Part{0, 20, -2, 4, 12, 4, 0, 16, true} : Part{0, 20, -2, 4, 12, 4, 16, 48},
+    };
+    for (auto& part : parts) part = sized(part);
+    // The outer layer: the hat stands half a pixel off the head, clothes a quarter.
+    const auto outer = [](Part part, int u, int v, float grow) {
+        part.x0 -= grow; part.y0 -= grow; part.z0 -= grow;
+        part.w += 2 * grow; part.h += 2 * grow; part.d += 2 * grow;
+        part.u = u; part.v = v; part.mirror = false; part.overlay = true;  // tw/th/td stay the plain size
+        return part;
+    };
+    parts.push_back(outer(parts[0], 32, 0, .5F));
+    if (!legacy) {
+        parts.push_back(outer(parts[1], 16, 32, .25F));
+        parts.push_back(outer(parts[2], 40, 32, .25F));
+        parts.push_back(outer(parts[3], 48, 48, .25F));
+        parts.push_back(outer(parts[4], 0, 32, .25F));
+        parts.push_back(outer(parts[5], 0, 48, .25F));
+    }
+
+    const float c = std::cos(angle), s = std::sin(angle);
+    const auto screenX = [&](float x, float z) { return centerX + (x * c + z * s) * cell; };
+    const auto depthOf = [&](float x, float z) { return -x * s + z * c; };
+    std::vector<SideFace> faces;
+    for (const auto& p : parts) {
+        const int tw = p.tw, th = p.th, td = p.td;
+        const float x1 = p.x0 + p.w, z1 = p.z0 + p.d, top = originY + p.y0 * cell, height = p.h * cell;
+        // Front (+z), back (-z), the right side (-x) and the left side (+x); each runs its texture
+        // between two vertical edges. Mirrored parts swap the sides and reverse the columns.
+        struct Side { float ax, az, bx, bz, nx, nz; int u, v, columns; };
+        Side sides[] = {
+            {p.x0, z1, x1, z1, 0, 1, p.u + td, p.v + td, tw},                    // front: texture runs x0 to x1
+            {x1, p.z0, p.x0, p.z0, 0, -1, p.u + 2 * td + tw, p.v + td, tw},      // back
+            {p.x0, p.z0, p.x0, z1, -1, 0, p.u, p.v + td, td},                    // right side: back to front
+            {x1, z1, x1, p.z0, 1, 0, p.u + td + tw, p.v + td, td},               // left side: front to back
+        };
+        if (p.mirror) std::swap(sides[2].u, sides[3].u);
+        for (const auto& side : sides) {
+            // Seen only when it faces the viewer.
+            if (side.nx * -s + side.nz * c <= .001F) continue;
+            const float midX = (side.ax + side.bx) / 2, midZ = (side.az + side.bz) / 2;
+            faces.push_back({depthOf(midX, midZ) + (p.overlay ? .01F : 0.0F), screenX(side.ax, side.az), screenX(side.bx, side.bz), top, height,
+                             side.u, side.v, side.columns, th, p.mirror, p.overlay});
+        }
+    }
+    std::sort(faces.begin(), faces.end(), [](const SideFace& a, const SideFace& b) { return a.depth < b.depth; });
+
+    const auto saved = g.Save();
+    g.SetSmoothingMode(Gdiplus::SmoothingModeNone);
+    g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+    for (const auto& face : faces) {
+        const float columnWidth = (face.right - face.left) / static_cast<float>(face.columns);
+        const float rowHeight = face.height / static_cast<float>(face.rows);
+        for (int row = 0; row < face.rows; ++row)
+            for (int column = 0; column < face.columns; ++column) {
+                const int sourceX = face.u + (face.reverse ? face.columns - 1 - column : column);
+                const std::uint32_t argb = skin.at(sourceX, face.v + row);
+                const auto alpha = static_cast<BYTE>(argb >> 24);
+                if (alpha == 0 || (face.overlay && alpha < 16)) continue;
+                Gdiplus::SolidBrush brush(Gdiplus::Color(face.overlay ? alpha : 255, static_cast<BYTE>(argb >> 16), static_cast<BYTE>(argb >> 8),
+                                                         static_cast<BYTE>(argb)));
+                const float a = face.left + columnWidth * static_cast<float>(column), b = a + columnWidth;
+                g.FillRectangle(&brush, std::min(a, b), face.top + rowHeight * static_cast<float>(row), std::abs(b - a) + .5F, rowHeight + .5F);
+            }
+    }
     g.Restore(saved);
 }

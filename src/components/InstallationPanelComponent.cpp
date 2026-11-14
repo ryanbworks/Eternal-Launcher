@@ -109,7 +109,7 @@ void InstallationPanelComponent::draw(Gdiplus::Graphics& g, const InstallationTr
     const auto& panel = Layout::Installation;
     const auto& progress = state.progress;
     const bool failed = state.result && state.result->outcome == InstallationOutcome::Failed;
-    HomeView::drawScreenVeil(g, 1);
+    // The caller draws the dim layer and the opening motion.
     HomeView::drawScreenCard(g, panel, 1, failed ? Gdiplus::Color(34, 240, 90, 110) : Gdiplus::Color(40, 165, 130, 255));
     const bool cancelled = state.result && state.result->outcome == InstallationOutcome::Cancelled;
     const bool moving = state.running && !state.cancelling;

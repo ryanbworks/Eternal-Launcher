@@ -113,6 +113,17 @@ void HomeView::drawScreenVeil(Gdiplus::Graphics& g, float reveal)
     g.FillRectangle(&veil, -2000.0F, -2000.0F, 6000.0F, 6000.0F);
 }
 
+void HomeView::growScreen(Gdiplus::Graphics& g, const Gdiplus::RectF& p, float reveal)
+{
+    // Screens open from 94% of their size; the transform stays until the caller restores.
+    const float scale = .94F + .06F * std::clamp(reveal, 0.0F, 1.0F);
+    if (scale >= .999F) return;
+    const float cx = p.X + p.Width / 2, cy = p.Y + p.Height / 2;
+    g.TranslateTransform(cx, cy);
+    g.ScaleTransform(scale, scale);
+    g.TranslateTransform(-cx, -cy);
+}
+
 void HomeView::drawScreenCard(Gdiplus::Graphics& g, const Gdiplus::RectF& p, float reveal, const Gdiplus::Color& glow)
 {
     const auto alpha = [reveal](float value) { return static_cast<BYTE>(std::clamp(value * reveal, 0.0F, 255.0F)); };
@@ -373,6 +384,7 @@ void HomeView::drawLevels(Gdiplus::Graphics& g, const HomeModel& model, const Co
     drawScreenVeil(g, reveal);
     const auto saved = g.Save();
     g.TranslateTransform(0, std::round(18 * (1 - reveal)));
+    growScreen(g, Layout::Levels, reveal);
 
     const auto& p = Layout::Levels;
     drawScreenCard(g, p, reveal, Gdiplus::Color(40, 165, 130, 255));

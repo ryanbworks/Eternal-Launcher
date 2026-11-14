@@ -85,6 +85,8 @@ namespace LauncherConstants
     inline constexpr int SkinSearchButtonId = 1338;
     inline constexpr int SkinFilterFirstId = 1339;  // Todas, Do grupo, Compartilhadas, Populares
     inline constexpr int SkinFilterCount = 4;
+    inline constexpr int SkinTurnFrontId = 1343;
+    inline constexpr int SkinTurnBackId = 1344;
     inline constexpr int RetryServerButtonId = 1131;
     inline constexpr int VersionEternalButtonId = 1132;
     inline constexpr int VersionVanillaButtonId = 1133;

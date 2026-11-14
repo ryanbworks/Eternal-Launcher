@@ -45,6 +45,7 @@ struct ModsModel
     bool locked = false;
     // Switch knob positions by mod name (0 off .. 1 on) while they slide.
     const std::map<std::wstring, float>* knobs = nullptr;
+    float entrance = 1;  // 0..1 cascade of the rows
 };
 
 class ModsView
@@ -165,6 +166,8 @@ struct SkinsModel
     std::wstring searchPreview;       // previews only: text drawn in the search field
     int filter = 0;                   // 0 all, 1 group, 2 shared, 3 popular
     std::array<std::size_t, 4> filterCounts{};
+    float cardsEntrance = 1;          // 0..1 cascade of the cards (tab, filter, list arriving)
+    float turn = 0;                   // the stage figure's rotation, radians (0 faces the player)
 };
 
 class SkinsView
